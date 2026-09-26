@@ -383,3 +383,86 @@ describePosix('the systemd units agree about where the volume is', () => {
     expect(watched).toBe(`${passed ?? ''}/deploy-request`);
   });
 });
+
+/**
+ * A docker stub for a box whose sessions work in worktrees: the main checkout
+ * is at `mainHead`, and `git worktree list --porcelain` names the others.
+ * `git -C '<path>' rev-parse HEAD` answers for the path it is asked about.
+ */
+function writeWorktreeDockerStub(
+  bin: string,
+  mainHead: string,
+  worktrees: { path: string; sha: string }[]
+): void {
+  const porcelain = [
+    'worktree /source',
+    `HEAD ${mainHead}`,
+    'detached',
+    '',
+    ...worktrees.flatMap(w => [`worktree ${w.path}`, `HEAD ${w.sha}`, 'branch refs/heads/x', '']),
+  ].join('\\n');
+  const perPath = worktrees
+    .map(w => `    *"git -C '${w.path}' rev-parse HEAD"*) printf '%s\\n' '${w.sha}'; exit 0 ;;`)
+    .join('\n');
+  const stub = join(bin, 'docker');
+  writeFileSync(
+    stub,
+    `#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    *"worktree list --porcelain"*) printf '${porcelain}\\n'; exit 0 ;;
+${perPath}
+    *"rev-parse HEAD"*) printf '%s\\n' '${mainHead}'; exit 0 ;;
+    *".deployed-sha"*) printf '%s\\n' '${WANT}'; exit 0 ;;
+  esac
+done
+exit 0
+`,
+    { mode: 0o755 }
+  );
+  chmodSync(stub, 0o755);
+}
+
+/** A deploy that records which checkout it was pointed at. */
+function writeSourceRecordingDeploy(path: string): void {
+  writeFileSync(path, '#!/usr/bin/env bash\necho "deploying from SOURCE_DIR=$SOURCE_DIR"\nexit 0\n', {
+    mode: 0o755,
+  });
+  chmodSync(path, 0o755);
+}
+
+describePosix('a request made from a worktree', () => {
+  test('deploys from the worktree that holds the requested commit', async () => {
+    const box = sandbox('worktree');
+    writeWorktreeDockerStub(box.bin, OTHER, [{ path: '/home/appuser/wt-deploy-merge', sha: WANT }]);
+    writeSourceRecordingDeploy(box.deploy);
+
+    expect(await run(box, WANT)).toBe(0);
+
+    const log = read(join(box.volume, 'deploy-last.log'));
+    expect(log).toContain('deploying from there');
+    expect(log).toContain('SOURCE_DIR=/home/appuser/wt-deploy-merge');
+    expect(read(join(box.volume, 'deploy-history'))).toContain(`OK ${WANT}`);
+  });
+
+  test('still refuses when no checkout holds the requested commit', async () => {
+    const box = sandbox('nowhere');
+    writeWorktreeDockerStub(box.bin, OTHER, [{ path: '/home/appuser/wt-other', sha: OTHER }]);
+    writeSourceRecordingDeploy(box.deploy);
+
+    expect(await run(box, WANT)).toBe(1);
+
+    const log = read(join(box.volume, 'deploy-last.log'));
+    expect(log).toContain('no worktree has it');
+    expect(log).not.toContain('SOURCE_DIR=');
+  });
+
+  test('refuses a worktree path that is not a plain absolute path', async () => {
+    const box = sandbox('odd-path');
+    writeWorktreeDockerStub(box.bin, OTHER, [{ path: "/home/appuser/wt x'; true", sha: WANT }]);
+    writeSourceRecordingDeploy(box.deploy);
+
+    expect(await run(box, WANT)).toBe(1);
+    expect(read(join(box.volume, 'deploy-last.log'))).not.toContain('SOURCE_DIR=');
+  });
+});

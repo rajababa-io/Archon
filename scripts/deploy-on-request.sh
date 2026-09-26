@@ -152,15 +152,46 @@ if [ -z "$HEAD" ]; then
   exit 1
 fi
 
+# THE ASKER MAY BE IN A WORKTREE. request-deploy.sh writes the HEAD of the
+# checkout it runs in, and sessions mostly work in worktrees of $SOURCE_DIR, not
+# in $SOURCE_DIR itself. On 2026-09-26 a request for a7e62b80 came from
+# wt-deploy-merge while the main checkout sat detached at an older commit with
+# another session's staged work; this refused, and said "another session
+# committed", which was not what had happened.
+#
+# So when the main checkout is not at the requested commit, ask git which of
+# its worktrees is, and deploy from that one. Nothing new is trusted: the
+# request names only a SHA, as before, and the path comes from git's own list.
+# The commit shipped is still exactly $WANT, confirmed below by the same
+# rev-parse, so this cannot ship work nobody asked for.
 if [ "$HEAD" != "$WANT" ]; then
-  note "STOPPED: asked for $WANT, checkout is at $HEAD"
-  note "The checkout moved after the request was written — another session"
-  note "committed. Deploying now would ship work nobody here asked for."
+  ASKER=$( (cd "$DEPLOY_DIR" && docker compose exec -T -u root "$SERVICE" \
+    sh -lc "git config --global --add safe.directory '*' >/dev/null 2>&1; git -C '$SOURCE_DIR' worktree list --porcelain" 2>/dev/null) \
+    | tr -d '\r' | awk -v want="$WANT" '
+        /^worktree / { path = substr($0, 10) }
+        /^HEAD / && $2 == want && path != "" { print path; exit }')
+  # The path goes into commands run as root below and in deploy-local.sh, inside
+  # single quotes, so only a plain absolute path is accepted.
+  if [ -n "$ASKER" ] && printf '%s' "$ASKER" | grep -Eq '^/[A-Za-z0-9._/-]+$' \
+      && ! printf '%s' "$ASKER" | grep -q '\.\.'; then
+    ALT_HEAD=$(in_container "git -C '$ASKER' rev-parse HEAD")
+    if [ "$ALT_HEAD" = "$WANT" ]; then
+      note "the main checkout is at $HEAD; $WANT is checked out at $ASKER — deploying from there"
+      SOURCE_DIR="$ASKER"
+      HEAD="$ALT_HEAD"
+    fi
+  fi
+fi
+
+if [ "$HEAD" != "$WANT" ]; then
+  note "STOPPED: asked for $WANT, checkout is at $HEAD, and no worktree has it"
+  note "The checkout moved after the request was written. Deploying now would"
+  note "ship work nobody here asked for."
   record "REFUSED $WANT — checkout had moved to $HEAD"
   exit 1
 fi
 
-note "checkout confirms $HEAD"
+note "checkout confirms $HEAD ($SOURCE_DIR)"
 
 # A deploy can be stopped rather than finish: systemd's TimeoutStartSec, or an
 # operator with systemctl. Without this, being killed is the one outcome that
@@ -185,7 +216,7 @@ on_terminated() {
 trap on_terminated TERM
 
 note "starting deploy"
-bash "$DEPLOY" &
+SOURCE_DIR="$SOURCE_DIR" bash "$DEPLOY" &
 DEPLOY_PID=$!
 status=0
 wait "$DEPLOY_PID" || status=$?
