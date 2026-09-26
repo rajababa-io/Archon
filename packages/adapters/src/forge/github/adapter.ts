@@ -48,7 +48,14 @@ import { resolveDefaultAssistant } from '@archon/core/config/resolve-assistant';
 import { createLogger } from '@archon/paths';
 import { parseAllowedUsers as parseGitHubAllowedUsers, isGitHubUserAuthorized } from './auth';
 import { splitIntoParagraphChunks } from '../../utils/message-splitting';
-import { isCheckRunCompletedEvent, type CheckRunCompletedEvent, type WebhookEvent } from './types';
+import {
+  isCheckRunCompletedEvent,
+  MalformedWebhookEventError,
+  namesRepository,
+  parseInstallationEvent,
+  type CheckRunCompletedEvent,
+  type WebhookEvent,
+} from './types';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -1082,6 +1089,48 @@ ${userComment}`;
   }
 
   /**
+   * Record an `installation` or `installation_repositories` delivery.
+   *
+   * In App mode the installation id for a repository is otherwise discovered
+   * lazily via `GET /repos/{owner}/{repo}/installation`. Priming from the
+   * payload means a freshly installed account is usable on its first inbound
+   * event rather than after an extra round trip, and — more importantly —
+   * an uninstall or repository removal evicts the cached id immediately
+   * instead of being served from a stale entry until its TTL expires.
+   *
+   * PAT mode has no installation cache, so this only logs.
+   */
+  private recordInstallation(decoded: unknown, githubEvent: string, payload: string): void {
+    const summary = parseInstallationEvent(decoded);
+    if (!summary) throw new MalformedWebhookEventError(githubEvent, payload);
+
+    getLog().info(
+      {
+        event: githubEvent,
+        installationId: summary.installationId,
+        account: summary.account,
+        added: summary.added.length,
+        removed: summary.removed.length,
+      },
+      'github.installation_event_received'
+    );
+
+    if (this.auth.kind !== 'app') return;
+    const provider = this.auth.provider;
+    for (const { owner, repo } of summary.added) {
+      provider.primeInstallationLookup(owner, repo, summary.installationId);
+    }
+    for (const { owner, repo } of summary.removed) {
+      provider.invalidateRepo(owner, repo);
+    }
+    // A whole-account uninstall kills the installation token itself, not just
+    // the per-repository lookups it resolved to.
+    if (githubEvent === 'installation' && summary.removed.length > 0) {
+      provider.invalidateToken(summary.installationId);
+    }
+  }
+
+  /**
    * Handle incoming webhook event
    * @param deliveryId - GitHub's X-GitHub-Delivery GUID; dedup fallback when
    *   the payload carries no comment identity
@@ -1121,6 +1170,20 @@ ${userComment}`;
       const maskedUser = senderUsername ? `${senderUsername.slice(0, 3)}***` : 'unknown';
       getLog().info({ maskedUser }, 'github.unauthorized_webhook');
       return; // Silent rejection - no error response
+    }
+
+    // 2c. Installation lifecycle. These deliveries announce which repositories
+    // an installation covers and carry NO top-level `repository`, so they must
+    // be routed before the issue/comment parsing path reads one.
+    if (githubEvent === 'installation' || githubEvent === 'installation_repositories') {
+      this.recordInstallation(decoded, githubEvent, payload);
+      return;
+    }
+
+    // Anything else reaching here must name a repository. A delivery that does
+    // not is a shape we cannot route: fail loudly rather than dropping it.
+    if (!namesRepository(decoded)) {
+      throw new MalformedWebhookEventError(githubEvent, payload);
     }
 
     const parsed = this.parseEvent(event);

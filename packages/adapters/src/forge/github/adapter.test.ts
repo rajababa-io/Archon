@@ -173,7 +173,7 @@ mock.module('@archon/git', () => ({
 
 import { DRAIN_REFUSAL_NOTICE } from '@archon/core/utils/conversation-lock';
 import { GitHubAdapter } from './adapter';
-import type { WebhookEvent } from './types';
+import { MalformedWebhookEventError, type WebhookEvent } from './types';
 // Namespace import so the dedup tests can spyOn(core, 'handleMessage') — the
 // orchestrator entry point the adapter calls after webhook setup succeeds.
 import * as core from '@archon/core';
@@ -1964,6 +1964,116 @@ describe('GitHubAdapter', () => {
         // Inner orchestrator path may throw — we only care about priming here.
       }
       expect(provider.prime).toHaveBeenCalledWith('alpha', 'repo', 99999);
+    });
+
+    describe('installation lifecycle events (no top-level repository)', () => {
+      // Payload shape taken from a real `installation` delivery: the App being
+      // installed on a second account is exactly the event this handles.
+      const installationCreated = (action = 'created'): string =>
+        JSON.stringify({
+          action,
+          installation: {
+            id: 77001,
+            account: { login: 'rajababa-io' },
+          },
+          repositories: [
+            { id: 1, name: 'Archon', full_name: 'rajababa-io/Archon' },
+            { id: 2, name: 'vault', full_name: 'rajababa-io/vault' },
+          ],
+          sender: { login: 'ameet-rajababa' },
+        });
+
+      test('installation.created primes the lookup for every repository it covers', async () => {
+        const { adapter, provider } = createAppModeAdapter();
+
+        await adapter.handleWebhook(installationCreated(), 'mock-signature', 'd1', 'installation');
+
+        expect(provider.prime).toHaveBeenCalledWith('rajababa-io', 'Archon', 77001);
+        expect(provider.prime).toHaveBeenCalledWith('rajababa-io', 'vault', 77001);
+        expect(provider.invalidateRepo).not.toHaveBeenCalled();
+      });
+
+      test('installation.deleted evicts the repositories and the installation token', async () => {
+        const { adapter, provider } = createAppModeAdapter();
+
+        await adapter.handleWebhook(
+          installationCreated('deleted'),
+          'mock-signature',
+          'd2',
+          'installation'
+        );
+
+        expect(provider.prime).not.toHaveBeenCalled();
+        expect(provider.invalidateRepo).toHaveBeenCalledWith('rajababa-io', 'Archon');
+        expect(provider.invalidateRepo).toHaveBeenCalledWith('rajababa-io', 'vault');
+        expect(provider.invalidate).toHaveBeenCalledWith(77001);
+      });
+
+      test('installation_repositories primes what was added and evicts what was removed', async () => {
+        const { adapter, provider } = createAppModeAdapter();
+        const payload = JSON.stringify({
+          action: 'added',
+          installation: { id: 77002, account: { login: 'ameet-rajababa' } },
+          repositories_added: [{ full_name: 'ameet-rajababa/notes' }],
+          repositories_removed: [{ full_name: 'ameet-rajababa/old' }],
+          sender: { login: 'ameet-rajababa' },
+        });
+
+        await adapter.handleWebhook(payload, 'mock-signature', 'd3', 'installation_repositories');
+
+        expect(provider.prime).toHaveBeenCalledWith('ameet-rajababa', 'notes', 77002);
+        expect(provider.invalidateRepo).toHaveBeenCalledWith('ameet-rajababa', 'old');
+        // Removing one repository from an installation does not kill the
+        // installation token — only a whole-account uninstall does.
+        expect(provider.invalidate).not.toHaveBeenCalled();
+      });
+
+      test('an installation delivery with no installation id fails with a typed error', async () => {
+        const { adapter, provider } = createAppModeAdapter();
+        const payload = JSON.stringify({ action: 'created', sender: { login: 'someone' } });
+
+        const attempt = adapter.handleWebhook(payload, 'mock-signature', 'd4', 'installation');
+
+        await expect(attempt).rejects.toBeInstanceOf(MalformedWebhookEventError);
+        await attempt.catch((err: unknown) => {
+          expect((err as MalformedWebhookEventError).payload).toBe(payload);
+        });
+        expect(provider.prime).not.toHaveBeenCalled();
+      });
+
+      test('a delivery naming neither a repository nor an installation fails with a typed error', async () => {
+        const { adapter } = createAppModeAdapter();
+        const payload = JSON.stringify({ action: 'created', sender: { login: 'someone' } });
+
+        await expect(
+          adapter.handleWebhook(payload, 'mock-signature', 'd5', 'membership')
+        ).rejects.toBeInstanceOf(MalformedWebhookEventError);
+      });
+
+      test('PAT mode accepts the delivery instead of throwing (the original defect)', async () => {
+        const patAdapter = new GitHubAdapter(
+          { kind: 'pat', token: 'fake-token-for-testing' },
+          'fake-webhook-secret',
+          mockLockManager
+        );
+        const payload = installationCreated();
+        const signature =
+          'sha256=' + createHmac('sha256', 'fake-webhook-secret').update(payload).digest('hex');
+
+        // PAT mode has no installation cache, so the assertion is simply that
+        // reading `event.repository.owner.login` no longer happens here.
+        await expect(
+          patAdapter.handleWebhook(payload, signature, 'd6', 'installation')
+        ).resolves.toBeUndefined();
+      });
+
+      test('the attached payload stays out of serialized error properties', () => {
+        const error = new MalformedWebhookEventError('installation', '{"secret":"comment body"}');
+
+        expect(error.payload).toBe('{"secret":"comment body"}');
+        expect(Object.keys(error)).not.toContain('payload');
+        expect(JSON.stringify(error)).not.toContain('comment body');
+      });
     });
 
     test('401 from Octokit triggers invalidateRepo + retry once', async () => {
