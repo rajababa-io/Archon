@@ -425,9 +425,13 @@ exit 0
 
 /** A deploy that records which checkout it was pointed at. */
 function writeSourceRecordingDeploy(path: string): void {
-  writeFileSync(path, '#!/usr/bin/env bash\necho "deploying from SOURCE_DIR=$SOURCE_DIR"\nexit 0\n', {
-    mode: 0o755,
-  });
+  writeFileSync(
+    path,
+    '#!/usr/bin/env bash\necho "deploying from SOURCE_DIR=$SOURCE_DIR"\nexit 0\n',
+    {
+      mode: 0o755,
+    }
+  );
   chmodSync(path, 0o755);
 }
 
