@@ -129,6 +129,9 @@ mock.module('../utils/commands', () => ({
 
 // ── Import module under test AFTER mocks are registered ────────────────────
 import { cloneRepository, registerRepository, registerFolder } from './clone';
+import { registerGitHubAppAuthProvider } from '../workflows/store-adapter';
+import { AppNotInstalledError } from '../github-auth/errors';
+import type { IGitHubAppAuthProvider } from '../github-auth';
 
 // ── Spies for fs/promises and @archon/git ──────────────────────────────────
 let spyFsAccess: ReturnType<typeof spyOn>;
@@ -518,6 +521,88 @@ describe('cloneRepository', () => {
       expect(cloneCall?.[2]).toEqual({
         credentials: { username: 'ghp_testtoken123', password: '' },
       });
+    });
+  });
+
+  // ── GitHub App mode ───────────────────────────────────────────────────
+  // Uses the real provider registry rather than a module mock: this file runs
+  // in its own test batch, and exercising the registry proves clone asks the
+  // same owner the workflow engine asks.
+  describe('GitHub App mode', () => {
+    const getInstallationToken = mock(
+      (_owner: string, _repo: string): Promise<string> => Promise.resolve('ghs_installation_token')
+    );
+    const fakeProvider = {
+      slug: 'archon-test',
+      getInstallationToken,
+      getInstallationTokenById: mock(() => Promise.resolve('unused')),
+      getOctokitForInstallation: mock(() => Promise.reject(new Error('unused'))),
+      resolveInstallationId: mock(() => Promise.resolve(1)),
+      primeInstallationLookup: mock(() => undefined),
+      invalidateToken: mock(() => undefined),
+      invalidateRepo: mock(() => undefined),
+    } as unknown as IGitHubAppAuthProvider;
+
+    beforeEach(() => {
+      getInstallationToken.mockClear();
+      getInstallationToken.mockImplementation(() => Promise.resolve('ghs_installation_token'));
+      registerGitHubAppAuthProvider(fakeProvider);
+    });
+
+    afterEach(() => {
+      registerGitHubAppAuthProvider(null);
+      delete process.env.GH_TOKEN;
+      delete process.env.GITHUB_TOKEN;
+    });
+
+    test('clones a github.com repository with the installation token for that repository', async () => {
+      mockCreateCodebase.mockResolvedValueOnce(makeCodebase() as ReturnType<typeof makeCodebase>);
+
+      await cloneRepository('https://github.com/rajababa-io/private-repo');
+
+      expect(getInstallationToken).toHaveBeenCalledWith('rajababa-io', 'private-repo');
+      expect(getGitCloneCall()?.[2]).toEqual({
+        credentials: { username: 'x-access-token', password: 'ghs_installation_token' },
+      });
+    });
+
+    test('the installation token wins over an env token', async () => {
+      process.env.GH_TOKEN = 'ghp_env_token';
+      mockCreateCodebase.mockResolvedValueOnce(makeCodebase() as ReturnType<typeof makeCodebase>);
+
+      await cloneRepository('https://github.com/rajababa-io/private-repo');
+
+      expect(JSON.stringify(getGitCloneCall())).not.toContain('ghp_env_token');
+    });
+
+    test('falls back to the env token when the App is not installed on the repository', async () => {
+      process.env.GH_TOKEN = 'ghp_env_token';
+      getInstallationToken.mockImplementation(() =>
+        Promise.reject(new AppNotInstalledError('someone-else', 'repo', 'archon-test'))
+      );
+      mockCreateCodebase.mockResolvedValueOnce(makeCodebase() as ReturnType<typeof makeCodebase>);
+
+      await cloneRepository('https://github.com/someone-else/repo');
+
+      expect(getGitCloneCall()?.[2]).toEqual({
+        credentials: { username: 'ghp_env_token', password: '' },
+      });
+    });
+
+    test('does not ask the App for a token for a non-GitHub host', async () => {
+      process.env.GITLAB_TOKEN = 'glpat-token';
+      mockCreateCodebase.mockResolvedValueOnce(
+        makeCodebase({
+          name: 'owner/repo',
+          repository_url: 'https://gitlab.com/owner/repo',
+        }) as ReturnType<typeof makeCodebase>
+      );
+
+      await cloneRepository('https://gitlab.com/owner/repo');
+
+      delete process.env.GITLAB_TOKEN;
+      expect(getInstallationToken).not.toHaveBeenCalled();
+      expect(JSON.stringify(getGitCloneCall())).not.toContain('ghs_installation_token');
     });
   });
 
