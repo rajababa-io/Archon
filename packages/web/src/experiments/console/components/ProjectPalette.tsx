@@ -11,7 +11,10 @@ import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import * as skill from '../skills';
 import type { Project } from '../primitives/project';
+import { conversationLabel } from '../primitives/conversation';
 import { formatProjectLocator } from '../lib/format';
+import { paletteResultKey, paletteResults, type PaletteResult } from '../lib/palette-results';
+import type { OpenChatRequest } from '../lib/open-chat';
 
 interface ProjectPaletteProps {
   open: boolean;
@@ -19,11 +22,13 @@ interface ProjectPaletteProps {
 }
 
 /**
- * Cmd-K-style overlay for jumping to a project. Opened via `p` anywhere.
+ * The ⌘K overlay: jump to a project, or open any chat by its title, across
+ * every project. Opened by ⌘K / Ctrl+K anywhere, or `p` outside a text field.
  *
- * Match is character-subsequence ("subsequence fuzzy") — `c00/A` matches
- * `coleam00/Archon` — not a full Levenshtein scorer; good enough for short
- * project lists, no extra deps.
+ * Chats are open and done alike; a done chat is tagged "closed", the word the
+ * rail uses for that scope. They come from one list read while the palette is
+ * open and are filtered here, so typing never calls the server. How the two
+ * kinds rank against each other is `paletteResults`.
  *
  * Closes on Esc / outside-click / Enter (after navigating).
  */
@@ -34,6 +39,10 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
   const [index, setIndex] = useState(0);
 
   const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
+  // Subscribed only while open, so each opening rereads it — see the key.
+  const { data: allChats } = useEntity(open ? K.allConversations : 'noop:palette-closed', () =>
+    open ? skill.listAllConversations() : Promise.resolve({ chats: [], truncated: false })
+  );
 
   // Reset query + selection each time the palette opens. Focus is called
   // synchronously — the input ref is committed by React before useEffect
@@ -48,12 +57,10 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
     }
   }, [open]);
 
-  const matches = useMemo<Project[]>(() => {
-    const list = projects ?? [];
-    const q = query.trim().toLowerCase();
-    if (q.length === 0) return list;
-    return list.filter(p => subsequence(p.name.toLowerCase(), q));
-  }, [projects, query]);
+  const matches = useMemo<PaletteResult[]>(
+    () => paletteResults(query, projects ?? [], allChats?.chats ?? []),
+    [projects, allChats, query]
+  );
 
   // Clamp index when the result set shrinks.
   useEffect(() => {
@@ -62,8 +69,14 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
 
   if (!open) return null;
 
-  const choose = (project: Project): void => {
-    navigate(`/console/p/${project.id}`);
+  const choose = (picked: PaletteResult): void => {
+    if (picked.kind === 'project') {
+      navigate(`/console/p/${picked.project.id}`);
+    } else {
+      const { chat, projectId } = picked.found;
+      const request: OpenChatRequest = { openChat: chat.id, done: chat.completed };
+      navigate(`/console/p/${projectId}/chat`, { state: request });
+    }
     onClose();
   };
 
@@ -92,13 +105,15 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
 
   const listboxId = 'project-palette-listbox';
   const activeOptionId =
-    matches[index] !== undefined ? `project-palette-option-${matches[index].id}` : undefined;
+    matches[index] !== undefined
+      ? `project-palette-option-${paletteResultKey(matches[index])}`
+      : undefined;
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Pick a project"
+      aria-label="Find a chat or project"
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pt-[12vh]"
       onClick={onClose}
     >
@@ -116,8 +131,8 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
             setIndex(0);
           }}
           onKeyDown={onKey}
-          placeholder="Pick a project…"
-          aria-label="Pick a project"
+          placeholder="Find a chat or project…"
+          aria-label="Find a chat or project"
           role="combobox"
           aria-expanded="true"
           aria-controls={listboxId}
@@ -128,23 +143,24 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
         <ul
           id={listboxId}
           role="listbox"
-          aria-label="Projects"
+          aria-label="Chats and projects"
           className="max-h-[50vh] overflow-y-auto py-1"
         >
           {matches.length === 0 ? (
-            <li className="px-3 py-1.75 text-body text-text-tertiary">No projects match.</li>
+            <li className="px-3 py-1.75 text-body text-text-tertiary">Nothing matches.</li>
           ) : (
-            matches.map((p, i) => {
+            matches.map((r, i) => {
               const selected = i === index;
+              const key = paletteResultKey(r);
               return (
-                <li key={p.id} role="presentation">
+                <li key={key} role="presentation">
                   <button
-                    id={`project-palette-option-${p.id}`}
+                    id={`project-palette-option-${key}`}
                     type="button"
                     role="option"
                     aria-selected={selected}
                     onClick={() => {
-                      choose(p);
+                      choose(r);
                     }}
                     onMouseEnter={() => {
                       setIndex(i);
@@ -159,15 +175,11 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
                         className="brand-bar pointer-events-none absolute left-0 top-1 bottom-1 w-0.5 rounded-full"
                       />
                     ) : null}
-                    <span className="text-body font-medium text-text-primary">{p.name}</span>
-                    {p.kind === 'folder' ? (
-                      <span className="rounded-sm bg-surface-hover px-1 py-0.5 text-mini text-text-tertiary">
-                        folder
-                      </span>
-                    ) : null}
-                    <span className="truncate text-mini text-text-tertiary">
-                      {formatProjectLocator(p)}
-                    </span>
+                    {r.kind === 'project' ? (
+                      <ProjectRow project={r.project} />
+                    ) : (
+                      <ChatRow row={r} />
+                    )}
                   </button>
                 </li>
               );
@@ -177,7 +189,8 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
         <footer className="flex items-center justify-between border-t border-border px-3 py-1.25 text-mini text-text-tertiary">
           <span>↑↓ move · ↵ open · esc cancel</span>
           <span>
-            {matches.length} of {projects?.length ?? 0}
+            {matches.length} of {(projects?.length ?? 0) + (allChats?.chats.length ?? 0)}
+            {allChats?.truncated === true ? ' · oldest chats not searched' : ''}
           </span>
         </footer>
       </div>
@@ -185,12 +198,32 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
   );
 }
 
-/** True if `needle` is a subsequence of `haystack` (case-folded by caller). */
-function subsequence(haystack: string, needle: string): boolean {
-  let i = 0;
-  for (const ch of haystack) {
-    if (ch === needle[i]) i += 1;
-    if (i === needle.length) return true;
-  }
-  return i === needle.length;
+const TAG = 'rounded-sm bg-surface-hover px-1 py-0.5 text-mini text-text-tertiary';
+
+function ProjectRow({ project }: { project: Project }): ReactElement {
+  return (
+    <>
+      <span className="text-body font-medium text-text-primary">{project.name}</span>
+      {project.kind === 'folder' ? <span className={TAG}>folder</span> : null}
+      <span className="truncate text-mini text-text-tertiary">{formatProjectLocator(project)}</span>
+    </>
+  );
+}
+
+function ChatRow({ row }: { row: Extract<PaletteResult, { kind: 'chat' }> }): ReactElement {
+  const { chat } = row.found;
+  return (
+    <>
+      <span className={TAG}>chat</span>
+      <span
+        className={`truncate text-body ${chat.completed ? 'text-text-tertiary' : 'text-text-primary'}`}
+      >
+        {conversationLabel(chat)}
+      </span>
+      {chat.completed ? <span className={TAG}>closed</span> : null}
+      <span className="ml-auto shrink-0 truncate text-mini text-text-tertiary">
+        {row.projectName ?? ''}
+      </span>
+    </>
+  );
 }

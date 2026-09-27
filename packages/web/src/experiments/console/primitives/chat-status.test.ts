@@ -13,26 +13,40 @@ const sets = (
   awaiting: string[],
   done: string[] = [],
   unread: string[] = [],
-  ready: string[] = []
+  ready: string[] = [],
+  waiting: string[] = []
 ) => ({
   working: new Set(working),
   awaiting: new Set(awaiting),
   done: new Set(done),
   unread: new Set(unread),
   ready: new Set(ready),
+  waiting: new Set(waiting),
 });
 
 describe('chatStatus', () => {
   test('awaiting outranks working — the half that needs a human wins', () => {
     expect(chatStatus('a', sets(['a'], ['a']))).toBe('awaiting');
   });
-  test('the six states', () => {
+  test('the seven states', () => {
     expect(chatStatus('a', sets(['a'], []))).toBe('working');
     expect(chatStatus('a', sets([], ['a']))).toBe('awaiting');
     expect(chatStatus('a', sets([], [], [], ['a']))).toBe('unread');
     expect(chatStatus('a', sets([], [], ['a']))).toBe('done');
     expect(chatStatus('a', sets([], [], [], [], ['a']))).toBe('ready');
+    expect(chatStatus('a', sets([], [], [], [], [], ['a']))).toBe('waiting');
     expect(chatStatus('a', sets([], []))).toBe('idle');
+  });
+
+  // The state exists to stop idle saying "nothing is pending" while the server
+  // is waiting on CI for the chat — and to replace idle only.
+  test('waiting replaces idle and nothing else', () => {
+    expect(chatStatus('a', sets(['a'], [], [], [], [], ['a']))).toBe('working');
+    expect(chatStatus('a', sets([], ['a'], [], [], [], ['a']))).toBe('awaiting');
+    expect(chatStatus('a', sets([], [], [], ['a'], [], ['a']))).toBe('unread');
+    expect(chatStatus('a', sets([], [], ['a'], [], [], ['a']))).toBe('done');
+    expect(chatStatus('a', sets([], [], [], [], ['a'], ['a']))).toBe('ready');
+    expect(chatStatus('b', sets([], [], [], [], [], ['a']))).toBe('idle');
   });
 
   // The pair this state exists to separate. `done` is the human's answer and
@@ -217,7 +231,14 @@ describe('chatStatus when the working signal is missing', () => {
   // comparison in `unreadIds`, and an empty set still falls to silence.
   test('the agent having spoken last is not a call for help', () => {
     expect(
-      chatStatus('a', { working: none, awaiting: none, done: none, unread: none, ready: none })
+      chatStatus('a', {
+        working: none,
+        awaiting: none,
+        done: none,
+        unread: none,
+        ready: none,
+        waiting: none,
+      })
     ).toBe('idle');
   });
 
@@ -229,6 +250,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        waiting: none,
       })
     ).toBe('idle');
   });
@@ -244,6 +266,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: new Set(['a']),
         ready: none,
+        waiting: none,
       })
     ).toBe('unread');
   });
@@ -256,6 +279,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        waiting: none,
       })
     ).toBe('awaiting');
   });

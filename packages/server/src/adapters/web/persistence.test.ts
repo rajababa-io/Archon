@@ -300,6 +300,51 @@ describe('MessagePersistence', () => {
     });
   });
 
+  describe('appendThinking', () => {
+    type ThinkingMeta = { thinking?: string; toolCalls?: unknown[] } | undefined;
+
+    test('thinking lands on the row of the text it preceded', async () => {
+      persistence.setConversationDbId('conv-1', 'db-uuid-1');
+      persistence.appendThinking('conv-1', 'first thought');
+      persistence.appendThinking('conv-1', 'second thought');
+      persistence.appendText('conv-1', 'the reply');
+      await persistence.flush('conv-1');
+
+      expect(mockAddMessage).toHaveBeenCalledTimes(1);
+      expect(mockAddMessage.mock.calls[0][2]).toBe('the reply');
+      expect((mockAddMessage.mock.calls[0][3] as ThinkingMeta)?.thinking).toBe(
+        'first thought\n\nsecond thought'
+      );
+    });
+
+    test('thinking after text opens a new row rather than joining the answer it followed', async () => {
+      persistence.setConversationDbId('conv-1', 'db-uuid-1');
+      persistence.appendText('conv-1', 'first reply');
+      persistence.appendThinking('conv-1', 'reconsidering');
+      persistence.appendText('conv-1', 'second reply');
+      await persistence.flush('conv-1');
+
+      expect(mockAddMessage).toHaveBeenCalledTimes(2);
+      expect(mockAddMessage.mock.calls[0][2]).toBe('first reply');
+      expect((mockAddMessage.mock.calls[0][3] as ThinkingMeta)?.thinking).toBeUndefined();
+      expect(mockAddMessage.mock.calls[1][2]).toBe('second reply');
+      expect((mockAddMessage.mock.calls[1][3] as ThinkingMeta)?.thinking).toBe('reconsidering');
+    });
+
+    test('a thought that led only to a tool call is still written', async () => {
+      persistence.setConversationDbId('conv-1', 'db-uuid-1');
+      persistence.appendThinking('conv-1', 'need to look first');
+      persistence.appendToolCall('conv-1', { name: 'Read', input: { file_path: 'a.ts' } });
+      await persistence.flush('conv-1');
+
+      expect(mockAddMessage).toHaveBeenCalledTimes(1);
+      expect(mockAddMessage.mock.calls[0][2]).toBe('');
+      const meta = mockAddMessage.mock.calls[0][3] as ThinkingMeta;
+      expect(meta?.thinking).toBe('need to look first');
+      expect(meta?.toolCalls).toHaveLength(1);
+    });
+  });
+
   describe('appendToolResult', () => {
     test('should include tool output when flushing to DB', async () => {
       persistence.setConversationDbId('conv-1', 'db-uuid-1');

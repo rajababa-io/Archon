@@ -92,6 +92,7 @@ import { InvalidConfigError, parseWorkflowRunConfig } from '@archon/core/config'
 import type { WorkflowRunConfigInput } from '@archon/workflows/schemas/run-config';
 import type { EffortLevel } from '@archon/workflows/schemas/effort';
 import { findRepoRoot, removeWorktree, toRepoPath, toWorktreePath } from '@archon/git';
+import { readConversationCheckout } from './conversation-checkout';
 import {
   createLogger,
   getWorkflowFolderSearchPaths,
@@ -133,6 +134,8 @@ import {
 } from '@archon/workflows/schemas/workflow-run';
 import type { WorkflowRun } from '@archon/workflows/schemas/workflow-run';
 import type { MessageRow } from '@archon/core/schemas/message';
+import { listCiWaitingPlatformConversationIds, type CiWatch } from '@archon/core/db/ci-watches';
+import type { CiWatchDelivery } from '@archon/core/services/ci-watch';
 import type { DashboardWorkflowRun } from '@archon/core/schemas/workflow-run';
 import { findCommandFiles } from '@archon/core/utils/commands';
 import { type DeployStatus, getDeployStatus } from '../services/deploy-status';
@@ -348,6 +351,7 @@ import {
   listConversationsQuerySchema,
   conversationIdParamsSchema,
   conversationLockResponseSchema,
+  conversationCheckoutResponseSchema,
   conversationInterruptResponseSchema,
   conversationQueueResponseSchema,
   queuedMessageParamsSchema,
@@ -801,6 +805,30 @@ const getConversationLockRoute = createRoute({
     200: {
       content: { 'application/json': { schema: conversationLockResponseSchema } },
       description: 'Current lock state',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+/**
+ * Where this conversation's agent edits: branch, live checkout or worktree, and
+ * whether uncommitted work is sitting there.
+ *
+ * Its own route for the same reason as the lock: it is not persisted state.
+ * It is read from git on every request, because the agent commits and switches
+ * branch without the conversation row changing.
+ */
+const getConversationCheckoutRoute = createRoute({
+  method: 'get',
+  path: '/api/conversations/{id}/checkout',
+  tags: ['Conversations'],
+  summary: "The branch and folder a conversation's agent edits, and whether it is dirty",
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: conversationCheckoutResponseSchema } },
+      description: 'Current checkout state; unknown fields are null',
     },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
@@ -2007,6 +2035,12 @@ const getHealthRoute = createRoute({
               is_wsl: z.boolean(),
               wsl_distro: z.string().optional(),
               activePlatforms: z.array(z.string()).optional(),
+              // Platform ids of chats with an open CI watch (`watch_ci`): the
+              // rail shows them as "Waiting on CI" instead of Idle. Rides the
+              // read that already reports which chats are working, so both
+              // halves of "is anything happening here" arrive together.
+              // Omitted when the read fails — health must answer regardless.
+              ciWaitingConversationIds: z.array(z.string()).optional(),
               // Present only while the server is draining for a restart (see
               // /internal/drain). `holding` names each reason the box is not yet
               // drained, so an operator watching a deploy wait can see what it is
@@ -2097,12 +2131,18 @@ const getUpdateCheckRoute = createRoute({
 /**
  * Register all /api/* routes on the Hono app.
  */
+/** What the routes hand back to the server for callers that live outside HTTP. */
+export interface ApiRoutesHandle {
+  /** Wake a CI watch's chat with its verdict. Throws when no web chat owns the watch. */
+  deliverCiWatchMessage: (watch: CiWatch, message: string) => Promise<CiWatchDelivery>;
+}
+
 export function registerApiRoutes(
   app: OpenAPIHono,
   webAdapter: WebAdapter,
   lockManager: ConversationLockManager,
   activePlatforms?: readonly string[]
-): void {
+): ApiRoutesHandle {
   app.openAPIRegistry.register('DagNodeSseEvent', dagNodeSseEventSchema);
 
   function apiError(
@@ -3031,6 +3071,35 @@ export function registerApiRoutes(
   }
 
   /**
+   * Start a turn in a watch's chat, the way a gate auto-resume does, carrying
+   * the verdict as a `system` row so the history shows who spoke.
+   *
+   * The drain is checked BEFORE the row is written: a refused delivery is
+   * retried after the restart, and writing first would put the notice in the
+   * history twice. A drain beginning between the check and the dispatch can
+   * still duplicate it; the turn itself never runs twice, because the watch is
+   * released only when the dispatch was refused.
+   */
+  async function deliverCiWatchMessage(watch: CiWatch, message: string): Promise<CiWatchDelivery> {
+    const conv = await conversationDb.getConversationById(watch.conversationId);
+    if (conv?.platform_type !== 'web' || !conv.platform_conversation_id) {
+      throw new Error(`CI watch ${watch.id} has no web chat to deliver to`);
+    }
+    if (lockManager.isDraining()) return 'refused';
+    await messageDb.addMessage(conv.id, 'system', message, {
+      origin: 'ci-watch',
+      ciWatchId: watch.id,
+    });
+    // The web adapter persists the reply through this mapping, and after a
+    // restart nothing else has written it for a chat nobody has opened.
+    webAdapter.setConversationDbId(conv.platform_conversation_id, conv.id);
+    const result = await dispatchToOrchestrator(conv.platform_conversation_id, message, {
+      machineOrigin: 'ci-watch',
+    });
+    return result.accepted ? 'delivered' : 'refused';
+  }
+
+  /**
    * Re-enter the orchestrator after a paused approval gate is resolved, so a
    * web-dispatched workflow continues (approve) or runs its on_reject prompt
    * (reject) without the user having to re-run the workflow command. The CLI's
@@ -3391,6 +3460,23 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error, platformId }, 'get_conversation_lock_failed');
       return apiError(c, 500, 'Failed to read conversation lock state');
+    }
+  });
+
+  // GET /api/conversations/:id/checkout - Branch, folder and dirty state
+  registerOpenApiRoute(getConversationCheckoutRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      const codebase =
+        conv.codebase_id === null ? null : await codebaseDb.getCodebase(conv.codebase_id);
+      return c.json(await readConversationCheckout(conv, codebase));
+    } catch (error) {
+      getLog().error({ err: error, platformId }, 'get_conversation_checkout_failed');
+      return apiError(c, 500, 'Failed to read conversation checkout');
     }
   });
 
@@ -6639,6 +6725,13 @@ export function registerApiRoutes(
       getLog().warn({ err }, 'api.deploy_status_read_failed');
     }
 
+    let ciWaitingConversationIds: string[] | undefined;
+    try {
+      ciWaitingConversationIds = await listCiWaitingPlatformConversationIds();
+    } catch (err) {
+      getLog().warn({ err }, 'api.ci_waiting_read_failed');
+    }
+
     // Drained is derived from the two counts this route already reports, so the
     // deploy's own busy check and the server's answer can never disagree.
     const drainStatus = lockManager.getDrainStatus();
@@ -6677,6 +6770,7 @@ export function registerApiRoutes(
       is_wsl: isWSL(),
       ...(wslDistro ? { wsl_distro: wslDistro } : {}),
       activePlatforms: activePlatforms ? [...activePlatforms] : ['Web'],
+      ...(ciWaitingConversationIds ? { ciWaitingConversationIds } : {}),
       ...(drain ? { drain } : {}),
       ...(deploy ? { deploy } : {}),
       ...(schema ? { schema } : {}),
@@ -6694,4 +6788,6 @@ export function registerApiRoutes(
     const result = await checkForUpdate(appVersion);
     return c.json(result ?? noUpdate);
   });
+
+  return { deliverCiWatchMessage };
 }

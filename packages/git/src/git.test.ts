@@ -1670,6 +1670,63 @@ branch refs/heads/feature/auth
     });
   });
 
+  describe('readCheckoutStatus', () => {
+    let execSpy: Mock<typeof git.execFileAsync>;
+
+    beforeEach(() => {
+      execSpy = spyOn(git, 'execFileAsync');
+    });
+
+    afterEach(() => {
+      execSpy.mockRestore();
+    });
+
+    test('reads the branch and a clean tree from one porcelain v2 call', async () => {
+      execSpy.mockResolvedValue({
+        stdout: '# branch.oid abc123\n# branch.head feat/x\n# branch.upstream fork/feat/x\n',
+        stderr: '',
+      });
+
+      const result = await git.readCheckoutStatus(repo('/workspace/repo'));
+
+      expect(result).toEqual({ branch: git.toBranchName('feat/x'), dirty: false });
+      expect(execSpy).toHaveBeenCalledWith(
+        'git',
+        ['-C', '/workspace/repo', 'status', '--porcelain=v2', '--branch'],
+        { timeout: 10000 }
+      );
+    });
+
+    test('an untracked or modified path makes it dirty', async () => {
+      execSpy.mockResolvedValue({
+        stdout: '# branch.oid abc123\n# branch.head dev\n? notes.md\n',
+        stderr: '',
+      });
+
+      expect(await git.readCheckoutStatus(repo('/workspace/repo'))).toEqual({
+        branch: git.toBranchName('dev'),
+        dirty: true,
+      });
+    });
+
+    test('a detached HEAD names no branch', async () => {
+      execSpy.mockResolvedValue({
+        stdout: '# branch.oid abc123\n# branch.head (detached)\n',
+        stderr: '',
+      });
+
+      expect((await git.readCheckoutStatus(repo('/workspace/repo'))).branch).toBeNull();
+    });
+
+    test('a git failure throws instead of guessing dirty', async () => {
+      execSpy.mockRejectedValue(new Error('fatal: not a git repository'));
+
+      await expect(git.readCheckoutStatus(repo('/workspace/repo'))).rejects.toThrow(
+        'not a git repository'
+      );
+    });
+  });
+
   describe('getCurrentBranch', () => {
     let execSpy: Mock<typeof git.execFileAsync>;
 

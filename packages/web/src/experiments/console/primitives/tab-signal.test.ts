@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChatStatus } from './chat-status';
-import { alertText, anyWorking, chatAlerts, chatStatuses, tabTitle } from './tab-signal';
+import { alertText, badgeText, chatAlerts, chatStatuses, wantingCount } from './tab-signal';
 
 const m = (entries: Record<string, ChatStatus>): Map<string, ChatStatus> =>
   new Map(Object.entries(entries));
@@ -43,38 +43,41 @@ describe('chatStatuses', () => {
         chat('gate'),
         chat('asked', { askCandidate: ASK }),
         chat('new', { lastReadAt: null }),
+        chat('ci'),
         chat('quiet'),
       ],
       new Set(['work', 'gate']),
-      new Set(['gate'])
+      new Set(['gate']),
+      new Set(['ci'])
     );
     expect(Object.fromEntries(got)).toEqual({
       work: 'working',
       gate: 'awaiting',
       asked: 'awaiting',
       new: 'unread',
+      ci: 'waiting',
       quiet: 'idle',
     });
   });
 });
 
-describe('tabTitle', () => {
-  test('leaves the title alone when nothing wants you', () => {
-    expect(tabTitle('Archon', m({ a: 'idle', b: 'done', c: 'ready' }))).toBe('Archon');
-  });
-  test('working is not in the text — the favicon carries it', () => {
-    expect(tabTitle('Archon', m({ a: 'working', b: 'idle' }))).toBe('Archon');
-  });
-  test('counts chats that want you — awaiting and unread', () => {
-    expect(tabTitle('Archon', m({ a: 'awaiting', b: 'unread', c: 'working' }))).toBe('(2) Archon');
+describe('wantingCount', () => {
+  test('counts awaiting and unread — never working, done or ready', () => {
+    expect(
+      wantingCount(m({ a: 'awaiting', b: 'unread', c: 'working', d: 'done', e: 'ready' }))
+    ).toBe(2);
+    expect(wantingCount(new Map())).toBe(0);
   });
 });
 
-describe('anyWorking', () => {
-  test('true only when some chat is working', () => {
-    expect(anyWorking(m({ a: 'idle', b: 'working' }))).toBe(true);
-    expect(anyWorking(m({ a: 'awaiting', b: 'unread' }))).toBe(false);
-    expect(anyWorking(new Map())).toBe(false);
+describe('badgeText', () => {
+  test('nothing at zero, the number to 99, 99+ past it', () => {
+    expect(badgeText(0)).toBe('');
+    expect(badgeText(1)).toBe('1');
+    expect(badgeText(12)).toBe('12');
+    expect(badgeText(99)).toBe('99');
+    expect(badgeText(100)).toBe('99+');
+    expect(badgeText(420)).toBe('99+');
   });
 });
 

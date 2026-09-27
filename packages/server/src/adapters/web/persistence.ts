@@ -22,6 +22,8 @@ interface BufferedSegment {
   content: string;
   toolCalls: BufferedToolCall[];
   metadata?: MessageMetadata;
+  /** What the agent thought before this segment's text and tools, when the provider streams it. */
+  thinking?: string;
 }
 
 interface AssistantBuffer {
@@ -105,6 +107,30 @@ export class MessagePersistence {
       });
     }
     return seam;
+  }
+
+  /**
+   * Buffer a piece of the agent's thinking.
+   *
+   * Thinking comes BEFORE the text and tools it led to, so it opens a new
+   * segment unless the current one has nothing in it yet but thinking. Text
+   * that follows then extends that segment (`appendText` only splits after a
+   * tool call), and the row reads in the order it happened: thought, then
+   * reply. Attaching it to the previous segment instead would show a thought
+   * under an answer it came after.
+   *
+   * `reduceLive` in the console mirrors this rule so the streamed preview
+   * stays in step with the rows.
+   */
+  appendThinking(conversationId: string, thinking: string): void {
+    const buf = this.assistantBuffer.get(conversationId) ?? { segments: [] };
+    const lastSeg = buf.segments[buf.segments.length - 1];
+    if (lastSeg?.content === '' && lastSeg.toolCalls.length === 0) {
+      lastSeg.thinking = lastSeg.thinking ? `${lastSeg.thinking}\n\n${thinking}` : thinking;
+    } else {
+      buf.segments.push({ content: '', toolCalls: [], thinking });
+    }
+    this.assistantBuffer.set(conversationId, buf);
   }
 
   /**
@@ -260,7 +286,7 @@ export class MessagePersistence {
     try {
       const { addMessage } = await import('@archon/core/db/messages');
       for (const seg of ready) {
-        if (!seg.content && seg.toolCalls.length === 0) continue;
+        if (!seg.content && seg.toolCalls.length === 0 && !seg.thinking) continue;
         const toolCalls = seg.toolCalls.map(tc => ({
           name: tc.name,
           input: tc.input,
@@ -270,6 +296,7 @@ export class MessagePersistence {
         const metadata = {
           ...toPersistedMessageMetadata(seg.metadata),
           ...(toolCalls.length > 0 ? { toolCalls } : {}),
+          ...(seg.thinking ? { thinking: seg.thinking } : {}),
         };
         await addMessage(dbId, 'assistant', seg.content, metadata);
       }

@@ -285,6 +285,17 @@ function makeListCommentsMock(
   return mock(async () => ({ data }));
 }
 
+/** A commit with no checks at all — the webhook tests here never read check state. */
+function makeNoChecksStubs(): {
+  listForRef: Mock<() => Promise<{ data: { total_count: number; check_runs: never[] } }>>;
+  listSuitesForRef: Mock<() => Promise<{ data: { total_count: number; check_suites: never[] } }>>;
+} {
+  return {
+    listForRef: mock(async () => ({ data: { total_count: 0, check_runs: [] } })),
+    listSuitesForRef: mock(async () => ({ data: { total_count: 0, check_suites: [] } })),
+  };
+}
+
 /**
  * Replaces an adapter's private Octokit client with that surface and returns
  * the stubs, for the callers that assert against them.
@@ -314,6 +325,7 @@ function installOctokitStubs(
       repos: { get: stubs.reposGet },
       issues: { listComments: stubs.listComments, createComment: stubs.createComment },
       pulls: { get: stubs.pullsGet },
+      checks: makeNoChecksStubs(),
     },
   };
   return stubs;
@@ -1794,6 +1806,7 @@ describe('GitHubAdapter', () => {
           };
           repos: { get: OctokitStubs['reposGet'] };
           pulls: { get: OctokitStubs['pullsGet'] };
+          checks: ReturnType<typeof makeNoChecksStubs>;
         };
       };
 
@@ -1841,6 +1854,7 @@ describe('GitHubAdapter', () => {
               pulls: {
                 get: pullsGet,
               },
+              checks: makeNoChecksStubs(),
             },
           };
           octokitInstances.set(installationId, oct);

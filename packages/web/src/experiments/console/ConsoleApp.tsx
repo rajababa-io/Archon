@@ -54,7 +54,7 @@ export function ConsoleApp(): ReactElement {
     () => [
       {
         keys: ['p'],
-        label: 'Pick a project',
+        label: 'Find a chat or project',
         run: (): void => {
           setPaletteOpen(true);
         },
@@ -80,6 +80,24 @@ export function ConsoleApp(): ReactElement {
     bindings: globalBindings,
     enabled: !addOpen && !paletteOpen && !helpOpen,
   });
+
+  // ⌘K / Ctrl+K anywhere, the composer included. Not routed through the
+  // keymap, which leaves modified keys to the browser and is off in text
+  // fields. preventDefault because Chrome and Firefox bind Ctrl+K to the
+  // address-bar search.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key.toLowerCase() !== 'k' || !(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey) {
+        return;
+      }
+      e.preventDefault();
+      setPaletteOpen(v => !v);
+    };
+    window.addEventListener('keydown', onKey);
+    return (): void => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   return (
     <div className="console-root flex h-screen w-screen flex-col bg-surface text-text-primary">

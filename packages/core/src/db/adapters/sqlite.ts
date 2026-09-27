@@ -1002,6 +1002,19 @@ export class SqliteAdapter implements IDatabase {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      -- A chat's standing request to hear when CI finishes on one commit.
+      -- Mirrors remote_agent_ci_watches in migrations/000_combined.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_ci_watches (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES remote_agent_conversations(id) ON DELETE CASCADE,
+        repo TEXT NOT NULL,
+        head_sha TEXT NOT NULL,
+        pull_request INTEGER,
+        status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'fired', 'cancelled')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        settled_at TEXT
+      );
+
       -- Per-node provider session IDs persisted across workflow re-runs.
       -- scope_key carries no FK, so a conversation delete does not reach these
       -- rows: soft delete plus a never-reused UUID leaves harmless orphans, and a
@@ -1040,6 +1053,10 @@ export class SqliteAdapter implements IDatabase {
       -- column. That is exactly the failure the user_id index comment above warns
       -- about. migrateColumns() creates both, after its ALTER TABLE, idempotently.
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON remote_agent_messages(conversation_id, created_at ASC);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ci_watches_open_unique
+        ON remote_agent_ci_watches(conversation_id, repo, head_sha) WHERE status = 'open';
+      CREATE INDEX IF NOT EXISTS idx_ci_watches_head
+        ON remote_agent_ci_watches(repo, head_sha) WHERE status = 'open';
       CREATE INDEX IF NOT EXISTS idx_workflow_node_sessions_scope ON remote_agent_workflow_node_sessions(scope_key);
       CREATE INDEX IF NOT EXISTS idx_workflow_node_sessions_workflow ON remote_agent_workflow_node_sessions(workflow_name);
       -- NOTE: idx_workflow_runs_parent_conv, idx_conversations_hidden and the

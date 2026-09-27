@@ -46,6 +46,7 @@
       "src/community/chat/",
       "src/community/forge/gitlab/auth.test.ts",
       "src/forge/github/auth.test.ts",
+      "src/forge/github/ci-checks.test.ts",
       "src/utils/"
     ],
     [
@@ -56,6 +57,9 @@
     ],
     [
       "src/forge/github/workflow-signal.integration.test.ts"
+    ],
+    [
+      "src/forge/github/ci-watch.integration.test.ts"
     ],
     [
       "src/forge/github/context.test.ts"

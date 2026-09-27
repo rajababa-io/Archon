@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 import { ChatStream } from '../components/ChatStream';
 import { ChatComposer, type ChatDraft } from '../components/ChatComposer';
 import { QueuedMessages } from '../components/QueuedMessages';
 import { chooseOpenChat, readLastChat, writeLastChat } from '../lib/last-chat';
+import { readOpenChatRequest } from '../lib/open-chat';
 import { ConversationRail, type ChatScope } from '../components/ConversationRail';
 import { ChatStatusStrip } from '../components/ChatStatusStrip';
-import { ContextBar } from '../components/ContextBar';
+import { StatusDetails } from '../components/StatusDetails';
+import { TurnChecklist } from '../components/TurnChecklist';
 import { ChatRunsPanel } from '../components/ChatRunsPanel';
 import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
@@ -30,6 +32,7 @@ import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
+import { useKeymap, type Binding } from '../lib/keymap';
 import { sentHistory } from '../lib/composer-history';
 import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
@@ -41,6 +44,7 @@ import {
   type LiveEvent,
 } from '../primitives/live-text';
 import { resolveConversationDbId } from '../primitives/conversation';
+import { isChecklistCall, turnChecklist, type ChecklistCall } from '../primitives/checklist';
 
 // While a turn is active, refetch messages on this cadence so streamed replies
 // still surface if a per-conversation SSE event is dropped (cross-origin
@@ -119,6 +123,9 @@ export function ChatPage(): ReactElement {
   // below would immediately put them back in the most recent conversation, so
   // the button would appear to do nothing.
   const [startingNew, setStartingNew] = useState(false);
+  // Bumped on every new-chat request, including one made while already on a
+  // new chat, so the composer is focused each time and not only on the first.
+  const [newChatRequests, setNewChatRequests] = useState(0);
   // Switching project must release the previous project's conversation. The
   // auto-select effect below only fires when activeConvId is null, so without
   // this the page kept showing a chat belonging to the project just left.
@@ -141,6 +148,7 @@ export function ChatPage(): ReactElement {
   const selectConversation = (id: string | null): void => {
     setError(null);
     setStartingNew(id === null);
+    if (id === null) setNewChatRequests(n => n + 1);
     setActiveConvId(id);
     // `sending` describes the conversation being read, not the page. Leaving it
     // set while switching made one chat's pending reply lock every other chat
@@ -152,6 +160,21 @@ export function ChatPage(): ReactElement {
     setPendingUser(null);
     if (projectId !== undefined) writeLastChat(projectId, id);
   };
+
+  const selectConversationRef = useRef(selectConversation);
+  selectConversationRef.current = selectConversation;
+
+  // A chat asked for by name from elsewhere — the ⌘K palette. Declared after
+  // the project-change reset above so that, arriving from another project, the
+  // reset runs first and this choice is the one that stands. A done chat also
+  // moves the rail to the done scope, where it is listed.
+  const location = useLocation();
+  useEffect(() => {
+    const request = readOpenChatRequest(location.state);
+    if (request === null) return;
+    setScope(request.done ? 'done' : 'open');
+    selectConversationRef.current(request.openChat);
+  }, [location.key, location.state]);
 
   const invalidateConversationsRef = useRef<() => void>(() => undefined);
 
@@ -328,8 +351,20 @@ export function ChatPage(): ReactElement {
   // reply is invisible until a flush — the reload-to-see-it bug. See
   // `primitives/live-text.ts` for why persisting sooner is not the fix.
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
+  // Checklist tool calls streamed this turn, for the same reason: tool calls
+  // are written when the turn ends, and the checklist is only worth showing
+  // while it runs. See `primitives/checklist.ts`.
+  const [liveChecklist, setLiveChecklist] = useState<ChecklistCall[]>([]);
   const onLive = useCallback((event: LiveEvent): void => {
     setLiveSegments(prev => reduceLive(prev, event));
+    if (
+      event.kind === 'tool' &&
+      event.name !== undefined &&
+      isChecklistCall({ name: event.name })
+    ) {
+      const call: ChecklistCall = { name: event.name, input: event.input ?? {} };
+      setLiveChecklist(prev => [...prev, call]);
+    }
   }, []);
 
   useConversationSSE(activeConvId, onLive);
@@ -337,7 +372,18 @@ export function ChatPage(): ReactElement {
   // Switching chats must not carry one conversation's preview into another.
   useEffect(() => {
     setLiveSegments([]);
+    setLiveChecklist([]);
   }, [activeConvId]);
+
+  // A turn the server starts on its own — a queued message — begins with the
+  // lock going up and no send from this page, so that edge is what retires the
+  // last turn's streamed checklist calls. Applied again under the new turn,
+  // every `TaskCreate` among them would be a duplicate item.
+  const wasLockedRef = useRef(locked);
+  useEffect(() => {
+    if (locked && !wasLockedRef.current) setLiveChecklist([]);
+    wasLockedRef.current = locked;
+  }, [locked]);
 
   // A send that nothing ever confirmed stops speaking for itself. Without this
   // a request the server dropped would hold the composer shut until the page
@@ -364,7 +410,7 @@ export function ChatPage(): ReactElement {
   // looking at. Pushed on the dashboard stream the moment a chat starts or
   // stops (see lib/sse.ts); the hook's own poll is the backstop for what a push
   // cannot reach, shared with every other reader of the same answer.
-  const { ids: liveIds, tools: liveTools } = useLiveChats();
+  const { ids: liveIds, tools: liveTools, ciWaiting } = useLiveChats();
 
   /**
    * Chats whose run is paused on an approval.
@@ -400,6 +446,27 @@ export function ChatPage(): ReactElement {
   const working = sending || locked || serverWorking;
   // Stop, queue and take back. Its own hook so the page only routes to it.
   const turn = useTurnControls(activeConvId, locked);
+
+  // After the commit, not in selectConversation: the composer is keyed by
+  // conversation and remounts on the switch, so the element to focus only
+  // exists once this render has landed.
+  useEffect(() => {
+    if (newChatRequests > 0) turn.controlRef.current?.focus();
+  }, [newChatRequests, turn.controlRef]);
+
+  const newChatBindings = useMemo<readonly Binding[]>(
+    () => [
+      {
+        keys: ['c'],
+        label: 'Start a new chat',
+        run: (): void => {
+          selectConversationRef.current(null);
+        },
+      },
+    ],
+    []
+  );
+  useKeymap({ bindings: newChatBindings, enabled: projectId !== undefined });
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP
@@ -443,11 +510,11 @@ export function ChatPage(): ReactElement {
    */
   const unread = useMemo(() => unreadIds(conversations ?? []), [conversations]);
 
-  // The tab title and the opt-in notification, read off every chat in the rail
+  // The tab badge and the opt-in notification, read off every chat in the rail
   // by the rail's own rules. Clicking a notification opens its chat here.
   const railStatuses = useMemo(
-    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds),
-    [conversations, railLiveIds, awaitingIds]
+    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, ciWaiting),
+    [conversations, railLiveIds, awaitingIds, ciWaiting]
   );
   const railTitles = useMemo(
     () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
@@ -455,7 +522,7 @@ export function ChatPage(): ReactElement {
   );
   useTabSignal(railStatuses, railTitles, selectConversation);
 
-  /** The status of the chat being READ. Same six states and same ordering as
+  /** The status of the chat being READ. Same states and same ordering as
    * every row in the rail — `chatStatus` owns the precedence. */
   const status: ChatStatus =
     activeConvId === null
@@ -466,6 +533,7 @@ export function ChatPage(): ReactElement {
           unread,
           done: doneIds,
           ready: readySet,
+          waiting: ciWaiting,
         });
 
   // Belt and braces: an echo must never outlive its turn. If the reply has
@@ -550,7 +618,7 @@ export function ChatPage(): ReactElement {
    *
    * `visible` gates it too: a hidden tab has not been read, even with the
    * chat open at its bottom. Marking it anyway would clear the unread mark the
-   * tab title counts, so a turn that ends while you are away would leave no
+   * tab badge counts, so a turn that ends while you are away would leave no
    * trace for you to come back to. Returning to the tab re-runs this.
    *
    * The ref keys on the ACTIVITY TIMESTAMP, not just the chat, and is what
@@ -600,6 +668,7 @@ export function ChatPage(): ReactElement {
     // they always want to see land, so sending re-pins the tail.
     scrollToBottom();
     setLiveSegments([]); // a new turn — the previous reply is history now
+    setLiveChecklist([]);
     setSending(true); // optimistic: disable the composer immediately
     setWorkingSince(Date.now()); // this turn has a known start, not an inferred one
     // Show the message (and its attachments) before the request leaves.
@@ -617,7 +686,12 @@ export function ChatPage(): ReactElement {
           writeLastChat(projectId, conv.conversationId);
           invalidate(K.messages(conv.conversationId));
         } else {
-          await skill.sendMessage(activeConvId, text, files);
+          const dispatch = await skill.sendMessage(activeConvId, text, files);
+          // The server can queue a message this page thought would start at
+          // once — it is at its concurrency cap, or a turn began that the
+          // page had not heard of yet. The queued bubble then shows it, so the
+          // echo goes: both at once read as the message sent twice.
+          if (dispatch.queuedId !== undefined) setPendingUser(null);
           invalidate(K.messages(activeConvId));
         }
         // Sending can change the conversation list, not just its messages: a
@@ -677,6 +751,7 @@ export function ChatPage(): ReactElement {
               dispatch: null,
               workflowResult: null,
               usage: null,
+              thinking: null,
             },
           ];
     // Deliberately measured against `messageList`, not `withEcho`: the slice is
@@ -698,6 +773,7 @@ export function ChatPage(): ReactElement {
           dispatch: null,
           workflowResult: null,
           usage: null,
+          thinking: seg.thinking ?? null,
         })
       ),
     ];
@@ -732,6 +808,14 @@ export function ChatPage(): ReactElement {
     return out;
   }, [messageList]);
 
+  // Read from the rendered list so the user's own echo already counts as the
+  // turn boundary — the checklist of the turn before disappears on send, not
+  // on the refetch after it.
+  const checklist = useMemo(
+    () => turnChecklist(renderedMessages, liveChecklist),
+    [renderedMessages, liveChecklist]
+  );
+
   return (
     <section className="flex h-full min-h-0 flex-row">
       <ConversationRail
@@ -747,6 +831,7 @@ export function ChatPage(): ReactElement {
         openCount={counts.open}
         liveIds={railLiveIds}
         awaitingIds={awaitingIds}
+        ciWaitingIds={ciWaiting}
         activeConvId={activeConvId}
         onSelect={selectConversation}
         onRename={renameConversation}
@@ -802,9 +887,16 @@ export function ChatPage(): ReactElement {
                       /* On the strip's own line, because how full the chat is
                          is the other half of what it is doing: whether to keep
                          going here or start somewhere fresh. */
-                      trailing={<ContextBar messages={renderedMessages} />}
+                      trailing={
+                        <StatusDetails
+                          conversationId={activeConvId}
+                          messages={renderedMessages}
+                          turnKey={`${String(working)}:${renderedMessages.at(-1)?.id ?? ''}`}
+                        />
+                      }
                     />
                   ) : null}
+                  {checklist !== null ? <TurnChecklist items={checklist} /> : null}
                   <QueuedMessages
                     messages={turn.queued}
                     busyIds={turn.busyIds}

@@ -1,14 +1,17 @@
 /**
  * Keeps the browser tab telling the truth about the chats while you are
- * somewhere else: the title and favicon always, and a notification when you
- * opted in.
+ * somewhere else: the favicon's count badge always, and a notification when
+ * you opted in.
+ *
+ * The title is left alone. It carried the same count as `(N)` until the badge
+ * was readable at tab size; two copies of one number only crowded the name.
  *
  * Decisions live in `primitives/tab-signal`; this is the wiring to the document
  * and the Notification API.
  */
 import { useEffect, useRef } from 'react';
 import type { ChatStatus } from '../primitives/chat-status';
-import { alertText, anyWorking, chatAlerts, tabTitle } from '../primitives/tab-signal';
+import { alertText, badgeText, chatAlerts, wantingCount } from '../primitives/tab-signal';
 import { useFaviconBadge } from './favicon-badge';
 import { notifyState } from './notify';
 
@@ -17,22 +20,7 @@ export function useTabSignal(
   titles: ReadonlyMap<string, string | null>,
   onOpen: (conversationId: string) => void
 ): void {
-  // The title the page had before this screen touched it, put back on leave so
-  // the runs and settings pages do not inherit a count they do not maintain.
-  const baseRef = useRef<string | null>(null);
-  useEffect(() => {
-    const base = document.title;
-    baseRef.current = base;
-    return (): void => {
-      document.title = base;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (baseRef.current !== null) document.title = tabTitle(baseRef.current, statuses);
-  }, [statuses]);
-
-  useFaviconBadge(anyWorking(statuses));
+  useFaviconBadge(badgeText(wantingCount(statuses)));
 
   const titlesRef = useRef(titles);
   titlesRef.current = titles;

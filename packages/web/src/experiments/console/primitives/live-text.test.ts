@@ -136,3 +136,30 @@ describe('pendingSegments — what the database has not caught up with', () => {
     expect(pendingSegments(segments, [user('go')])).toEqual([]);
   });
 });
+
+describe('reduceLive — thinking, mirroring appendThinking', () => {
+  const think = (content: string): LiveEvent => ({ kind: 'thinking', content });
+
+  test('thinking and the text after it share one segment, thought first', () => {
+    expect(fold([think('a'), think('b'), text('reply')])).toEqual([
+      { content: 'reply', category: null, hasTools: false, thinking: 'a\n\nb' },
+    ]);
+  });
+
+  test('thinking after text opens a new segment rather than joining the answer it followed', () => {
+    const segments = fold([text('first'), think('again'), text('second')]);
+    expect(segments.map(s => [s.content, s.thinking])).toEqual([
+      ['first', undefined],
+      ['second', 'again'],
+    ]);
+  });
+
+  test('a thought that led only to a tool call is previewed, and the row it becomes is counted', () => {
+    const segments = fold([think('look first'), tool, text('found it')]);
+    expect(pendingSegments(segments, [user('go')]).map(s => s.content)).toEqual(['', 'found it']);
+    // The thinking-only row lands: its segment stops previewing, the text does not.
+    const landed = [user('go'), { role: 'assistant', content: '', thinking: 'look first' }];
+    expect(persistedSegmentCount(landed)).toBe(1);
+    expect(pendingSegments(segments, landed).map(s => s.content)).toEqual(['found it']);
+  });
+});

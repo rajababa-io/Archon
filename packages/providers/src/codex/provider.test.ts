@@ -1210,6 +1210,49 @@ describe('CodexProvider', () => {
       );
     });
 
+    // Codex's result names no model and no effort, so the provider reports
+    // what it handed the thread — and nothing for a value it left to Codex's
+    // own config, which Codex does not report back.
+    test('stamps a completed result with the model and effort it ran on', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: (async function* () {
+          yield { type: 'turn.completed', usage: defaultUsage };
+        })(),
+      });
+
+      const chunks = [];
+      for await (const chunk of client.sendQuery('test prompt', '/workspace', undefined, {
+        model: 'gpt-5.5',
+        nodeConfig: { nodeId: 'n1', effort: 'high' },
+      })) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.at(-1)).toMatchObject({
+        type: 'result',
+        requestedModel: 'gpt-5.5',
+        appliedEffort: 'high',
+      });
+    });
+
+    test('an unset model and effort are omitted from the result, not guessed', async () => {
+      mockRunStreamed.mockResolvedValue({
+        events: (async function* () {
+          yield { type: 'turn.completed', usage: defaultUsage };
+        })(),
+      });
+
+      const chunks = [];
+      for await (const chunk of client.sendQuery('test prompt', '/workspace')) {
+        chunks.push(chunk);
+      }
+
+      const result = chunks.at(-1);
+      expect(result).toMatchObject({ type: 'result' });
+      expect(result).not.toHaveProperty('requestedModel');
+      expect(result).not.toHaveProperty('appliedEffort');
+    });
+
     test('nodeConfig.effort beats assistants.codex.modelReasoningEffort', async () => {
       mockRunStreamed.mockResolvedValue({
         events: (async function* () {

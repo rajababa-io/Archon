@@ -75,6 +75,12 @@ export interface Message {
    * messages only, and only on turns that completed.
    */
   usage: TurnUsage | null;
+  /**
+   * What the agent thought before this message's text and tools. Null when the
+   * provider sent none — which is also what a provider that does not stream its
+   * thinking looks like, so nothing is shown rather than an empty block.
+   */
+  thinking: string | null;
 }
 
 /**
@@ -94,6 +100,8 @@ export interface TurnUsage {
   model?: string;
   /** That model's context window, resolved server-side. Absent when unknown. */
   window?: number;
+  /** The reasoning effort the provider was handed, after clamping. Absent when it was left to the SDK. */
+  effort?: string;
 }
 
 interface RawMessage {
@@ -120,6 +128,7 @@ interface ParsedMetadata {
     costUsd?: unknown;
     model?: unknown;
     window?: unknown;
+    effort?: unknown;
   };
   workflowDispatch?: {
     workflowName: string;
@@ -136,6 +145,9 @@ interface ParsedMetadata {
   // Written by the server when an upload is saved. Same untrusted-shape caveat
   // as workflowResult: toMessage validates before producing domain values.
   files?: { name: string; mimeType: string; size: number }[];
+  // Written by the web adapter when the provider streams thinking. Untrusted
+  // like the rest: toMessage keeps it only if it is a non-blank string.
+  thinking?: unknown;
 }
 
 function parseMetadata(raw: string): ParsedMetadata {
@@ -218,6 +230,8 @@ export function toMessage(raw: RawMessage): Message {
     workflowResult,
     files,
     usage: toTurnUsage(meta.usage),
+    thinking:
+      typeof meta.thinking === 'string' && meta.thinking.trim().length > 0 ? meta.thinking : null,
   };
 }
 
@@ -237,5 +251,6 @@ function toTurnUsage(raw: ParsedMetadata['usage']): TurnUsage | null {
     costUsd: typeof raw.costUsd === 'number' ? raw.costUsd : null,
     ...(typeof raw.model === 'string' ? { model: raw.model } : {}),
     ...(typeof raw.window === 'number' && raw.window > 0 ? { window: raw.window } : {}),
+    ...(typeof raw.effort === 'string' && raw.effort !== '' ? { effort: raw.effort } : {}),
   };
 }

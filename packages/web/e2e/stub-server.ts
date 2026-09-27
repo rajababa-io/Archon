@@ -68,15 +68,16 @@ function sendJson(res: ServerResponse, body: unknown, status = 200): void {
 }
 
 /**
- * An event stream that never sends an event.
+ * An event stream that sends nothing on its own — only the event a send would
+ * make the real server emit, written by the send route.
  *
- * The console treats stream events as cache-invalidation triggers, so a silent
+ * The console treats stream events as cache-invalidation triggers, so a quiet
  * stream leaves it reading the API — which is the deterministic path this suite
  * wants. Holding the socket open (rather than ending it) is what stops
  * `EventSource` from reconnecting in a loop and refetching underneath an
  * assertion.
  */
-function openSilentStream(res: ServerResponse): void {
+function openStream(res: ServerResponse): void {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -90,12 +91,29 @@ function messagesFor(platformId: string): RawMessage[] {
   return platformId === CHAT_ID ? MESSAGES : OTHER_MESSAGES;
 }
 
-function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, unhandled: string[]): void {
+/** Messages each chat has waiting behind a turn, keyed by platform id. */
+type Queues = Map<string, components['schemas']['QueuedMessage'][]>;
+
+async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+}
+
+function handleApi(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  unhandled: string[],
+  queues: Queues,
+  streams: Map<string, ServerResponse>
+): void {
   const path = url.pathname;
   const method = req.method ?? 'GET';
 
   if (path.startsWith('/api/stream/')) {
-    openSilentStream(res);
+    openStream(res);
+    streams.set(decodeURIComponent(path.slice('/api/stream/'.length)), res);
     return;
   }
 
@@ -164,10 +182,47 @@ function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, unhandle
     return;
   }
 
-  // The composer's send. Accepted and dropped: this suite asserts the composer
-  // is usable, and a fixture that grew a reply would be asserting the server.
-  if (method === 'POST' && /^\/api\/conversations\/[^/]+\/message$/.test(path)) {
-    sendJson(res, { accepted: true, status: 'queued' });
+  // The composer's send, answered the way a server at its concurrency cap
+  // answers: queued, with an id. That is the case a page that believes the chat
+  // is idle can get wrong, and never a reply — a fixture that grew one would be
+  // asserting the server.
+  const sendMatch = /^\/api\/conversations\/([^/]+)\/message$/.exec(path);
+  if (method === 'POST' && sendMatch !== null) {
+    const chatId = decodeURIComponent(sendMatch[1]);
+    const chatQueue = queues.get(chatId) ?? [];
+    queues.set(chatId, chatQueue);
+    void readJson(req).then(body => {
+      const message: components['schemas']['QueuedMessage'] = {
+        id: `queued-${String(chatQueue.length + 1)}`,
+        text: typeof body.message === 'string' ? body.message : '',
+        files: [],
+        queuedAt: new Date().toISOString(),
+      };
+      chatQueue.push(message);
+      const dispatch: components['schemas']['DispatchResponse'] = {
+        accepted: true,
+        status: 'queued-capacity',
+        queuedId: message.id,
+      };
+      sendJson(res, dispatch);
+      // What the real server sends the moment a message joins the queue; the
+      // console reads the queue only when told to.
+      streams
+        .get(chatId)
+        ?.write(
+          `data: ${JSON.stringify({ type: 'conversation_queue', conversationId: chatId })}\n\n`
+        );
+    });
+    return;
+  }
+
+  const queueMatch = /^\/api\/conversations\/([^/]+)\/queue$/.exec(path);
+  if (method === 'GET' && queueMatch !== null) {
+    const queue: components['schemas']['ConversationQueueResponse'] = {
+      conversationId: decodeURIComponent(queueMatch[1]),
+      messages: queues.get(decodeURIComponent(queueMatch[1])) ?? [],
+    };
+    sendJson(res, queue);
     return;
   }
 
@@ -241,13 +296,15 @@ export async function startStubServer(): Promise<StubServer> {
   }
 
   const unhandled: string[] = [];
+  const queues: Queues = new Map();
+  const streams = new Map<string, ServerResponse>();
   // Held so `close()` can end the event streams: Node's `close` waits for open
   // sockets, and an SSE response is an open socket by design.
   const sockets = new Set<Socket>();
 
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    if (url.pathname.startsWith('/api/')) handleApi(req, res, url, unhandled);
+    if (url.pathname.startsWith('/api/')) handleApi(req, res, url, unhandled, queues, streams);
     else serveStatic(res, url.pathname);
   });
   server.on('connection', socket => {

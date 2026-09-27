@@ -146,3 +146,32 @@ describe('toMessage — attachments', () => {
     expect(m.files).toEqual([{ name: 'notes.md', mimeType: '', size: 0 }]);
   });
 });
+
+describe('toMessage — usage effort', () => {
+  test('carries the effort the turn ran with', () => {
+    const m = toMessage(
+      raw({ id: 'm1' }, { usage: { input: 10, output: 2, costUsd: null, effort: 'high' } })
+    );
+    expect(m.usage?.effort).toBe('high');
+  });
+
+  test('a missing or empty effort is absent, not a default', () => {
+    const none = toMessage(raw({ id: 'm1' }, { usage: { input: 10, output: 2 } }));
+    const empty = toMessage(raw({ id: 'm2' }, { usage: { input: 10, output: 2, effort: '' } }));
+    expect(none.usage).not.toHaveProperty('effort');
+    expect(empty.usage).not.toHaveProperty('effort');
+  });
+});
+
+describe('toMessage — thinking', () => {
+  test('carries the thinking the adapter wrote', () => {
+    const m = toMessage(raw({ id: 'm1' }, { thinking: 'Check the lockfile first.' }));
+    expect(m.thinking).toBe('Check the lockfile first.');
+  });
+
+  test('no thinking, blank thinking, or a wrong type all read as none', () => {
+    expect(toMessage(raw({ id: 'm1' })).thinking).toBeNull();
+    expect(toMessage(raw({ id: 'm2' }, { thinking: '   ' })).thinking).toBeNull();
+    expect(toMessage(raw({ id: 'm3' }, { thinking: 42 })).thinking).toBeNull();
+  });
+});

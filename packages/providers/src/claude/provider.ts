@@ -88,8 +88,10 @@ export type ClaudeEffortsAreComplete = AssertNever<
  * Content block type for assistant messages
  */
 interface ContentBlock {
-  type: 'text' | 'tool_use';
+  type: 'text' | 'tool_use' | 'thinking';
   text?: string;
+  /** Present on `thinking` blocks. Empty when the model's thinking display is omitted. */
+  thinking?: string;
   name?: string;
   input?: Record<string, unknown>;
   id?: string;
@@ -943,7 +945,8 @@ function buildToolCaptureHooks(toolResultQueue: ToolResultEntry[]): Options['hoo
  */
 async function* streamClaudeMessages(
   events: AsyncGenerator,
-  toolResultQueue: ToolResultEntry[]
+  toolResultQueue: ToolResultEntry[],
+  appliedEffort: Options['effort']
 ): AsyncGenerator<MessageChunk> {
   // Synthetic error message recorded while waiting for the terminal result to
   // confirm it (#1797). Detection is two-signal: the typed wrapper `error`
@@ -1021,6 +1024,11 @@ async function* streamClaudeMessages(
       for (const block of content) {
         if (block.type === 'text' && block.text) {
           yield { type: 'assistant', content: block.text };
+        } else if (block.type === 'thinking' && block.thinking?.trim()) {
+          // Forwarded only when it carries text. A block whose thinking display
+          // is omitted arrives with an empty string, and an empty chunk would
+          // render as a thinking block with nothing in it.
+          yield { type: 'thinking', content: block.thinking };
         } else if (block.type === 'tool_use' && block.name) {
           yield {
             type: 'tool',
@@ -1270,6 +1278,7 @@ async function* streamClaudeMessages(
         ...(resultMsg.stop_reason != null ? { stopReason: resultMsg.stop_reason } : {}),
         ...(resultMsg.num_turns !== undefined ? { numTurns: resultMsg.num_turns } : {}),
         ...(resolvedModelId ? { resolvedModel: { id: resolvedModelId } } : {}),
+        ...(appliedEffort === undefined ? {} : { appliedEffort }),
       };
     }
   }
@@ -1577,7 +1586,7 @@ export class ClaudeProvider implements IAgentProvider {
         // retried/surfaced), so reaching the result stream means the prior
         // session was restored. Hence `true` whenever a resume was requested.
         yield* withResumedOutcome(
-          streamClaudeMessages(events, toolResultQueue),
+          streamClaudeMessages(events, toolResultQueue, options.effort),
           resumedOutcome(resumeSessionId, true)
         );
         return;

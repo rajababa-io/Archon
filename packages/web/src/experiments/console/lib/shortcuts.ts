@@ -5,7 +5,8 @@ export const SHORTCUTS: readonly KeymapGroup[] = [
   {
     title: 'Anywhere',
     entries: [
-      { keys: ['p'], label: 'Pick a project' },
+      { keys: ['⌘K'], label: 'Find a chat or project' },
+      { keys: ['p'], label: 'Find a chat or project, outside a text field' },
       { keys: ['n'], label: 'Start a new run' },
       { keys: [','], label: 'Open settings' },
       { keys: ['?'], label: 'Show this help' },
@@ -31,6 +32,7 @@ export const SHORTCUTS: readonly KeymapGroup[] = [
   {
     title: 'Chat',
     entries: [
+      { keys: ['c'], label: 'Start a new chat' },
       { keys: ['ArrowUp'], label: 'In the composer: previous sent message' },
       { keys: ['ArrowDown'], label: 'In the composer: next sent message, then your draft' },
       { keys: ['Alt+ArrowUp'], label: 'Scroll the transcript up' },

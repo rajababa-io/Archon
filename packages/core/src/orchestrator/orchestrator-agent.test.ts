@@ -137,6 +137,10 @@ mock.module('../services/run-live-owner', () => ({
   withRunLiveOwner: mockWithRunLiveOwner,
 }));
 
+// Whether the server started the CI-watch sweep; `watch_ci` is offered only then.
+let ciWatchActive = true;
+mock.module('../services/ci-watch', () => ({ isCiWatchActive: () => ciWatchActive }));
+
 const mockEnsureArchonWorkspacesPath = mock(() => Promise.resolve('/home/test/.archon/workspaces'));
 const mockCaptureChatTurn = mock<typeof Paths.captureChatTurn>(() => undefined);
 const mockCaptureApprovalResolved = mock(() => undefined);
@@ -7516,5 +7520,89 @@ describe('mark_ready_to_close', () => {
     expect(names).toContain('mark_ready_to_close');
     expect(names).not.toContain('mark_done');
     expect(names).not.toContain('close_chat');
+  });
+
+  test('a CI-watch turn leaves the claim alone — CI finishing is not a human speaking', async () => {
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'CI passed' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+
+    await handleMessage(makePlatform(), 'conv-1', 'CI finished', { machineOrigin: 'ci-watch' });
+
+    expect(mockSetConversationReady).not.toHaveBeenCalled();
+  });
+
+  test('watch_ci is offered on the web, whose dispatch is what delivers it', async () => {
+    const turn = async (platformType: 'web' | 'slack'): Promise<string[]> => {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'hi' };
+        yield { type: 'result', sessionId: 'session-1' };
+      });
+      const platform = makePlatform();
+      platform.getPlatformType.mockImplementation(() => platformType);
+      await handleMessage(platform, 'conv-1', 'watch CI');
+      const options = mockSendQuery.mock.calls.at(-1)?.[3] as {
+        nativeTools?: { name: string }[];
+      };
+      return (options.nativeTools ?? []).map(t => t.name);
+    };
+
+    expect(await turn('web')).toContain('watch_ci');
+    expect(await turn('slack')).not.toContain('watch_ci');
+  });
+
+  test('watch_ci is not offered when nothing could fire it', async () => {
+    // No GitHub adapter means no webhook and no sweep: a watch opened here
+    // would hold the chat on "Waiting on CI" forever.
+    ciWatchActive = false;
+    try {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'hi' };
+        yield { type: 'result', sessionId: 'session-1' };
+      });
+      await handleMessage(makePlatform(), 'conv-1', 'watch CI');
+      const options = mockSendQuery.mock.calls.at(-1)?.[3] as {
+        nativeTools?: { name: string }[];
+      };
+      expect((options.nativeTools ?? []).map(t => t.name)).not.toContain('watch_ci');
+    } finally {
+      ciWatchActive = true;
+    }
+  });
+});
+
+describe('thinking in a streamed turn', () => {
+  beforeEach(() => {
+    mockSendQuery.mockClear();
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() => Promise.resolve(makeConversation()));
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+  });
+
+  test('reaches the platform as a structured event and never as reply text', async () => {
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'thinking', content: 'Check the lockfile first.' };
+      yield { type: 'assistant', content: 'Done.' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+    const platform = {
+      ...makePlatform(),
+      getStreamingMode: mock<IPlatformAdapter['getStreamingMode']>(() => 'stream'),
+      sendStructuredEvent: mock<NonNullable<IPlatformAdapter['sendStructuredEvent']>>(() =>
+        Promise.resolve()
+      ),
+    } satisfies IPlatformAdapter;
+
+    await handleMessage(platform, 'conv-1', 'go');
+
+    expect(platform.sendStructuredEvent).toHaveBeenCalledWith('conv-1', {
+      type: 'thinking',
+      content: 'Check the lockfile first.',
+    });
+    const texts = platform.sendMessage.mock.calls.map(c => String(c[1]));
+    expect(texts.some(t => t.includes('lockfile'))).toBe(false);
+    expect(texts).toContain('Done.');
   });
 });

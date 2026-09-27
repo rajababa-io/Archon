@@ -25,7 +25,8 @@ export function chatStatuses(
     lastReadAt: string | null;
   }[],
   working: ReadonlySet<string>,
-  runAwaiting: ReadonlySet<string>
+  runAwaiting: ReadonlySet<string>,
+  ciWaiting: ReadonlySet<string>
 ): Map<string, ChatStatus> {
   const awaiting = askAwaitingIds(conversations);
   for (const id of runAwaiting) awaiting.add(id);
@@ -35,6 +36,7 @@ export function chatStatuses(
     unread: unreadIds(conversations),
     done: completedIds(conversations),
     ready: readyIds(conversations),
+    waiting: ciWaiting,
   };
   const out = new Map<string, ChatStatus>();
   for (const c of conversations) out.set(c.id, chatStatus(c.id, sets));
@@ -42,28 +44,30 @@ export function chatStatuses(
 }
 
 /**
- * The tab title: `(N)` for chats that want you.
+ * How many chats want you: the rail's amber — awaiting and unread.
  *
- * N counts the rail's amber — awaiting and unread — because those are the two
- * states that ask a person to come and look. A turn that ends while you are
- * away leaves its chat unread, so the count rising is how "done" reaches a tab
- * you are not looking at. Ready and done are green: nothing to come back for.
+ * Those are the two states that ask a person to come and look. A turn that
+ * ends while you are away leaves its chat unread, so this rising is how "done"
+ * reaches a tab you are not looking at. Ready and done are green: nothing to
+ * come back for.
  *
- * Working is deliberately NOT in the text. A title is plain text, so a mark
- * there cannot take the working blue and is drawn as large as the letters; it
- * read as a different signal from every other working dot. It is the favicon's
- * badge instead — see `anyWorking` and `lib/favicon-badge`.
+ * Working is deliberately not counted, and nothing in the tab says a chat is
+ * merely working: from another tab the only question worth answering is
+ * whether something needs you.
  */
-export function tabTitle(base: string, statuses: ReadonlyMap<string, ChatStatus>): string {
-  let wanting = 0;
-  for (const s of statuses.values()) if (s === 'awaiting' || s === 'unread') wanting += 1;
-  return wanting > 0 ? `(${String(wanting)}) ${base}` : base;
+export function wantingCount(statuses: ReadonlyMap<string, ChatStatus>): number {
+  let n = 0;
+  for (const s of statuses.values()) if (s === 'awaiting' || s === 'unread') n += 1;
+  return n;
 }
 
-/** Whether any listed chat is working — what the favicon's blue dot says. */
-export function anyWorking(statuses: ReadonlyMap<string, ChatStatus>): boolean {
-  for (const s of statuses.values()) if (s === 'working') return true;
-  return false;
+/**
+ * The favicon badge's text, Gmail's way: the number up to 99, `99+` past it,
+ * nothing at zero. Three characters is the most a tab icon can hold legibly.
+ */
+export function badgeText(count: number): string {
+  if (count <= 0) return '';
+  return count > 99 ? '99+' : String(count);
 }
 
 export type ChatAlertKind = 'finished' | 'asking';

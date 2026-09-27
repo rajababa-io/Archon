@@ -1895,9 +1895,11 @@ async function resolveNodeProviderAndModel(
   if (execContext.kind === 'container') {
     baseOptions.execContext = execContext;
   }
-  if (config.envVars && Object.keys(config.envVars).length > 0) {
-    baseOptions.env = config.envVars;
-  }
+  // WORKFLOW_ID reaches the agent's subprocess the way bash and script nodes receive it
+  // (exec-environment.ts), so anything running inside the agent — its tools, a user's
+  // provider hooks — can tell a workflow step from an interactive chat. Spread last:
+  // project env cannot shadow an engine-reserved key.
+  baseOptions.env = { ...config.envVars, WORKFLOW_ID: workflowRunId };
   if (config.protectedEnvKeys && config.protectedEnvKeys.length > 0) {
     baseOptions.protectedEnvKeys = config.protectedEnvKeys;
   }

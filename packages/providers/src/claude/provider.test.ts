@@ -1933,6 +1933,29 @@ describe('ClaudeProvider', () => {
       }
     });
 
+    // The console shows the rung the turn ran on, so the result reports the
+    // CLAMPED value the SDK was handed — `ultra` ran as `max` — and nothing
+    // when the SDK's own default applied.
+    test('reports the applied effort on the result, clamped, or omits it', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'result', session_id: 'sid' };
+      });
+
+      const clamped = [];
+      for await (const chunk of client.sendQuery('test', '/tmp', undefined, {
+        nodeConfig: { effort: 'ultra' },
+      })) {
+        clamped.push(chunk);
+      }
+      expect(clamped[0]).toMatchObject({ type: 'result', appliedEffort: 'max' });
+
+      const unset = [];
+      for await (const chunk of client.sendQuery('test', '/tmp')) {
+        unset.push(chunk);
+      }
+      expect(unset[0]).not.toHaveProperty('appliedEffort');
+    });
+
     test('passes maxBudgetUsd to SDK', async () => {
       mockQuery.mockImplementation(async function* () {
         yield { type: 'result', session_id: 'sid' };
@@ -2048,6 +2071,32 @@ describe('ClaudeProvider', () => {
       // Empty text should be filtered out
       expect(chunks).toHaveLength(1);
       expect(chunks[0]).toEqual({ type: 'assistant', content: 'Real content' });
+    });
+
+    test('forwards thinking text, and drops a thinking block whose text was omitted', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'thinking', thinking: 'Check the lockfile first.', signature: 's1' },
+              { type: 'text', text: 'Done.' },
+              // Display omitted: the block still arrives, with no text in it.
+              { type: 'thinking', thinking: '', signature: 's2' },
+            ],
+          },
+        };
+      });
+
+      const chunks = [];
+      for await (const chunk of client.sendQuery('test', '/workspace')) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toEqual([
+        { type: 'thinking', content: 'Check the lockfile first.' },
+        { type: 'assistant', content: 'Done.' },
+      ]);
     });
   });
 });

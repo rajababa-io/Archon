@@ -40,6 +40,8 @@ export interface ComposerControl {
    * never destroys a draft.
    */
   restore: (text: string) => void;
+  /** Put the caret in the box, so a new chat can be typed into at once. */
+  focus: () => void;
 }
 
 interface ChatComposerProps {
@@ -199,6 +201,9 @@ export function ChatComposer({
             el.setSelectionRange(next.length, next.length);
           });
         }
+      },
+      focus: (): void => {
+        textareaRef.current?.focus();
       },
     }),
     [commit]

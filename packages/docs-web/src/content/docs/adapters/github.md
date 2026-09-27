@@ -150,6 +150,20 @@ gh api repos/OWNER/REPO/hooks --method POST \
 
 Check-run deliveries wake CI waits quickly. They are not required for correctness: when GitHub does not deliver one, the workflow reaches its deadline and probes CI again.
 
+## Chat CI watches
+
+A web chat can call the `watch_ci` tool to be told when CI finishes on one commit, after its own turn has ended. The chat shows **Waiting on CI** in the console rail until then. When every check run on that commit has completed, the chat receives one automated message naming any checks that did not pass, and starts a turn to act on it.
+
+The signal is the same `check_run` subscription on the same `/webhooks/github` URL and `WEBHOOK_SECRET` as above. A watch is decided from GitHub's check state for the whole commit, not from the one delivery that woke it, so any single delivery can be lost: the server also re-checks every open watch at startup and every five minutes. A watch whose checks never all finish reports that after 24 hours and closes. Closing the chat cancels its watches.
+
+To subscribe repositories that already send Archon other events, or none yet:
+
+```bash
+WEBHOOK_SECRET=... scripts/add-ci-watch-webhook.sh https://YOUR_DOMAIN/webhooks/github OWNER/REPO [OWNER/REPO...]
+```
+
+It adds `check_run` to an existing webhook for that URL, or creates one subscribed to `check_run` only. `check_suite` is not needed. Run it with a `gh` login that has admin on each repository; it is safe to run again.
+
 ## Further Reading
 
 - [Configuration](/getting-started/configuration/)

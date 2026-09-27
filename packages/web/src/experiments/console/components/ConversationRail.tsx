@@ -12,7 +12,6 @@ import {
 import {
   byArrangement,
   conversationLabel,
-  matchesFilter,
   type ConversationSummary,
 } from '../primitives/conversation';
 import { relativeTime } from '../lib/format';
@@ -113,6 +112,8 @@ interface ConversationRailProps {
    * working is the server's conversation lock, awaiting belongs to a run.
    */
   awaitingIds?: ReadonlySet<string>;
+  /** Chats the server is watching CI for, from the same health read as `liveIds`. */
+  ciWaitingIds?: ReadonlySet<string>;
   /** Which lifecycle scope the list is showing; the rail does not fetch. */
   scope: ChatScope;
   onScopeChange: (scope: ChatScope) => void;
@@ -142,7 +143,7 @@ interface ConversationRailProps {
 /**
  * A project's chats as a rail of cards, replacing the single-select switcher.
  *
- * Mirrors ProjectRail's language deliberately — monogram tile, filter box,
+ * Mirrors ProjectRail's language deliberately — monogram tile,
  * count pill, bordered selected row with a colored edge — so the two rails read
  * as one system rather than two components that happen to sit side by side.
  *
@@ -166,12 +167,10 @@ export function ConversationRail({
   projectId,
   liveIds,
   awaitingIds,
+  ciWaitingIds,
 }: ConversationRailProps): ReactElement {
-  /* The filter box became nothing: a permanent text field for a list this
-     short was chrome, and ⌘K already jumps to any chat by name. `query` stays
-     empty so the filtering logic below is untouched and can be wired to the
-     palette later without another rewrite. */
-  const query = '';
+  /* No filter box: a permanent text field for one project's chats was chrome.
+     Finding a chat by name is the ⌘K palette's job, across every project. */
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -266,10 +265,7 @@ export function ConversationRail({
   }, [armed]);
 
   /** The list as the server has it arranged. */
-  const arranged = useMemo(
-    () => [...conversations].filter(c => matchesFilter(c, query)).sort(byArrangement),
-    [conversations, query]
-  );
+  const arranged = useMemo(() => [...conversations].sort(byArrangement), [conversations]);
 
   const visible = useMemo(
     () => (pending === null ? arranged : applyChatOrder(arranged, pending)),
@@ -474,7 +470,7 @@ export function ConversationRail({
           // still lands in that chat, so waiting buys nothing and makes the
           // project feel single-threaded when it is not.
           disabled={activeConvId === null}
-          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat'}
+          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat (C)'}
           className="newchat disabled:cursor-default disabled:opacity-40"
         >
           <Plus className="h-[13px] w-[13px]" />
@@ -530,9 +526,7 @@ export function ConversationRail({
         ) : null}
 
         {visible.length === 0 && !pendingNew ? (
-          <p className="px-2 py-1.75 text-body text-text-tertiary">
-            {conversations.length === 0 ? 'No chats yet.' : 'No chats match that filter.'}
-          </p>
+          <p className="px-2 py-1.75 text-body text-text-tertiary">No chats yet.</p>
         ) : null}
 
         {visible.map((c, index) => {
@@ -543,6 +537,7 @@ export function ConversationRail({
             unread,
             done,
             ready,
+            waiting: ciWaitingIds ?? EMPTY_SET,
           });
           const shift =
             dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);

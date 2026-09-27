@@ -43,12 +43,21 @@ export interface LiveSegment {
    * segment for text that follows a tool call, so the preview must too.
    */
   hasTools: boolean;
+  /** Streamed thinking that came before this segment's text. Absent when there was none. */
+  thinking?: string;
 }
 
 export type LiveEvent =
   | { kind: 'text'; content: string; category: string | null }
-  | { kind: 'tool' }
+  /** `name` and `input` ride along for readers other than the segmenter, which ignores them. */
+  | { kind: 'tool'; name?: string; input?: Record<string, unknown> }
+  | { kind: 'thinking'; content: string }
   | { kind: 'retract' };
+
+/** Whether a segment or row has anything a reader would see. */
+function hasSubstance(s: { content: string; thinking?: string | null }): boolean {
+  return s.content.trim().length > 0 || (s.thinking ?? '').trim().length > 0;
+}
 
 /**
  * Fold one streamed event into the segment list.
@@ -74,6 +83,16 @@ export function reduceLive(segments: LiveSegment[], event: LiveEvent): LiveSegme
     return segments.slice(0, -1);
   }
 
+  if (event.kind === 'thinking') {
+    // Mirrors `MessagePersistence.appendThinking`: thinking opens a segment of
+    // its own unless the current one holds nothing but thinking so far.
+    if (last?.content === '' && !last.hasTools) {
+      const thinking = last.thinking ? `${last.thinking}\n\n${event.content}` : event.content;
+      return [...segments.slice(0, -1), { ...last, thinking }];
+    }
+    return [...segments, { content: '', category: null, hasTools: false, thinking: event.content }];
+  }
+
   if (event.kind === 'tool') {
     if (last === undefined) return segments;
     if (last.hasTools) return segments;
@@ -96,12 +115,14 @@ export function reduceLive(segments: LiveSegment[], event: LiveEvent): LiveSegme
 /**
  * How many assistant rows of the current turn are already in the database.
  *
- * Counts back to the last user message, and only rows that carry text — a
- * tool-only row persists with empty content and has no matching segment in the
- * preview. The result is how many leading segments the database has caught up
+ * Counts back to the last user message, and only rows that carry text or
+ * thinking — a tool-only row persists with empty content and has no matching
+ * segment in the preview. The result is how many leading segments the database has caught up
  * with.
  */
-export function persistedSegmentCount(messages: { role: string; content: string }[]): number {
+export function persistedSegmentCount(
+  messages: { role: string; content: string; thinking?: string | null }[]
+): number {
   let count = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -112,7 +133,7 @@ export function persistedSegmentCount(messages: { role: string; content: string 
     // counting it would report one more segment persisted than there are and
     // silently swallow the last live one.
     if (m.role !== 'assistant') continue;
-    if (m.content.trim().length > 0) count++;
+    if (hasSubstance(m)) count++;
   }
   return count;
 }
@@ -128,8 +149,8 @@ export function persistedSegmentCount(messages: { role: string; content: string 
  */
 export function pendingSegments(
   segments: LiveSegment[],
-  messages: { role: string; content: string }[]
+  messages: { role: string; content: string; thinking?: string | null }[]
 ): LiveSegment[] {
   const pending = segments.slice(persistedSegmentCount(messages));
-  return pending.filter(s => s.content.trim().length > 0);
+  return pending.filter(hasSubstance);
 }

@@ -51,6 +51,8 @@ export interface LiveChats {
   ids: ReadonlySet<string>;
   /** What each of those is doing, when it is inside a tool. */
   tools: Readonly<Record<string, ActiveTool>>;
+  /** Platform conversation ids with an open CI watch. */
+  ciWaiting: ReadonlySet<string>;
   /**
    * Whether the server has answered yet.
    *
@@ -91,6 +93,7 @@ export function useLiveChats(): LiveChats {
     () => ({
       ids: new Set(data?.ids ?? []),
       tools: data?.tools ?? {},
+      ciWaiting: new Set(data?.ciWaiting ?? []),
       known: data !== undefined,
       ...(data?.deploy ? { deploy: data.deploy } : {}),
     }),

@@ -1,10 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
   contextReading,
+  formatCost,
   formatTokens,
   occupancyPercent,
   occupancyTone,
   shortModel,
+  turnFacts,
 } from './context-window';
 
 const turn = (context: number, window?: number, costUsd: number | null = null) => ({
@@ -29,11 +31,6 @@ describe('contextReading', () => {
     const r = contextReading([turn(180_000, 200_000), turn(30_000, 200_000)]);
     expect(r?.tokens).toBe(30_000);
     expect(r?.fraction).toBeCloseTo(0.15);
-  });
-
-  test('cost IS cumulative — every turn was paid for separately', () => {
-    const r = contextReading([turn(10, 200_000, 0.25), turn(20, 200_000, 0.75)]);
-    expect(r?.costUsd).toBeCloseTo(1.0);
   });
 
   test('no window from the server means no percentage is claimed', () => {
@@ -124,5 +121,45 @@ describe('occupancyPercent', () => {
   // 100% for a conversation at 283% of the window it had been given.
   test('never capped, because a capped number hides a broken one', () => {
     expect(occupancyPercent(2.835)).toBe(284);
+  });
+});
+
+describe('turnFacts', () => {
+  test('cost IS cumulative — every turn was paid for separately', () => {
+    const r = turnFacts([turn(10, 200_000, 0.25), turn(20, 200_000, 0.75)]);
+    expect(r?.costUsd).toBeCloseTo(1.0);
+  });
+
+  test('no turn reported a cost → null, not $0.00', () => {
+    // Codex reports token axes only. Zero would read as "free".
+    const r = turnFacts([{ usage: { costUsd: null, model: 'gpt-5.5', effort: 'medium' } }]);
+    expect(r).toEqual({ model: 'gpt-5.5', effort: 'medium', costUsd: null });
+  });
+
+  test('model and effort come from the newest turn, never carried forward', () => {
+    const r = turnFacts([
+      { usage: { costUsd: 0.1, model: 'claude-opus-5', effort: 'high' } },
+      { usage: { costUsd: 0.1 } },
+    ]);
+    expect(r?.model).toBeNull();
+    expect(r?.effort).toBeNull();
+  });
+
+  test('a turn with no context figure still yields its facts', () => {
+    const r = turnFacts([{ usage: { costUsd: null, model: 'gpt-5.5' } }]);
+    expect(r?.model).toBe('gpt-5.5');
+    expect(contextReading([{ usage: { input: 10, costUsd: null, model: 'gpt-5.5' } }])).toBeNull();
+  });
+
+  test('no usage at all → nothing to show', () => {
+    expect(turnFacts([{ usage: null }])).toBeNull();
+  });
+});
+
+describe('formatCost', () => {
+  test('two decimals, and never $0.00 for a reported cost', () => {
+    expect(formatCost(4.123)).toBe('$4.12');
+    expect(formatCost(0.004)).toBe('<$0.01');
+    expect(formatCost(0)).toBe('<$0.01');
   });
 });

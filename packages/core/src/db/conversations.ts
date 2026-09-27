@@ -7,6 +7,7 @@ import type { Conversation } from '../types';
 import { ConversationNotFoundError } from '../types';
 import { createLogger } from '@archon/paths';
 import { loadConfig } from '../config/config-loader';
+import { cancelCiWatchesForConversation } from './ci-watches';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -470,6 +471,11 @@ export async function setConversationCompleted(id: string, completed: boolean): 
   if (result.rowCount === 0) {
     throw new ConversationNotFoundError(id);
   }
+  // Here rather than in each caller: a human closing the chat, a handoff, and
+  // an undone handoff all close through this function, and a closed chat must
+  // not be woken by CI it has stopped caring about. Reopening does not revive
+  // them — a watch is a request made in a turn, not a property of the chat.
+  if (completed) await cancelCiWatchesForConversation(id);
 }
 
 /**

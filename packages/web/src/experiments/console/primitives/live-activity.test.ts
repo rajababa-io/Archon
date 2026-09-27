@@ -36,7 +36,11 @@ describe('toActivityEvent', () => {
 });
 
 describe('applyActivity', () => {
-  const prev: ActiveChats = { ids: ['web-1'], tools: { 'web-1': { name: 'Read', input: {} } } };
+  const prev: ActiveChats = {
+    ids: ['web-1'],
+    tools: { 'web-1': { name: 'Read', input: {} } },
+    ciWaiting: ['web-3'],
+  };
 
   test('names what a chat is doing without disturbing the others', () => {
     const next = applyActivity(prev, EV);
@@ -53,6 +57,12 @@ describe('applyActivity', () => {
     expect(next?.ids).toEqual(['web-1']);
   });
 
+  test('keeps the rest of the snapshot — an event only knows about tools', () => {
+    // Rebuilding the object from `ids` and `tools` dropped every other field,
+    // so a chat waiting on CI read as idle until the next poll.
+    expect(applyActivity(prev, EV)?.ciWaiting).toEqual(['web-3']);
+  });
+
   test('an absent set stays absent — an event must not claim to be a snapshot', () => {
     // `known: false` is what stops the rail calling a mid-turn chat idle. A set
     // built from one event would answer for every chat it has never heard of.
@@ -64,6 +74,7 @@ describe('clearActivity', () => {
   const prev: ActiveChats = {
     ids: ['web-1', 'web-2'],
     tools: { 'web-1': { name: 'Read', input: {} }, 'web-2': { name: 'Edit', input: {} } },
+    ciWaiting: ['web-3'],
   };
 
   test('forgets the tool', () => {
@@ -74,6 +85,10 @@ describe('clearActivity', () => {
 
   test('leaves the id alone — a background run holds no conversation lock', () => {
     expect(clearActivity(prev, 'web-1')?.ids).toEqual(['web-1', 'web-2']);
+  });
+
+  test('keeps the rest of the snapshot', () => {
+    expect(clearActivity(prev, 'web-1')?.ciWaiting).toEqual(['web-3']);
   });
 
   test('nothing to forget is the same object, not a new one', () => {

@@ -86,6 +86,40 @@ function ProgressNote({ content }: { content: string }): ReactElement {
   );
 }
 
+/**
+ * What the agent thought before this message, folded to one line by default.
+ *
+ * Folded because it is the working-out, not the answer: open, a long thought
+ * would push the reply it led to off the screen. It is still worth a click,
+ * because a wrong turn shows up in the thinking before it shows up in the
+ * work — which is when stopping it is cheapest.
+ */
+function ThinkingBlock({ text }: { text: string }): ReactElement {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="max-w-[74ch] min-w-0 text-small text-text-tertiary">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(v => !v);
+        }}
+        className="flex items-baseline gap-[0.4rem] text-left hover:text-text-secondary"
+      >
+        <span aria-hidden className="shrink-0">
+          {open ? '▾' : '▸'}
+        </span>
+        <span className="italic">{open ? 'Hide thinking' : 'Thinking'}</span>
+      </button>
+      {open ? (
+        <div className="mt-[0.25rem] border-l border-border pl-[0.75rem] whitespace-pre-wrap text-text-secondary">
+          {text.trim()}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ErrorBlock({ message }: { message: string }): ReactElement {
   return (
     <div className="rounded-[var(--radius-card)] border border-error/40 bg-error/10 px-[0.6rem] py-[0.4rem] text-small text-error">
@@ -203,6 +237,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
         const content = message.content.trim();
         return (
           <div key={message.id} className="flex flex-col gap-[var(--msg-gap)]">
+            {message.thinking !== null ? <ThinkingBlock text={message.thinking} /> : null}
             {notes.has(message.id) ? (
               <ProgressNote content={content} />
             ) : content.length > 0 ? (
@@ -257,6 +292,11 @@ export const ChatGroup = memo(ChatGroupImpl, (a, b) => {
   if (a.group.messages.length !== b.group.messages.length) return false;
   return a.group.messages.every((m, i) => {
     const other = b.group.messages[i];
-    return other?.id === m.id && other.content === m.content && other.error === m.error;
+    return (
+      other?.id === m.id &&
+      other.content === m.content &&
+      other.thinking === m.thinking &&
+      other.error === m.error
+    );
   });
 });

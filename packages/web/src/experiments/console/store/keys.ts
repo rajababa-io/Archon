@@ -34,9 +34,18 @@ export const K = {
    * gap until the page was reloaded.
    */
   conversationLock: (conversationId: string): string => `lock:${conversationId}`,
+  /** A chat's branch, folder and dirty state, read from git; see `getConversationCheckout`. */
+  conversationCheckout: (conversationId: string): string => `checkout:${conversationId}`,
   /** Messages waiting behind the running turn. Server-held; see `getConversationQueue`. */
   conversationQueue: (conversationId: string): string => `queue:${conversationId}`,
   conversations: (projectId: string): string => `conversations:${projectId}`,
+  /**
+   * Every project's chats, for the palette. Under the `conversations:` family
+   * so the stream's un-narrowed invalidation reaches it; a project-narrowed one
+   * does not, which is why the palette only subscribes while it is open: each
+   * opening then rereads it, showing the last list until the new one lands.
+   */
+  allConversations: 'conversations:*all' as const,
   countsGlobal: 'counts:global' as const,
   pendingRuns: 'pendingRuns' as const,
   envVars: (projectId: string): string => `envVars:${projectId}`,
