@@ -202,6 +202,39 @@ describePosix('the losing attempt survives the next request', () => {
   });
 });
 
+describePosix('a deploy that parked work', () => {
+  const REPORT =
+    'parked 3 chats, 1 queued message, 1 workflow run; resumed 3 chats, 1 queued message, 1 workflow run';
+
+  test('the history line says what was parked and what came back', async () => {
+    const box = sandbox('parked');
+    writeDockerStub(box.bin, WANT, WANT);
+    writeFileSync(
+      box.deploy,
+      `#!/usr/bin/env bash\nprintf '%s\\n' '${REPORT}' >"$PARK_REPORT_FILE"\nexit 0\n`,
+      { mode: 0o755 }
+    );
+    chmodSync(box.deploy, 0o755);
+
+    expect(await run(box, WANT)).toBe(0);
+
+    expect(read(join(box.volume, 'deploy-history'))).toContain(`OK ${WANT} — ${REPORT}`);
+  });
+
+  test('a report left by an earlier deploy is never credited to this one', async () => {
+    const box = sandbox('stale-park-report');
+    writeDockerStub(box.bin, WANT, WANT);
+    writeFileSync(join(box.volume, 'deploy-park-report'), `${REPORT}\n`);
+    writeSucceedingDeploy(box.deploy);
+
+    expect(await run(box, WANT)).toBe(0);
+
+    const history = read(join(box.volume, 'deploy-history'));
+    expect(history).toContain(`OK ${WANT}`);
+    expect(history).not.toContain('parked');
+  });
+});
+
 describePosix('a deploy that is stopped rather than finished', () => {
   test('being killed mid-flight still records what the box is running', async () => {
     const box = sandbox('killed');

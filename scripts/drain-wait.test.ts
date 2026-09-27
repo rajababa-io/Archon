@@ -19,6 +19,8 @@ import {
   DRAIN_TIMED_OUT,
   DRAIN_UNREADABLE,
   DRAIN_NOT_IN_EFFECT,
+  parkAnswerLines,
+  resumeReport,
 } from './drain-wait';
 import { MAX_DRAIN_BUDGET_SECONDS } from '../packages/server/src/routes/drain-budget';
 
@@ -247,5 +249,60 @@ describe('waitForDrain', () => {
       'draining: 2 chats mid-turn, 1 workflow run executing',
     ]);
     expect(lines.at(-1)).toBe('drained — the server is holding nothing');
+  });
+});
+
+describe('parkAnswerLines', () => {
+  const answer = {
+    drainId: '0b7c7f43-6a4e-4c1b-9d59-3f6f2d1c8a10',
+    parked: { chats: 3, queuedMessages: 1, runs: 1 },
+    blocked: [
+      { kind: 'chat', id: 'slack-thread-9', reason: 'non_web_platform' },
+      { kind: 'run', id: 'cli-run-1', reason: 'not_owned_by_this_server' },
+    ],
+  };
+
+  test('the drain id comes first, alone, then the lines for the deploy log', () => {
+    expect(parkAnswerLines(answer)).toEqual([
+      '0b7c7f43-6a4e-4c1b-9d59-3f6f2d1c8a10',
+      'parked 3 chats, 1 queued message, 1 workflow run',
+      'still running, waiting for it: chat slack-thread-9 — not a web chat, so it cannot be resumed after the restart',
+      'still running, waiting for it: run cli-run-1 — this server does not run it',
+    ]);
+  });
+
+  test('a drain id that is not a UUID is refused, because it becomes part of a URL', () => {
+    expect(() => parkAnswerLines({ ...answer, drainId: '../drain' })).toThrow('drainId');
+  });
+
+  test('a missing count is an error, never a zero', () => {
+    expect(() => parkAnswerLines({ ...answer, parked: { chats: 3, queuedMessages: 1 } })).toThrow(
+      'parked.runs'
+    );
+  });
+
+  test('a reason from a newer server is shown as it came', () => {
+    const [, , line] = parkAnswerLines({
+      ...answer,
+      blocked: [{ kind: 'run', id: 'r', reason: 'something_new' }],
+    });
+    expect(line).toBe('still running, waiting for it: run r — something_new');
+  });
+});
+
+describe('resumeReport', () => {
+  const parked = { chats: 3, queuedMessages: 1, runs: 1 };
+
+  test('complete once everything parked has resumed', () => {
+    expect(resumeReport({ parked, resumed: parked })).toEqual({
+      line: 'parked 3 chats, 1 queued message, 1 workflow run; resumed 3 chats, 1 queued message, 1 workflow run',
+      complete: true,
+    });
+  });
+
+  test('incomplete while anything is still waiting to come back', () => {
+    expect(
+      resumeReport({ parked, resumed: { chats: 3, queuedMessages: 0, runs: 1 } }).complete
+    ).toBe(false);
   });
 });

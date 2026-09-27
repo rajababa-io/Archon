@@ -1,6 +1,11 @@
 # Deploys that announce themselves, hold, and pick up where they left off
 
-**Status:** plan, not implemented. Nothing in this document has been built.
+**Status:** partly implemented. Drain (refuse new work, wait for old, report
+`drain.state` on `/api/health`) shipped first. Park-and-resume (#144) shipped next:
+after `DRAIN_GRACE_SECONDS` the deploy parks what is still running and the new server
+resumes it — see §7 and `packages/server/src/services/deploy-park.ts`. Holding
+messages sent while armed (§6.2), the console banner and `deploy_pending` events are
+not built; a message sent while armed is still refused.
 **Method:** every claim about current behaviour was read out of the source and
 is cited by file and line. Where a comment and the code disagreed, the code won.
 
@@ -173,8 +178,20 @@ models per-run liveness with an explicit `control_handoff`.
 
 - **It does not freeze a turn mid-tool-call.** That turn is a provider
   subprocess in the container being replaced; there is no thaw-it-elsewhere. The
-  options are finish it (phase 3) or abandon and replay the user's message. This
-  plan chooses finish, always.
+  options are finish it (phase 3) or stop it and resume it after the swap. This
+  plan chooses **finish within grace, otherwise park and resume**: the deploy waits
+  `DRAIN_GRACE_SECONDS` (default 600) for work to finish on its own, then
+  `POST /internal/drain/park` interrupts each web chat's turn, saves the messages
+  queued behind it, and pauses each top-level workflow run the server executes on a
+  `park` wait. The new server gives each parked chat one message telling the agent
+  to check what its last step actually finished, replays the queued messages in
+  order, exactly once, and resumes the runs through the continuation scanner from
+  the node that was in flight. A chat's provider session continues when it has one;
+  a chat whose very first turn was parked never saved a session, so the resume
+  message quotes the last user message instead. Anything that cannot be parked —
+  non-web chats, runs another process owns, runs with a live sub-run — is waited
+  for, and named in the deploy log. `DRAIN_PARK=0` keeps the old finish-always
+  wait.
 - **It does not remove the HTTP gap.** The container still restarts and browsers
   still reconnect for a few seconds. Removing that needs two app instances and
   conversation-sticky routing, which is a separate and much larger piece — and
@@ -200,6 +217,11 @@ one. The distinction is provenance:
 Replaying work you yourself set aside is not guessing about a stranger. The
 implementation must keep that true: if the marker ever becomes something another
 process could have written, this argument lapses and the design needs revisiting.
+
+As built, the marker is a row in `remote_agent_parked_work`, written only by
+`POST /internal/drain/park` (bearer-gated by `ARCHON_DRAIN_TOKEN`) and only for
+work this process holds: a web chat in its own lock manager, or a run for which
+`isRunOwnedByThisProcess` is true. Replay reads those rows and nothing else.
 
 ## 9. Acceptance
 ─────────────────────────────────────────────
@@ -250,9 +272,15 @@ a working system rather than being load-bearing for it.
 1. **How long may a parked message wait before it is stale?** A deploy that
    times out after 30 minutes could replay a message whose moment has passed.
    Replay it anyway, or surface it as held-and-skipped?
+   *Answered by #144: always replay. The grace window plus the deploy budget
+   bound the age, and the acceptance asks for every parked message to run.*
 2. **Should arming block a *new chat*, or only new turns in existing ones?**
    Blocking is simpler; allowing it means a conversation created during a drain
    whose first message is parked.
+   *Unchanged: an empty new chat is allowed, one carrying a message is refused.*
 3. **Is `parked_at` on messages the right home**, or should parked work be its
    own table? A table costs more now and isolates the concept better if parking
    ever covers more than chat messages.
+   *Answered by #144: its own table, `remote_agent_parked_work`. Queued messages
+   are not transcript rows, replay needs their staged file paths and sender, and
+   parked runs share the same per-drain report.*

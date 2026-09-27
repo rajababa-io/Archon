@@ -36,6 +36,7 @@
  */
 
 import { MAX_DRAIN_BUDGET_SECONDS } from '../packages/server/src/routes/drain-budget';
+import { PARK_BLOCK_REASONS } from '../packages/server/src/routes/drain-park-reasons';
 
 /**
  * Exit codes. The deploy gives each one different words, because they are
@@ -237,17 +238,98 @@ export async function waitForDrain(
   }
 }
 
+interface ParkCounts {
+  chats: number;
+  queuedMessages: number;
+  runs: number;
+}
+
+function readCounts(value: unknown, field: string): ParkCounts {
+  const counts = asRecord(value, field);
+  return {
+    chats: requireCount(counts.chats, `${field}.chats`),
+    queuedMessages: requireCount(counts.queuedMessages, `${field}.queuedMessages`),
+    runs: requireCount(counts.runs, `${field}.runs`),
+  };
+}
+
+function describeCounts(counts: ParkCounts): string {
+  return [
+    plural(counts.chats, 'chat', 'chats'),
+    plural(counts.queuedMessages, 'queued message', 'queued messages'),
+    plural(counts.runs, 'workflow run', 'workflow runs'),
+  ].join(', ');
+}
+
 /**
- * Two invocations, because the host half needs two answers from the one place
- * that owns them and has no JSON reader of its own:
+ * The lines the deploy prints for a `POST /internal/drain/park` answer. The first
+ * is the drain id alone, which the deploy keeps to ask the new server for its
+ * report; it is checked to be a UUID because it is interpolated into a URL.
+ */
+export function parkAnswerLines(payload: unknown): string[] {
+  const answer = asRecord(payload, 'body');
+  const drainId = answer.drainId;
+  if (
+    typeof drainId !== 'string' ||
+    !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/u.test(drainId)
+  ) {
+    throw new Error(`park answer has no usable drainId (got ${JSON.stringify(drainId)})`);
+  }
+  const parked = readCounts(answer.parked, 'parked');
+  if (!Array.isArray(answer.blocked)) throw new Error('park answer has no usable blocked list');
+  const blocked = answer.blocked.map((raw: unknown, index) => {
+    const item = asRecord(raw, `blocked[${String(index)}]`);
+    const { kind, id, reason } = item;
+    if (typeof kind !== 'string' || typeof id !== 'string' || typeof reason !== 'string') {
+      throw new Error(`park answer has an unreadable blocked[${String(index)}]`);
+    }
+    // A reason from a newer server than this script is shown as it came.
+    const why = Object.hasOwn(PARK_BLOCK_REASONS, reason)
+      ? PARK_BLOCK_REASONS[reason as keyof typeof PARK_BLOCK_REASONS]
+      : reason;
+    return `still running, waiting for it: ${kind} ${id} — ${why}`;
+  });
+  return [drainId, `parked ${describeCounts(parked)}`, ...blocked];
+}
+
+/** The deploy history's summary of a `GET /internal/drain/park/<id>` answer. */
+export function resumeReport(payload: unknown): { line: string; complete: boolean } {
+  const summary = asRecord(payload, 'body');
+  const parked = readCounts(summary.parked, 'parked');
+  const resumed = readCounts(summary.resumed, 'resumed');
+  const complete = (Object.keys(parked) as (keyof ParkCounts)[]).every(
+    key => resumed[key] >= parked[key]
+  );
+  return { line: `parked ${describeCounts(parked)}; resumed ${describeCounts(resumed)}`, complete };
+}
+
+/**
+ * The invocations, because the host half needs answers from the one place that
+ * owns them and has no JSON reader of its own:
  *
  *   --budget <seconds>   print the budget to arm drain with, clamped
+ *   --park-answer        read a park answer on stdin; print the drain id, then
+ *                        the lines for the deploy log
+ *   --resume-report      read a park summary on stdin; print its report line, and
+ *                        exit 0 once everything parked has resumed, 1 before
  *   (no arguments)       poll until drained, and exit with one of the codes above
  */
 if (import.meta.main) {
   const [flag, value] = process.argv.slice(2);
   if (flag === '--budget') {
     console.log(String(clampDrainBudget(Number(value))));
+  } else if (flag === '--park-answer') {
+    for (const line of parkAnswerLines(JSON.parse(await Bun.stdin.text()))) console.log(line);
+  } else if (flag === '--resume-report') {
+    let report: ReturnType<typeof resumeReport>;
+    try {
+      report = resumeReport(JSON.parse(await Bun.stdin.text()));
+    } catch (error: unknown) {
+      console.error(`cannot read the park summary: ${(error as Error).message}`);
+      process.exit(2);
+    }
+    console.log(report.line);
+    process.exit(report.complete ? 0 : 1);
   } else if (flag !== undefined) {
     console.error(`unknown argument ${JSON.stringify(flag)}`);
     process.exit(64);
