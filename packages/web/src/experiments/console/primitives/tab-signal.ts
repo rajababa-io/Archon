@@ -60,12 +60,12 @@ export function wantingCount(statuses: ReadonlyMap<string, ChatStatus>): number 
 }
 
 /**
- * The favicon badge's text, Gmail's way: the number up to nine, `9+` past it,
- * nothing at zero. A 16px icon has room for two characters and no more.
+ * The favicon badge's text, Gmail's way: the number up to 99, `99+` past it,
+ * nothing at zero. Three characters is the most a tab icon can hold legibly.
  */
 export function badgeText(count: number): string {
   if (count <= 0) return '';
-  return count > 9 ? '9+' : String(count);
+  return count > 99 ? '99+' : String(count);
 }
 
 export type ChatAlertKind = 'finished' | 'asking';

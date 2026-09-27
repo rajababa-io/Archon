@@ -68,12 +68,13 @@ describe('wantingCount', () => {
 });
 
 describe('badgeText', () => {
-  test('nothing at zero, the number to nine, 9+ past it', () => {
+  test('nothing at zero, the number to 99, 99+ past it', () => {
     expect(badgeText(0)).toBe('');
     expect(badgeText(1)).toBe('1');
-    expect(badgeText(9)).toBe('9');
-    expect(badgeText(10)).toBe('9+');
-    expect(badgeText(42)).toBe('9+');
+    expect(badgeText(12)).toBe('12');
+    expect(badgeText(99)).toBe('99');
+    expect(badgeText(100)).toBe('99+');
+    expect(badgeText(420)).toBe('99+');
   });
 });
 
