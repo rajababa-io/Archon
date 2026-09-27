@@ -146,7 +146,7 @@ import {
 } from '@archon/workflows/schemas/workflow-run';
 import type { WorkflowRun } from '@archon/workflows/schemas/workflow-run';
 import type { MessageRow } from '@archon/core/schemas/message';
-import { listCiWaitingPlatformConversationIds, type CiWatch } from '@archon/core/db/ci-watches';
+import { listCiWaitingChats, type CiWatch } from '@archon/core/db/ci-watches';
 import type { CiWatchDelivery } from '@archon/core/services/ci-watch';
 import type { DashboardWorkflowRun } from '@archon/core/schemas/workflow-run';
 import { findCommandFiles } from '@archon/core/utils/commands';
@@ -374,6 +374,7 @@ import {
   conversationChangeDiffResponseSchema,
   queuedMessageParamsSchema,
   withdrawQueuedResponseSchema,
+  steerQueuedResponseSchema,
   conversationSchema,
   createConversationBodySchema,
   createConversationResponseSchema,
@@ -943,6 +944,26 @@ const withdrawQueuedMessageRoute = createRoute({
     200: {
       content: { 'application/json': { schema: withdrawQueuedResponseSchema } },
       description: 'Withdrawn, or no longer queued',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const steerQueuedMessageRoute = createRoute({
+  method: 'post',
+  path: '/api/conversations/{id}/queue/{queuedId}/steer',
+  tags: ['Conversations'],
+  summary: 'Send a queued message into the running turn',
+  description:
+    'Hands a queued text message to the running turn, which reads it at the next point its ' +
+    'provider accepts input. It stays queued until read, and is delivered as the next turn if ' +
+    'the running turn ends first. Only turns whose provider supports mid-turn input accept it.',
+  request: { params: queuedMessageParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: steerQueuedResponseSchema } },
+      description: 'Sent, or why not',
     },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
@@ -2136,6 +2157,11 @@ const getHealthRoute = createRoute({
               // halves of "is anything happening here" arrive together.
               // Omitted when the read fails — health must answer regardless.
               ciWaitingConversationIds: z.array(z.string()).optional(),
+              // When each of those chats started waiting (ISO, oldest open
+              // watch), keyed by the same platform id, so the chip can say how
+              // long and turn amber past the Settings alarm. A separate map
+              // rather than a reshaped list keeps older bundles reading the ids.
+              ciWaitingSince: z.record(z.string(), z.string()).optional(),
               // Present only while the server is draining for a restart (see
               // /internal/drain). `holding` names each reason the box is not yet
               // drained, so an operator watching a deploy wait can see what it is
@@ -2232,6 +2258,8 @@ export interface ApiRoutesHandle {
   deliverCiWatchMessage: (watch: CiWatch, message: string) => Promise<CiWatchDelivery>;
   /** Hand a turn a deploy parked back to its web chat. */
   dispatchParkedTurn: ParkedTurnDispatcher;
+  /** Tell a chat's stream its queue changed, for changes the lock manager makes itself. */
+  emitQueueChanged: (conversationId: string) => void;
 }
 
 export function registerApiRoutes(
@@ -3067,7 +3095,8 @@ export function registerApiRoutes(
    * is the order the agent actually read them in.
    */
   interface UserTurn {
-    persist: () => Promise<void>;
+    /** `midTurn` marks a message the agent read inside a turn already running. */
+    persist: (opts?: { midTurn?: boolean }) => Promise<void>;
     files: { name: string; mimeType: string; size: number }[];
   }
 
@@ -3081,11 +3110,22 @@ export function registerApiRoutes(
     conversationDbId: string,
     message: string,
     fileMeta: UserTurn['files'],
-    userId: string | undefined
+    userId: string | undefined,
+    /** `midTurn`: read by the agent inside a turn that was already running. */
+    extra?: { midTurn: true }
   ): Promise<void> {
-    const meta = fileMeta.length > 0 ? { files: fileMeta } : undefined;
+    const meta = {
+      ...(fileMeta.length > 0 ? { files: fileMeta } : {}),
+      ...(extra ?? {}),
+    };
     try {
-      await messageDb.addMessage(conversationDbId, 'user', message, meta, userId);
+      await messageDb.addMessage(
+        conversationDbId,
+        'user',
+        message,
+        Object.keys(meta).length > 0 ? meta : undefined,
+        userId
+      );
     } catch (e: unknown) {
       getLog().error({ err: e, conversationId: conversationDbId }, 'message_persistence_failed');
       try {
@@ -3125,7 +3165,7 @@ export function registerApiRoutes(
           warnCleanup(conversationId)
         );
     };
-    const handler = async ({ signal }: TurnContext): Promise<void> => {
+    const handler = async ({ signal, inbox }: TurnContext): Promise<void> => {
       // Emit lock:true at handler start so the UI knows processing has begun.
       // Fire-and-forget — if no SSE stream is connected yet, the event is buffered.
       webAdapter.emitLockEvent(conversationId, true);
@@ -3138,6 +3178,7 @@ export function registerApiRoutes(
           isolationHints: { workflowType: 'thread', workflowId: conversationId },
           ...extraContext,
           abortSignal: signal,
+          midTurnInput: inbox,
         });
       } catch (error) {
         getLog().error({ err: error, conversationId }, 'handle_message_failed');
@@ -3176,6 +3217,13 @@ export function registerApiRoutes(
               text: message,
               attachedFiles: extraContext?.attachedFiles ?? [],
               ...(extraContext?.userId !== undefined ? { userId: extraContext.userId } : {}),
+            },
+            // Read inside the running turn: written where the agent read it —
+            // after what that turn had said by then — and shown live.
+            // The lock manager announces the queue change once this settles.
+            onLanded: async (): Promise<void> => {
+              await webAdapter.flushAssistant(conversationId);
+              await userTurn.persist({ midTurn: true });
             },
           }
         : undefined
@@ -4117,9 +4165,16 @@ export function registerApiRoutes(
     // Omit path from persisted metadata — the on-disk file is ephemeral and will be
     // deleted after the AI processes it; storing stale paths would confuse future readers.
     const fileMeta = savedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size }));
-    const persistUserMessage = async (): Promise<void> => {
+    const persistUserMessage = async (opts?: { midTurn?: boolean }): Promise<void> => {
       if (conv)
-        await persistDeliveredUserMessage(conversationId, conv.id, message, fileMeta, userId);
+        await persistDeliveredUserMessage(
+          conversationId,
+          conv.id,
+          message,
+          fileMeta,
+          userId,
+          opts?.midTurn === true ? { midTurn: true } : undefined
+        );
     };
     if (conv) webAdapter.setConversationDbId(conversationId, conv.id);
 
@@ -4182,7 +4237,11 @@ export function registerApiRoutes(
     try {
       const conv = await conversationDb.findConversationByPlatformId(platformId);
       if (!conv) return apiError(c, 404, 'Conversation not found');
-      return c.json({ conversationId: platformId, messages: lockManager.listQueued(platformId) });
+      return c.json({
+        conversationId: platformId,
+        messages: lockManager.listQueued(platformId),
+        steerable: lockManager.acceptsSteer(platformId),
+      });
     } catch (error) {
       getLog().error({ err: error, platformId }, 'get_conversation_queue_failed');
       return apiError(c, 500, 'Failed to read the queue');
@@ -4268,6 +4327,22 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error, platformId, queuedId }, 'withdraw_queued_message_failed');
       return apiError(c, 500, 'Failed to withdraw the message');
+    }
+  });
+
+  // POST /api/conversations/:id/queue/:queuedId/steer - Send into the running turn
+  registerOpenApiRoute(steerQueuedMessageRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    const queuedId = c.req.param('queuedId') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const result = lockManager.steer(platformId, queuedId);
+      if (result.status === 'sent') emitQueueChanged(platformId);
+      return c.json(result);
+    } catch (error) {
+      getLog().error({ err: error, platformId, queuedId }, 'steer_queued_message_failed');
+      return apiError(c, 500, 'Failed to send the message into the turn');
     }
   });
 
@@ -7057,8 +7132,13 @@ export function registerApiRoutes(
     }
 
     let ciWaitingConversationIds: string[] | undefined;
+    let ciWaitingSince: Record<string, string> | undefined;
     try {
-      ciWaitingConversationIds = await listCiWaitingPlatformConversationIds();
+      const waiting = await listCiWaitingChats();
+      ciWaitingConversationIds = waiting.map(w => w.platformConversationId);
+      ciWaitingSince = Object.fromEntries(
+        waiting.map(w => [w.platformConversationId, w.since.toISOString()])
+      );
     } catch (err) {
       getLog().warn({ err }, 'api.ci_waiting_read_failed');
     }
@@ -7105,6 +7185,7 @@ export function registerApiRoutes(
       ...(wslDistro ? { wsl_distro: wslDistro } : {}),
       activePlatforms: activePlatforms ? [...activePlatforms] : ['Web'],
       ...(ciWaitingConversationIds ? { ciWaitingConversationIds } : {}),
+      ...(ciWaitingSince ? { ciWaitingSince } : {}),
       ...(drain ? { drain } : {}),
       ...(deploy ? { deploy } : {}),
       ...(schema ? { schema } : {}),
@@ -7167,5 +7248,5 @@ export function registerApiRoutes(
     return result.accepted ? 'dispatched' : 'refused_draining';
   };
 
-  return { deliverCiWatchMessage, dispatchParkedTurn };
+  return { deliverCiWatchMessage, dispatchParkedTurn, emitQueueChanged };
 }

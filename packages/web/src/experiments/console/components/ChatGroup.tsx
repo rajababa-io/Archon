@@ -192,6 +192,14 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
               {message.content.trim()}
             </div>
             {message.files.length > 0 ? <FileChips files={message.files} /> : null}
+            {message.midTurn ? (
+              <span
+                title="Sent while the agent was working, and read by it in that same turn"
+                className="text-mini text-text-tertiary"
+              >
+                Read mid-turn
+              </span>
+            ) : null}
             {message.error !== null ? <ErrorBlock message={message.error.message} /> : null}
           </div>
         ))}

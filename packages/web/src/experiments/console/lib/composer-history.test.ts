@@ -22,6 +22,7 @@ function msg(role: Message['role'], content: string): Message {
     workflowResult: null,
     thinking: null,
     files: [],
+    midTurn: false,
     usage: null,
   };
 }

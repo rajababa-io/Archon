@@ -6,7 +6,7 @@
  * rather than restated here. One vocabulary means it is learned once, in the
  * rail, and read everywhere.
  *
- * Three of a chat's four states roll up; `done` does not, and deliberately.
+ * Three of a chat's states roll up — awaiting, working, running; `done` does not, and deliberately.
  * The chip prints NOTHING unless a project wants attention, and a project
  * whose every chat has landed wants none — the green would be a mark on every
  * finished project, which is the decoration this chip exists to refuse. It is
@@ -53,9 +53,10 @@ export function projectState({
   chats,
 }: ProjectStateInput): ProjectState {
   // Exclusive and ordered, exactly as a single chat is ordered: the half that
-  // needs a human outranks the half that does not.
+  // needs a human outranks the half that does not, and an agent mid-turn
+  // outranks a run carrying on without one.
   const status: ChatStatus =
-    awaiting > 0 ? 'awaiting' : running > 0 || workingChats > 0 ? 'working' : 'idle';
+    awaiting > 0 ? 'awaiting' : workingChats > 0 ? 'working' : running > 0 ? 'running' : 'idle';
 
   const why =
     [

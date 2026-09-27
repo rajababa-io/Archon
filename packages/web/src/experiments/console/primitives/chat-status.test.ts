@@ -5,6 +5,7 @@ import {
   chatStatus,
   completedIds,
   readyIds,
+  runningRunIds,
   unreadIds,
 } from './chat-status';
 
@@ -14,7 +15,8 @@ const sets = (
   done: string[] = [],
   unread: string[] = [],
   ready: string[] = [],
-  waiting: string[] = []
+  waiting: string[] = [],
+  running: string[] = []
 ) => ({
   working: new Set(working),
   awaiting: new Set(awaiting),
@@ -22,6 +24,7 @@ const sets = (
   unread: new Set(unread),
   ready: new Set(ready),
   waiting: new Set(waiting),
+  running: new Set(running),
 });
 
 describe('chatStatus', () => {
@@ -47,6 +50,18 @@ describe('chatStatus', () => {
     expect(chatStatus('a', sets([], [], ['a'], [], [], ['a']))).toBe('done');
     expect(chatStatus('a', sets([], [], [], [], ['a'], ['a']))).toBe('ready');
     expect(chatStatus('b', sets([], [], [], [], [], ['a']))).toBe('idle');
+  });
+
+  // #188: a chat whose run executed for twenty minutes read "Nothing is running
+  // in this chat". Running takes idle's place, and CI's, and nothing else's.
+  test('a running run replaces idle and waiting, and nothing that outranks them', () => {
+    expect(chatStatus('a', sets([], [], [], [], [], [], ['a']))).toBe('running');
+    expect(chatStatus('a', sets([], [], [], [], [], ['a'], ['a']))).toBe('running');
+    expect(chatStatus('a', sets(['a'], [], [], [], [], [], ['a']))).toBe('working');
+    expect(chatStatus('a', sets([], ['a'], [], [], [], [], ['a']))).toBe('awaiting');
+    expect(chatStatus('a', sets([], [], [], ['a'], [], [], ['a']))).toBe('unread');
+    expect(chatStatus('a', sets([], [], ['a'], [], [], [], ['a']))).toBe('done');
+    expect(chatStatus('a', sets([], [], [], [], ['a'], [], ['a']))).toBe('ready');
   });
 
   // The pair this state exists to separate. `done` is the human's answer and
@@ -190,36 +205,73 @@ describe('awaitingInputIds', () => {
   });
 });
 
+describe('runningRunIds', () => {
+  test('only a run that is moving counts — paused, finished and failed do not', () => {
+    const runs = ['running', 'paused', 'completed', 'failed', 'cancelled'].map(status => ({
+      status,
+      conversationPlatformId: status,
+    }));
+    expect([...runningRunIds(runs)]).toEqual(['running']);
+  });
+
+  test('a chat-dispatched run is found by its worker id, as awaiting finds it', () => {
+    expect([...runningRunIds([{ status: 'running', workerPlatformId: 'web-1' }])]).toEqual([
+      'web-1',
+    ]);
+  });
+
+  test('a run with no conversation marks no chat', () => {
+    expect([...runningRunIds([{ status: 'running' }])]).toEqual([]);
+  });
+});
+
 describe('askAwaitingIds', () => {
   const ask = (body: string): string => ['```ask', body, '```'].join('\n');
   const spec = '{"questions":[{"title":"Ship it?","options":[{"label":"Yes"}]}]}';
 
   test('a chat whose last message is a question is your move', () => {
     expect([
-      ...askAwaitingIds([{ id: 'a', askCandidate: `Here is the call:\n${ask(spec)}` }]),
+      ...askAwaitingIds([
+        { id: 'a', completed: false, askCandidate: `Here is the call:\n${ask(spec)}` },
+      ]),
     ]).toEqual(['a']);
   });
 
   test('no candidate, nothing to decide', () => {
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: null }])]).toEqual([]);
+    expect([...askAwaitingIds([{ id: 'a', completed: false, askCandidate: null }])]).toEqual([]);
   });
 
   test('a question that failed to render is still a question', () => {
     // The agent stopped to ask either way, and a chat whose card is broken is
     // the one most in need of a human opening it. Dropping it from the rail
     // would hide the breakage a second time.
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: ask('{ not json') }])]).toEqual(['a']);
+    expect([
+      ...askAwaitingIds([{ id: 'a', completed: false, askCandidate: ask('{ not json') }]),
+    ]).toEqual(['a']);
   });
 
   test('the parser decides, not the fence — an unterminated block is prose', () => {
     // The server sends anything containing the fence, deliberately. What counts
     // as a question is settled here, and half a block is not one yet.
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: '```ask\n{ not json' }])]).toEqual([]);
+    expect([
+      ...askAwaitingIds([{ id: 'a', completed: false, askCandidate: '```ask\n{ not json' }]),
+    ]).toEqual([]);
   });
 
   test('an ask block shown as an EXAMPLE inside a longer fence is not a question', () => {
     const quoted = ['````markdown', ask(spec), '````'].join('\n');
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: quoted }])]).toEqual([]);
+    expect([...askAwaitingIds([{ id: 'a', completed: false, askCandidate: quoted }])]).toEqual([]);
+  });
+
+  test('a chat marked done is not asking, even when it ended on a question', () => {
+    // The Open tab hides done chats, so counting one put the project header on
+    // "Needs you" with no amber chat anywhere to explain it (#197).
+    expect([
+      ...askAwaitingIds([
+        { id: 'open', completed: false, askCandidate: ask(spec) },
+        { id: 'done', completed: true, askCandidate: ask(spec) },
+      ]),
+    ]).toEqual(['open']);
   });
 });
 
@@ -243,6 +295,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('idle');
@@ -256,6 +309,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('idle');
@@ -272,6 +326,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: new Set(['a']),
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('unread');
@@ -285,6 +340,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('awaiting');

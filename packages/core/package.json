@@ -19,6 +19,7 @@
     "./handlers": "./src/handlers/command-handler.ts",
     "./handlers/command-registry": "./src/handlers/command-registry.ts",
     "./config": "./src/config/index.ts",
+    "./config/chats": "./src/config/chats.ts",
     "./config/run-config-handoff": "./src/config/run-config-handoff.ts",
     "./config/resolve-assistant": "./src/config/resolve-assistant.ts",
     "./utils/*": "./src/utils/*.ts",
@@ -151,7 +152,13 @@
       "src/db/isolation-environments.live-run.integration.test.ts"
     ],
     [
+      "src/db/isolation-environments.detach.integration.test.ts"
+    ],
+    [
       "src/db/isolation-environments.live-run.postgres.integration.test.ts"
+    ],
+    [
+      "src/db/isolation-environments.detach.postgres.integration.test.ts"
     ],
     [
       "src/db/resource-slots.postgres.integration.test.ts"
@@ -179,6 +186,9 @@
     ],
     [
       "src/services/title-generator.test.ts"
+    ],
+    [
+      "src/services/next-message-suggester.test.ts"
     ],
     [
       "src/services/title-generator.pin-race.integration.test.ts"

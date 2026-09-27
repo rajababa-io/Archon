@@ -14,6 +14,8 @@ export interface ResolvedChatsConfig {
   handoffAt: number;
   /** Whether crossing `handoffAt` acts, or only reports. */
   autoHandoff: boolean;
+  /** Whether a finished turn gets a suggested next message. */
+  suggestNextMessage: boolean;
   /**
    * The same two thresholds as whole percentages.
    *
@@ -25,10 +27,23 @@ export interface ResolvedChatsConfig {
    */
   nudgeAtPercent: number;
   handoffAtPercent: number;
+  /** Minutes on "Waiting on CI" before the console calls the wait overdue. */
+  ciWaitAlarmMinutes: number;
 }
 
 const DEFAULT_NUDGE_PERCENT = 40;
 const DEFAULT_HANDOFF_PERCENT = 50;
+/**
+ * First-attempt CI on this repository finished within 14 minutes across 216
+ * runs (#196); every longer one was a rerun. Twenty clears the slowest real
+ * run without leaving a stuck wait unremarked for long.
+ */
+const DEFAULT_CI_WAIT_ALARM_MINUTES = 20;
+/**
+ * The watch itself gives up at 24 hours (`CI_WATCH_MAX_AGE_MS`), so an alarm
+ * later than that could never show.
+ */
+export const MAX_CI_WAIT_ALARM_MINUTES = 24 * 60;
 
 /**
  * Percentages become fractions here, and nonsense becomes the default.
@@ -50,9 +65,17 @@ export function resolveChatsConfig(config: ChatsConfig | undefined): ResolvedCha
     nudgeAt: nudgePercent / 100,
     handoffAt: handoffPercent / 100,
     autoHandoff: config?.autoHandoff ?? true,
+    suggestNextMessage: config?.suggestNextMessage ?? true,
     nudgeAtPercent: nudgePercent,
     handoffAtPercent: handoffPercent,
+    ciWaitAlarmMinutes: usableMinutes(config?.ciWaitAlarmMinutes) ?? DEFAULT_CI_WAIT_ALARM_MINUTES,
   };
+}
+
+function usableMinutes(minutes: number | undefined): number | undefined {
+  if (minutes === undefined || !Number.isInteger(minutes)) return undefined;
+  if (minutes < 1 || minutes > MAX_CI_WAIT_ALARM_MINUTES) return undefined;
+  return minutes;
 }
 
 function usable(percent: number | undefined): number | undefined {

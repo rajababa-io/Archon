@@ -659,6 +659,7 @@
 /* A dashed row, not a button in a header. It sits where a new chat will
    appear, so the affordance is in the place the result shows up. */
 .newchat {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -748,6 +749,23 @@
      or leading and the dot follows instead of drifting. */
   height: calc(var(--text-body) * 1.35);
 }
+/* The header chip's slot. The chip shares the project name's BASELINE, not
+   its box: centring a small line box on a large one left the chip's words
+   sitting 2px above the name's. The dot is then centred on the NAME'S
+   x-height, which is where the eye puts the middle of a lowercase word — a
+   slot one `ex` of the title's font tall, bottom on the shared baseline.
+
+   `display: block` is load-bearing. A grid slot takes its baseline from the
+   dot inside it, which puts the dot's bottom on the baseline; a block with no
+   text has no baseline, so the slot's own bottom edge is used instead. */
+.project-chip > .chat-status {
+  display: block;
+  font-size: var(--text-title);
+  height: 1ex;
+}
+.project-chip > .chat-status i {
+  margin-top: calc(0.5ex - 4px); /* 4px: half the 8px dot */
+}
 /* Every state is this dot. Size and radius are stated ONCE, so no state can
    render at a different diameter from its neighbour in the same column. */
 .chat-status i {
@@ -798,12 +816,23 @@
   background: transparent;
   box-shadow: inset 0 0 0 2px currentColor;
 }
-/* Waiting on CI: the chat asked to be told when CI finishes, and the server
-   is watching for it. Working's blue, hollow — the same move ready makes on
-   done's green: "something is happening for this chat" in one hue, and the
-   empty centre says it is not the agent running. */
-.chat-status.is-waiting {
+/* Run going: a workflow run this chat started is executing. Working's blue,
+   hollow — the same move ready makes on done's green: "work is moving for this
+   chat" in one hue, and the empty centre says it is not the agent's own turn. */
+.chat-status.is-running {
   color: var(--running);
+}
+.chat-status.is-running i {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+/* Waiting on CI: the chat asked to be told when CI finishes, and the server
+   is watching for it. Hollow, because it is a wait, and purple because no
+   other state uses it — it shared the run's blue until runs had a mark (#188),
+   and orange would have differed from the filled amber "Needs you" by fill
+   alone. */
+.chat-status.is-waiting {
+  color: var(--ci-wait);
 }
 .chat-status.is-waiting i {
   background: transparent;
@@ -926,4 +955,11 @@
   height: 11px;
   display: block;
 }
-/* Collapsed the labels are hidden with `rail-hide`; nothing to arrange at 63px. */
+/* Collapsed, the label keeps its box and loses its paint. `rail-hide` would
+   take it out of layout and lift every project icon below it; `visibility`
+   also takes the move buttons out of the tab order and the accessibility tree.
+   It stays a `rail-hide` so the peek fades it in with the other labels. */
+.rail-panel.is-collapsed .rail-owner.rail-hide {
+  display: flex;
+  visibility: hidden;
+}

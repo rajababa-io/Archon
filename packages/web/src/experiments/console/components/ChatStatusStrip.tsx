@@ -11,6 +11,17 @@ interface ChatStatusStripProps {
   status: ChatStatus;
   /** When the current turn started, as epoch ms. Only read while working. */
   since?: number | null;
+  /**
+   * When the chat's CI wait started, as epoch ms. Only read while waiting.
+   * Absent when the server did not say, and then the strip shows no clock
+   * rather than one counting from the wrong moment.
+   */
+  ciSince?: number | null;
+  /**
+   * Minutes of waiting on CI after which the wait reads as overdue (Settings →
+   * Chats). Absent until the config has loaded; no alarm is drawn until then.
+   */
+  ciAlarmMinutes?: number;
   /** When the chat last said anything. Only read while idle. */
   lastActivityAt?: string | null;
   /** Every tool the current (or, when idle, the most recent) turn invoked. */
@@ -96,6 +107,8 @@ function agoLabel(iso: string | null | undefined): string | null {
 export function ChatStatusStrip({
   status,
   since,
+  ciSince,
+  ciAlarmMinutes,
   lastActivityAt,
   trace,
   live,
@@ -103,7 +116,17 @@ export function ChatStatusStrip({
   onToggle,
   trailing,
 }: ChatStatusStripProps): ReactElement {
-  const elapsed = useElapsed(status === 'working' ? since : null);
+  // One clock for both live-ish states: a turn in flight, and a CI wait. A
+  // wait whose webhook never came looks exactly like one about to finish, and
+  // how long it has been is the only thing that tells them apart.
+  const clockFrom = status === 'working' ? since : status === 'waiting' ? ciSince : null;
+  const elapsed = useElapsed(clockFrom);
+  const overdue =
+    status === 'waiting' &&
+    ciSince !== null &&
+    ciSince !== undefined &&
+    ciAlarmMinutes !== undefined &&
+    Date.now() - ciSince >= ciAlarmMinutes * 60_000;
   // Both settled states earn the timestamp: "Closed" and "Idle" each say that
   // nothing is happening, and how long ago it stopped is the one fact neither
   // word carries. The two live states have a clock or a tool name instead.
@@ -127,7 +150,9 @@ export function ChatStatusStrip({
 
   // Colour carries the state before the words do. Read from the same map the
   // rail and the project chip read, so there is one vocabulary and not three.
-  const tone = STATUS_COLOR[status];
+  // Overdue borrows amber, the "your move" colour: a CI wait past its alarm is
+  // something to go and look at, not something to keep waiting on.
+  const tone = overdue ? 'var(--warning)' : STATUS_COLOR[status];
 
   const shown = trace.slice(-TRACE_LIMIT);
   const hidden = trace.length - shown.length;
@@ -165,7 +190,17 @@ export function ChatStatusStrip({
             {label}
           </span>
           {elapsed !== null ? (
-            <span className="text-mini text-text-tertiary tabular-nums">{elapsed}</span>
+            <span
+              className="text-mini tabular-nums"
+              style={{ color: overdue ? tone : 'var(--text-tertiary)' }}
+              title={
+                overdue
+                  ? `Longer than the ${String(ciAlarmMinutes)}-minute CI alarm (Settings → Chats). Check the commit's checks directly.`
+                  : undefined
+              }
+            >
+              {overdue ? `${elapsed} · overdue` : elapsed}
+            </span>
           ) : null}
           {ago !== null ? (
             <span className="text-mini text-text-tertiary tabular-nums">{ago}</span>

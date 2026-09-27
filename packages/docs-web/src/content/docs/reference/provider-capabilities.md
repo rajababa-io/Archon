@@ -64,6 +64,7 @@ reporting declarations; absence means unknown, not unsupported.
 | Sandbox (`sandbox`) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Setting sources (`settingSources`) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | In-process native tools | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Mid-turn input (send a message into a running turn) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Container exec (folder-project container backend) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Strict-mode `required` coverage (every key in `properties` MUST appear in `required`) | ❌ | ✅ | ❌ | ❌ | ❌ |
 

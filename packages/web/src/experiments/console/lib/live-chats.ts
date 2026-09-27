@@ -53,6 +53,8 @@ export interface LiveChats {
   tools: Readonly<Record<string, ActiveTool>>;
   /** Platform conversation ids with an open CI watch. */
   ciWaiting: ReadonlySet<string>;
+  /** When each CI-waiting chat started waiting, as epoch ms. */
+  ciWaitingSince: Readonly<Record<string, number>>;
   /**
    * Whether the server has answered yet.
    *
@@ -94,6 +96,7 @@ export function useLiveChats(): LiveChats {
       ids: new Set(data?.ids ?? []),
       tools: data?.tools ?? {},
       ciWaiting: new Set(data?.ciWaiting ?? []),
+      ciWaitingSince: data?.ciWaitingSince ?? {},
       known: data !== undefined,
       ...(data?.deploy ? { deploy: data.deploy } : {}),
     }),

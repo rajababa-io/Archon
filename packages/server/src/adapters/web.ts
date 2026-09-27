@@ -164,6 +164,18 @@ export class WebAdapter implements IWebPlatformAdapter {
    *
    * Never throws. A missing reading is a missing gauge, not a failed turn.
    */
+  /**
+   * Write what the turn has said so far, so a row added now lands after it.
+   * Never throws: a late write reorders history, a failed turn loses it.
+   */
+  async flushAssistant(conversationId: string): Promise<void> {
+    try {
+      await this.persistence.flush(conversationId);
+    } catch (error) {
+      getLog().warn({ conversationId, err: error }, 'assistant_flush_failed');
+    }
+  }
+
   async sendResultFooter(conversationId: string, info: TurnResultInfo): Promise<void> {
     if (!info.tokens) return;
     try {
@@ -227,6 +239,25 @@ export class WebAdapter implements IWebPlatformAdapter {
       getLog().warn({ conversationId, err: error }, 'durable_notice_persist_failed');
     }
     await this.sendStructuredEvent(conversationId, { type: 'system', content });
+  }
+
+  /**
+   * Live only: a suggestion a reload loses is a suggestion not shown, which is
+   * exactly what a failed one looks like too. Nothing is written to history.
+   */
+  async offerNextMessage(
+    conversationId: string,
+    suggestion: { text: string; costUsd?: number }
+  ): Promise<void> {
+    await this.emitSSE(
+      conversationId,
+      JSON.stringify({
+        type: 'next_message_suggestion',
+        text: suggestion.text,
+        ...(suggestion.costUsd === undefined ? {} : { costUsd: suggestion.costUsd }),
+        timestamp: Date.now(),
+      })
+    );
   }
 
   async sendStructuredEvent(conversationId: string, chunk: MessageChunk): Promise<void> {

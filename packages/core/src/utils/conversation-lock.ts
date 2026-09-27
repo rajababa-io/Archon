@@ -11,6 +11,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { createLogger } from '@archon/paths';
+import type { MidTurnInbox, MidTurnMessage } from '@archon/providers';
 
 import type { AttachedFile, IPlatformAdapter } from '../types';
 
@@ -32,6 +33,80 @@ function getLog(): ReturnType<typeof createLogger> {
  */
 export interface TurnContext {
   signal: AbortSignal;
+  /**
+   * Where messages sent into this turn while it runs arrive. The turn opens it
+   * only if its provider can take them; until then `steer` refuses, so a
+   * message is never promised to a turn that cannot read it.
+   */
+  inbox: MidTurnInput;
+}
+
+/** What a turn's handler can do with its inbox: open it for a provider that reads it. */
+export interface MidTurnInput {
+  open(): MidTurnInbox;
+}
+
+/**
+ * The running turn's end of "send now". Holds pointers to queued messages, not
+ * the messages: the queue stays the authority until the provider reports one
+ * landed, so a message the turn never reads is still delivered — as the next
+ * turn, exactly as if it had never been steered.
+ */
+export class TurnInbox implements MidTurnInbox, MidTurnInput {
+  private buffered: MidTurnMessage[] = [];
+  private waiting: ((message: MidTurnMessage | null) => void) | undefined;
+  private isOpen = false;
+  private isClosed = false;
+
+  constructor(
+    private readonly onOpen: () => void,
+    private readonly onLanded: (id: string) => void
+  ) {}
+
+  /** Called by a turn whose provider takes mid-turn input. */
+  open(): MidTurnInbox {
+    if (!this.isOpen && !this.isClosed) {
+      this.isOpen = true;
+      this.onOpen();
+    }
+    return this;
+  }
+
+  get accepting(): boolean {
+    return this.isOpen && !this.isClosed;
+  }
+
+  /** False when the turn cannot take it; the message then simply stays queued. */
+  push(message: MidTurnMessage): boolean {
+    if (!this.accepting) return false;
+    const waiter = this.waiting;
+    this.waiting = undefined;
+    if (waiter) waiter(message);
+    else this.buffered.push(message);
+    return true;
+  }
+
+  next(): Promise<MidTurnMessage | null> {
+    if (this.isClosed) return Promise.resolve(null);
+    const head = this.buffered.shift();
+    if (head) return Promise.resolve(head);
+    return new Promise(resolve => {
+      this.waiting = resolve;
+    });
+  }
+
+  landed(id: string): void {
+    if (!this.isClosed) this.onLanded(id);
+  }
+
+  /** The turn is over. Anything not yet landed is still in the queue. */
+  close(): void {
+    this.isClosed = true;
+    this.buffered = [];
+    const waiter = this.waiting;
+    this.waiting = undefined;
+    waiter?.(null);
+  }
 }
 
 export type TurnHandler = (turn: TurnContext) => Promise<void>;
@@ -48,6 +123,8 @@ export interface QueuedMessageInfo {
   text: string;
   files: { name: string; mimeType: string; size: number }[];
   queuedAt: string;
+  /** Sent into the running turn and not yet read by the agent. */
+  steering: boolean;
 }
 
 /** The describable part of a message, supplied by the caller at acquisition. */
@@ -60,6 +137,12 @@ export interface QueueDescription {
    * will. Never runs for a delivered message.
    */
   onWithdraw?: () => Promise<void>;
+  /**
+   * Runs when the message is read inside the running turn instead of waiting
+   * for its own — the moment it belongs in the transcript. Never runs for a
+   * message delivered as its own turn.
+   */
+  onLanded?: () => Promise<void>;
   /**
    * Everything needed to deliver this message from a different process. Only a
    * message that carries it can be parked by a deploy; one that does not keeps
@@ -110,13 +193,29 @@ interface QueuedMessage {
   handler: TurnHandler;
   timestamp: number;
   description?: QueueDescription;
+  /** Handed to the running turn's inbox; cleared if that turn ends without reading it. */
+  steering?: boolean;
 }
 
-/** A turn executing now, and the switch that ends it early. */
+/** A turn executing now, the switch that ends it early, and where "send now" goes. */
 interface ActiveTurn {
   promise: Promise<void>;
   controller: AbortController;
+  inbox: TurnInbox;
 }
+
+/**
+ * The answer to "send this queued message into the running turn". `sent` means
+ * handed over, not read: the message stays queued until it lands, and is
+ * delivered as the next turn if it never does.
+ */
+export type SteerResult =
+  | { status: 'sent' }
+  | { status: 'not-queued' }
+  /** Nothing running, or its provider cannot take a message mid-turn. */
+  | { status: 'not-accepting' }
+  /** Attachments cannot ride into a running turn; the message waits for its own. */
+  | { status: 'has-files' };
 
 /**
  * The single answer to "take this queued message back": exactly one of these,
@@ -207,6 +306,7 @@ function toQueuedInfo(message: QueuedMessage, description: QueueDescription): Qu
     text: description.text,
     files: description.files ?? [],
     queuedAt: new Date(message.timestamp).toISOString(),
+    steering: message.steering === true,
   };
 }
 
@@ -218,6 +318,8 @@ export class ConversationLockManager {
   private messageQueues: Map<string, QueuedMessage[]>;
   private maxConcurrent: number;
   private drainState: DrainState | undefined;
+  /** Told when a turn starts accepting mid-turn input or a steered message lands. */
+  private queueListener: ((conversationId: string) => void) | undefined;
 
   /**
    * Creates a new ConversationLockManager
@@ -291,14 +393,26 @@ export class ConversationLockManager {
 
     // Store Promise in Map BEFORE awaiting (prevents race conditions)
     const controller = new AbortController();
+    const inbox = new TurnInbox(
+      () => {
+        this.queueListener?.(conversationId);
+      },
+      id => {
+        this.land(conversationId, id);
+      }
+    );
     const promise = message
-      .handler({ signal: controller.signal })
+      .handler({ signal: controller.signal, inbox })
       .catch(error => {
         getLog().error({ err: error, conversationId }, 'conversation_handler_error');
       })
       .finally(() => {
         // Clean up active conversation
         this.activeConversations.delete(conversationId);
+        inbox.close();
+        // Steered but never read: back to an ordinary queued message, delivered
+        // next as its own turn.
+        for (const m of this.messageQueues.get(conversationId) ?? []) m.steering = false;
         getLog().debug(
           { conversationId, active: this.activeConversations.size, queued: this.getQueuedCount() },
           'conversation_completed'
@@ -315,7 +429,7 @@ export class ConversationLockManager {
         });
       });
 
-    this.activeConversations.set(conversationId, { promise, controller });
+    this.activeConversations.set(conversationId, { promise, controller, inbox });
 
     // Fire-and-forget: don't await here, return immediately
     return { status: 'started' };
@@ -455,7 +569,11 @@ export class ConversationLockManager {
    */
   withdraw(conversationId: string, id: string): WithdrawResult {
     const queue = this.messageQueues.get(conversationId);
-    const index = queue?.findIndex(m => m.id === id && m.description !== undefined) ?? -1;
+    // A steered message may already be in the agent's hands; it cannot be
+    // taken back, only read or — if the turn ends first — delivered next.
+    const index =
+      queue?.findIndex(m => m.id === id && m.description !== undefined && m.steering !== true) ??
+      -1;
     if (!queue || index === -1) return { status: 'not-queued' };
     const [message] = queue.splice(index, 1);
     if (queue.length === 0) this.messageQueues.delete(conversationId);
@@ -466,6 +584,55 @@ export class ConversationLockManager {
       getLog().warn({ err: error, conversationId, queuedId: id }, 'queued_withdraw_cleanup_failed');
     });
     return { status: 'withdrawn', message: toQueuedInfo(message, description) };
+  }
+
+  /** Report turns opening their inbox and steered messages landing. */
+  setQueueListener(listener: (conversationId: string) => void): void {
+    this.queueListener = listener;
+  }
+
+  /** Can a queued message be sent into this conversation's running turn right now? */
+  acceptsSteer(conversationId: string): boolean {
+    return this.activeConversations.get(conversationId)?.inbox.accepting === true;
+  }
+
+  /**
+   * Send a queued message into the running turn instead of waiting for it to
+   * end. Synchronous, like `withdraw`, so it cannot interleave with delivery.
+   */
+  steer(conversationId: string, id: string): SteerResult {
+    const message = this.messageQueues
+      .get(conversationId)
+      ?.find(m => m.id === id && m.description !== undefined);
+    if (!message?.description) return { status: 'not-queued' };
+    if (message.steering === true) return { status: 'sent' };
+    if ((message.description.files ?? []).length > 0) return { status: 'has-files' };
+    const turn = this.activeConversations.get(conversationId);
+    if (!turn?.inbox.push({ id, text: message.description.text })) {
+      return { status: 'not-accepting' };
+    }
+    message.steering = true;
+    getLog().info({ conversationId, queuedId: id }, 'queued_message_steered');
+    return { status: 'sent' };
+  }
+
+  /** The running turn read a steered message: it leaves the queue for the transcript. */
+  private land(conversationId: string, id: string): void {
+    const queue = this.messageQueues.get(conversationId);
+    const index = queue?.findIndex(m => m.id === id && m.steering === true) ?? -1;
+    if (!queue || index === -1) return;
+    const [message] = queue.splice(index, 1);
+    if (queue.length === 0) this.messageQueues.delete(conversationId);
+    getLog().info({ conversationId, queuedId: id }, 'steered_message_landed');
+    // Announced after the landing is written, so a client refetching on the
+    // announcement finds the message in the history, not just gone from the queue.
+    void (message?.description?.onLanded?.() ?? Promise.resolve())
+      .catch((error: unknown) => {
+        getLog().error({ err: error, conversationId, queuedId: id }, 'steered_landing_failed');
+      })
+      .finally(() => {
+        this.queueListener?.(conversationId);
+      });
   }
 
   /**

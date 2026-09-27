@@ -16,7 +16,7 @@ import { INPUT_CLASS, Switch } from './SettingsFormPrimitives';
  * project scope here would be a control with no wire, which is the defect this
  * whole settings pass exists to remove.
  *
- * All three rows are live. The mockup drew `autoHandoff` greyed and labelled
+ * All four rows are live. The mockup drew `autoHandoff` greyed and labelled
  * "not implemented", which was true when it was drawn; the auto-handoff path
  * shipped afterwards and reads this value on every turn.
  */
@@ -63,7 +63,9 @@ export function ChatsPanel(): ReactElement {
   const orderError =
     form.nudgeAtPercent >= form.handoffAtPercent
       ? 'The nudge has to sit below the handoff point.'
-      : null;
+      : form.ciWaitAlarmMinutes < 1
+        ? 'The CI alarm needs at least one minute.'
+        : null;
   const dirty = JSON.stringify(form) !== baselineRef.current;
 
   const onSave = async (): Promise<void> => {
@@ -94,8 +96,10 @@ export function ChatsPanel(): ReactElement {
           title="Suggest wrapping up"
           description="One message, once. “Worth wrapping up soon; say the word and I’ll hand off.”"
         >
-          <PercentField
+          <NumberField
             label="Suggest wrapping up at"
+            unit="%"
+            maxDigits={2}
             value={form.nudgeAtPercent}
             onChange={n => {
               setForm(f => (f === null ? f : { ...f, nudgeAtPercent: n }));
@@ -107,8 +111,10 @@ export function ChatsPanel(): ReactElement {
           title="Say it is time to hand off"
           description="Stronger wording, and offers to write the handoff document. Must be above the first number."
         >
-          <PercentField
+          <NumberField
             label="Hand off at"
+            unit="%"
+            maxDigits={2}
             value={form.handoffAtPercent}
             onChange={n => {
               setForm(f => (f === null ? f : { ...f, handoffAtPercent: n }));
@@ -128,9 +134,38 @@ export function ChatsPanel(): ReactElement {
             }}
           />
         </Row>
+        <Row
+          title="Suggest the next message"
+          description="After each reply, the small model tier writes a likely next message into the empty chat box. Tab takes it; nothing is sent without Enter. Each suggestion is one short model call, and its cost shows beside it. Off means none are generated."
+        >
+          <Switch
+            label="Suggest the next message"
+            checked={form.suggestNextMessage}
+            onChange={v => {
+              setForm(f => (f === null ? f : { ...f, suggestNextMessage: v }));
+            }}
+          />
+        </Row>
       </div>
 
       <ChatFillPreview nudge={form.nudgeAtPercent} handoff={form.handoffAtPercent} />
+
+      <div className="mt-2.5 flex flex-col divide-y divide-border border-t border-border">
+        <Row
+          title="CI wait alarm"
+          description="A chat waiting on CI longer than this turns amber, so a check that never reported back shows up. Display only — the wait itself carries on."
+        >
+          <NumberField
+            label="CI wait alarm after"
+            unit="min"
+            maxDigits={4}
+            value={form.ciWaitAlarmMinutes}
+            onChange={n => {
+              setForm(f => (f === null ? f : { ...f, ciWaitAlarmMinutes: n }));
+            }}
+          />
+        </Row>
+      </div>
 
       <div className="mt-[11.5px] flex items-center justify-end gap-2.25">
         {orderError !== null ? <span className="text-small text-error">{orderError}</span> : null}
@@ -169,18 +204,22 @@ function Row({
 }
 
 /**
- * A whole-percentage field.
+ * A whole-number field with its unit drawn inside it.
  *
  * Holds its own text while focused so a field can pass through the empty
  * string on the way from `40` to `55` — writing the parsed number straight
  * back would make the first backspace resolve to `4` and fight the typing.
  */
-function PercentField({
+function NumberField({
   label,
+  unit,
+  maxDigits,
   value,
   onChange,
 }: {
   label: string;
+  unit: string;
+  maxDigits: number;
   value: number;
   onChange: (value: number) => void;
 }): ReactElement {
@@ -193,7 +232,7 @@ function PercentField({
         aria-label={label}
         value={text ?? String(value)}
         onChange={e => {
-          const next = e.target.value.replace(/[^0-9]/g, '').slice(0, 2);
+          const next = e.target.value.replace(/[^0-9]/g, '').slice(0, maxDigits);
           setText(next);
           const parsed = Number(next);
           if (next !== '' && Number.isFinite(parsed)) onChange(parsed);
@@ -201,13 +240,13 @@ function PercentField({
         onBlur={() => {
           setText(null);
         }}
-        className={`${INPUT_CLASS} w-[86px] pr-5.5 text-right`}
+        className={`${INPUT_CLASS} w-[86px] ${unit === '%' ? 'pr-5.5' : 'pr-9'} text-right`}
       />
       <span
         aria-hidden
         className="pointer-events-none absolute right-[11px] text-body text-text-tertiary"
       >
-        %
+        {unit}
       </span>
     </span>
   );

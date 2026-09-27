@@ -30,6 +30,7 @@ const providerCapabilitiesSchema = z
     stopReasonReporting: z.boolean().optional(),
     turnCountReporting: z.boolean().optional(),
     resolvedModelReporting: z.boolean().optional(),
+    midTurnInput: z.boolean().optional(),
     effortControl: z.boolean(),
     fallbackModel: z.boolean(),
     sandbox: z.boolean(),

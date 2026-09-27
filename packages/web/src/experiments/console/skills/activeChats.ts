@@ -108,6 +108,7 @@ export function parseDeploy(raw: unknown): DeployStatus | undefined {
 interface HealthLive {
   concurrency?: { activeConversationIds?: unknown; activeTools?: unknown };
   ciWaitingConversationIds?: unknown;
+  ciWaitingSince?: unknown;
   deploy?: unknown;
 }
 
@@ -126,6 +127,12 @@ export interface ActiveChats {
    * server is watching for them, rather than on nothing.
    */
   ciWaiting: readonly string[];
+  /**
+   * When each of those started waiting, as epoch ms, keyed by the same id.
+   * Absent for a chat whose start the server did not report (an older build),
+   * which then shows "Waiting on CI" with no clock rather than a wrong one.
+   */
+  ciWaitingSince: Readonly<Record<string, number>>;
   /**
    * What a deploy replacing this server is doing, when the server could tell.
    * Absent on a build whose health route predates the deploy block, and absent
@@ -155,6 +162,17 @@ function parseTools(raw: unknown): Record<string, ActiveTool> {
   return out;
 }
 
+function parseSince(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof raw !== 'object' || raw === null) return out;
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value !== 'string') continue;
+    const t = Date.parse(value);
+    if (!Number.isNaN(t)) out[id] = t;
+  }
+  return out;
+}
+
 function parseIds(raw: unknown): string[] {
   return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
 }
@@ -166,6 +184,7 @@ export async function getActiveChats(): Promise<ActiveChats> {
     ids: parseIds(res.concurrency?.activeConversationIds),
     tools: parseTools(res.concurrency?.activeTools),
     ciWaiting: parseIds(res.ciWaitingConversationIds),
+    ciWaitingSince: parseSince(res.ciWaitingSince),
     ...(deploy ? { deploy } : {}),
   };
 }

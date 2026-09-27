@@ -33,8 +33,7 @@ mock.module('../db/connection', () => ({
   getDatabaseType: () => 'sqlite',
 }));
 
-const { openCiWatch, listCiWaitingPlatformConversationIds, listOpenCiWatches } =
-  await import('../db/ci-watches');
+const { openCiWatch, listCiWaitingChats, listOpenCiWatches } = await import('../db/ci-watches');
 const { setConversationCompleted } = await import('../db/conversations');
 const { settleCiWatchesForHead, reconcileCiWatches, CI_WATCH_MAX_AGE_MS } =
   await import('./ci-watch');
@@ -296,7 +295,11 @@ describe('the watch rows', () => {
     });
     await settleCiWatchesForHead('o/r', OTHER_SHA, harness(PASSED).deps);
 
-    expect(await listCiWaitingPlatformConversationIds()).toEqual([`web-${waiting}`]);
+    const [only, ...rest] = await listCiWaitingChats();
+    expect(rest).toEqual([]);
+    expect(only.platformConversationId).toBe(`web-${waiting}`);
+    expect(only.since).toBeInstanceOf(Date);
+    expect(Number.isNaN(only.since.getTime())).toBe(false);
   });
 
   test('closing a chat cancels its watches, so CI finishing later sends nothing', async () => {
@@ -308,6 +311,6 @@ describe('the watch rows', () => {
     const { deps, sent } = harness(PASSED);
     expect(await settleCiWatchesForHead('o/r', SHA, deps)).toBe(0);
     expect(sent).toEqual([]);
-    expect(await listCiWaitingPlatformConversationIds()).toEqual([]);
+    expect(await listCiWaitingChats()).toEqual([]);
   });
 });

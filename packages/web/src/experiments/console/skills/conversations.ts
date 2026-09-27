@@ -300,6 +300,23 @@ export async function withdrawQueuedMessage(
   );
 }
 
+export type SteerResult = components['schemas']['SteerQueuedResponse'];
+
+/**
+ * Send a queued message into the running turn. `sent` is a hand-over, not a
+ * delivery: the message stays in the queue, marked steering, until the agent
+ * reads it — and runs as the next turn if the running one ends first.
+ */
+export async function steerQueuedMessage(
+  conversationPlatformId: string,
+  queuedId: string
+): Promise<SteerResult> {
+  return requestJson<SteerResult>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/queue/${encodeURIComponent(queuedId)}/steer`,
+    { method: 'POST' }
+  );
+}
+
 /**
  * Record that the reader has reached the bottom of this chat.
  *

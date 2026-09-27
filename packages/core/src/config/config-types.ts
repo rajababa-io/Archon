@@ -218,6 +218,20 @@ export interface ChatsConfig {
    * @default true
    */
   autoHandoff?: boolean;
+  /**
+   * Minutes a chat may sit on "Waiting on CI" before the console marks the
+   * wait as overdue. Display only: the watch still fires, and still expires,
+   * on its own schedule.
+   * @default 20
+   */
+  ciWaitAlarmMinutes?: number;
+  /**
+   * After a web chat turn ends, offer a suggested next message in the chat box,
+   * written by the `small` tier from the last exchange. Nothing is ever sent
+   * without the user choosing to; `false` stops the model call entirely.
+   * @default true
+   */
+  suggestNextMessage?: boolean;
 }
 
 /**
@@ -514,4 +528,6 @@ export interface SafeChatsConfig {
   nudgeAtPercent: number;
   handoffAtPercent: number;
   autoHandoff: boolean;
+  ciWaitAlarmMinutes: number;
+  suggestNextMessage: boolean;
 }

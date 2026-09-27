@@ -477,8 +477,10 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
           ) : null}
           {groups.map((group, gi) => (
             <Fragment key={group.owner}>
-              {/* Hidden with the rest of the labels when the rail is collapsed:
-                  at 63px there is nothing to label. */}
+              {/* Collapsed, the label is invisible but keeps its height — the
+                  same reasoning as the header row above. Removed from layout,
+                  every icon below it would slide up under the pointer, by an
+                  amount that changes with the font size. */}
               <div className="rail-hide rail-owner">
                 <span className="rail-owner-name">{group.owner}</span>
                 {/* Two buttons rather than a drag, because a section is not a

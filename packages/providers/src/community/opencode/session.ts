@@ -316,9 +316,14 @@ export async function* abortableStream(
           resolve({ done: true, value: undefined });
         };
         signal.addEventListener('abort', onAbort, { once: true });
-        void nextPromise.finally((): void => {
+        // `.then(cleanup, cleanup)`, not `.finally(cleanup)`: `finally` returns a
+        // promise that re-rejects when the stream errors, and nothing observes it,
+        // so every stream failure became an unhandled rejection — fatal to the
+        // server (#183). The race above already carries the error to the caller.
+        const cleanup = (): void => {
           signal.removeEventListener('abort', onAbort);
-        });
+        };
+        void nextPromise.then(cleanup, cleanup);
       }),
     ]);
 

@@ -46,6 +46,7 @@ export const OPTIONAL_AXES = {
   stopReasonReporting: true,
   turnCountReporting: true,
   resolvedModelReporting: true,
+  midTurnInput: true,
   knownToolNames: true,
   renamedTools: true,
 } satisfies Record<OptionalCapabilityAxis, true>;

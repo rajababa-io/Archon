@@ -1942,6 +1942,20 @@ describe('ClaudeProvider', () => {
 
     // #176: without an explicit display the CLI sends every thinking block
     // blank, so the console's Thinking line has nothing to show.
+    test("thinking 'off' disables thinking, and asks for no display of it", async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'result', session_id: 'sid' };
+      });
+
+      for await (const _ of client.sendQuery('test', '/tmp', undefined, { thinking: 'off' })) {
+        // consume
+      }
+
+      const callArgs = mockQuery.mock.calls[0][0] as { options: Record<string, unknown> };
+      expect(callArgs.options.thinking).toEqual({ type: 'disabled' });
+      expect(callArgs.options).not.toHaveProperty('extraArgs');
+    });
+
     test('asks for summarized thinking without choosing whether Claude thinks', async () => {
       mockQuery.mockImplementation(async function* () {
         yield { type: 'result', session_id: 'sid' };
@@ -3467,5 +3481,34 @@ describe('provider commands (#149)', () => {
       'visual:user:skill',
     ]);
     expect(listing.withheld.map(w => w.name)).toEqual(['color']);
+  });
+
+  test('a listing whose launch fails rejects that call and leaves no unhandled rejection (#183)', async () => {
+    // A launch failure makes the stream throw first, before `supportedCommands()`
+    // is awaited. Its rejection used to go unobserved, and the server exits on
+    // any unhandled rejection — one chat's broken workspace took the process down.
+    const launchError = new Error('Claude Code native binary exists but failed to launch');
+    mockQuery.mockImplementation(((_params: Parameters<typeof sdkQuery>[0]) => {
+      // eslint-disable-next-line require-yield -- the launch fails before any message
+      const events = (async function* () {
+        throw launchError;
+      })();
+      return Object.assign(events, {
+        supportedCommands: () => Promise.reject(launchError),
+      });
+    }) as unknown as MockQuery);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      await expect(new ClaudeProvider().listCommands('/workspace')).rejects.toBe(launchError);
+      // Unhandled rejections are reported after the microtask queue drains.
+      await new Promise(resolve => setTimeout(resolve, 10));
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+    expect(unhandled).toEqual([]);
   });
 });

@@ -123,6 +123,7 @@ import { resolveWorkflowAdoption, WorkflowAdoptionError } from '../operations/wo
 import { loadConfig, loadRepoConfig } from '../config/config-loader';
 import type { MergedConfig } from '../config/config-types';
 import { generateAndSetTitle, reconsiderConversationTitle } from '../services/title-generator';
+import { suggestNextMessage } from '../services/next-message-suggester';
 import { startRunLiveOwner, withRunLiveOwner } from '../services/run-live-owner';
 import { validateAndResolveIsolation, dispatchBackgroundWorkflow } from './orchestrator';
 import { IsolationBlockedError } from '@archon/isolation';
@@ -135,6 +136,7 @@ import {
 } from './prompt-builder';
 import type { WorkflowResultContext } from './prompt-builder';
 import { reportUnpushedWorkInSource } from './post-message-reminder';
+import { StopHookHold } from './stop-hook-hold';
 import * as messageDb from '../db/messages';
 import * as workflowDb from '../db/workflows';
 import { getCodebaseEnvVars } from '../db/env-vars';
@@ -2137,6 +2139,37 @@ async function bindDefaultChatWorktree(
 }
 
 /**
+ * The chat's `cwd` override when it names a directory that is gone, else null.
+ * Only an override can go missing this way — see the guard in handleMessage.
+ */
+function missingConversationCwd(conversation: Conversation): string | null {
+  if (conversation.codebase_id === null || conversation.cwd === null) return null;
+  return existsSync(conversation.cwd) ? null : conversation.cwd;
+}
+
+/**
+ * What a chat is told when its working directory is gone, with the recovery
+ * that applies. The advice branches on whether a worktree is still attached,
+ * because `/worktree remove` hard-returns "This conversation is not using a
+ * worktree." when `isolation_env_id` is null (command-handler.ts). `/setproject`
+ * clears the cwd override and works in both states. `/reset` clears it too, and
+ * the next turn starts in a fresh worktree.
+ */
+function missingCwdMessage(conversation: Conversation): string {
+  return (
+    `This conversation's working directory no longer exists:\n\`${conversation.cwd ?? ''}\`\n\n` +
+    (conversation.isolation_env_id !== null
+      ? 'Its isolated worktree was removed after this conversation was bound to it. ' +
+        'Run `/reset` to start fresh in a new worktree, `/worktree remove` to detach ' +
+        'and go back to the project root, or `/setproject <name>` to rebind this ' +
+        'conversation to a project.'
+      : 'This conversation is not bound to an isolated workspace, so there is nothing ' +
+        'to detach. Run `/reset` to start fresh in a new worktree, or ' +
+        '`/setproject <name>` to rebind this conversation to a project.')
+  );
+}
+
+/**
  * The provider a chat's next message goes to, and that provider's commands for
  * the chat's directory — the `/` menu's provider section. Resolved exactly as
  * a turn resolves them; the listing is cached (see `listProviderCommands`).
@@ -2148,6 +2181,12 @@ export async function listChatProviderCommands(
   const codebase = conversation.codebase_id
     ? await codebaseDb.getCodebase(conversation.codebase_id)
     : null;
+  // Refused before anything spawns there, for the same reason a turn is: Node
+  // reports a missing cwd as ENOENT, which the provider words as a missing
+  // binary and sends the operator after the wrong thing (#183).
+  if (missingConversationCwd(conversation) !== null) {
+    throw new Error(missingCwdMessage(conversation));
+  }
   const cwd = await resolveChatCwd(conversation, codebase);
   // Same config and resolution as `resolveNextChatModel`, so a chat pinned to
   // another provider lists that provider's commands.
@@ -2316,6 +2355,7 @@ export async function handleMessage(
     attachedFiles,
     userId,
     abortSignal,
+    midTurnInput,
     machineOrigin,
   } = context ?? {};
   // Anchor "is this a slash command" at the true start of the message —
@@ -2406,15 +2446,14 @@ export async function handleMessage(
       }
     }
 
-    // A conversation's `cwd` override can outlive the directory it names. Every
-    // path that tears a worktree down (`archon isolation cleanup`, the periodic
-    // reaper, the isolation API route, a user's own `rm -rf`) marks the env row
-    // destroyed without touching the conversation row, so `cwd` keeps pointing at
-    // a path that is gone. Only the WORKFLOW path re-resolves isolation and
-    // notices; a chat turn reads `cwd` verbatim and hands it to the provider,
-    // which spawns its subprocess there and fails ENOENT — an error the Claude
-    // SDK reports as a binary/libc mismatch, sending the operator after entirely
-    // the wrong thing.
+    // A conversation's `cwd` override can outlive the directory it names. Marking
+    // an environment destroyed detaches the conversations bound to it
+    // (isolationEnvDb.updateStatus), but a directory removed outside Archon — a
+    // user's own `rm -rf` — or a row stranded before that detach existed still
+    // leaves `cwd` pointing at a path that is gone. A chat turn reads `cwd`
+    // verbatim and hands it to the provider, which spawns its subprocess there and
+    // fails ENOENT — an error the Claude SDK reports as a binary/libc mismatch,
+    // sending the operator after entirely the wrong thing.
     //
     // Git-project chats reach this state in the normal course: each gets its own
     // worktree by default (#184), and the merged-branch sweep reaps a clean one.
@@ -2424,42 +2463,18 @@ export async function handleMessage(
     // live checkout would widen its write scope without consent. Runs
     // before the persist below so a refused turn leaves no `user` row without its
     // `assistant` pair, and after the deterministic-command early-returns above so
-    // the commands that get out of this state keep working. Which of them applies
-    // depends on `isolation_env_id` — see the message branch below.
-    if (conversation.codebase_id !== null && conversation.cwd !== null) {
-      if (!existsSync(conversation.cwd)) {
-        getLog().warn(
-          {
-            conversationId: conversation.id,
-            cwd: conversation.cwd,
-            isolationEnvId: conversation.isolation_env_id,
-          },
-          'orchestrator.conversation_cwd_missing'
-        );
-        // The recovery advice branches on whether a worktree is still attached,
-        // because `/worktree remove` hard-returns "This conversation is not using
-        // a worktree." when `isolation_env_id` is null (command-handler.ts:428).
-        // That state is reachable, not hypothetical: the `stale_cleaned` branch in
-        // validateAndResolveIsolation (orchestrator.ts:204) clears
-        // `isolation_env_id` and leaves `cwd` set, so a workflow run can strand a
-        // conversation exactly here and the next chat turn would be told to run a
-        // command that dead-ends. `/setproject` clears the cwd override and works
-        // in both states, so it is the one suggestion that always applies. `/reset`
-        // clears the override too, and the next turn starts in a fresh worktree.
-        await platform.sendMessage(
-          conversationId,
-          `This conversation's working directory no longer exists:\n\`${conversation.cwd}\`\n\n` +
-            (conversation.isolation_env_id !== null
-              ? 'Its isolated worktree was removed after this conversation was bound to it. ' +
-                'Run `/reset` to start fresh in a new worktree, `/worktree remove` to detach ' +
-                'and go back to the project root, or `/setproject <name>` to rebind this ' +
-                'conversation to a project.'
-              : 'This conversation is not bound to an isolated workspace, so there is nothing ' +
-                'to detach. Run `/reset` to start fresh in a new worktree, or ' +
-                '`/setproject <name>` to rebind this conversation to a project.')
-        );
-        return;
-      }
+    // the commands that get out of this state keep working (see missingCwdMessage).
+    if (missingConversationCwd(conversation) !== null) {
+      getLog().warn(
+        {
+          conversationId: conversation.id,
+          cwd: conversation.cwd,
+          isolationEnvId: conversation.isolation_env_id,
+        },
+        'orchestrator.conversation_cwd_missing'
+      );
+      await platform.sendMessage(conversationId, missingCwdMessage(conversation));
+      return;
     }
 
     // 3. Load codebases, discover workflows, build prompt
@@ -2911,6 +2926,9 @@ export async function handleMessage(
     if (chatRequest.preset) {
       applyPresetToRequestOptions(providerKey, chatRequest.preset, requestOptions);
     }
+    if (midTurnInput !== undefined && getProviderCapabilities(providerKey).midTurnInput === true) {
+      requestOptions.midTurnInput = midTurnInput.open();
+    }
 
     const chatMcpConfig = resolveChatMcpConfig(cwd);
     if (chatMcpConfig !== undefined) {
@@ -2930,6 +2948,9 @@ export async function handleMessage(
     // three a second time, in a second place that could resolve them
     // differently.
     const wantsRetitle = trimmedMessage === '/retitle' || trimmedMessage.startsWith('/retitle ');
+    // The small tier this turn's title uses, kept for the next-message suggestion
+    // after it: same model choice, same credentials, resolved once.
+    let smallTier: { provider: string; options: SendQueryOptions } | undefined;
     if (wantsRetitle || !trimmedMessage.startsWith('/')) {
       const titleRequest = resolveModelRequest(aiProfile, 'small', configuredProviderKey);
       const titleOptions: SendQueryOptions = {
@@ -2945,6 +2966,7 @@ export async function handleMessage(
       if (titleRequest.preset) {
         applyPresetToRequestOptions(titleRequest.provider, titleRequest.preset, titleOptions);
       }
+      smallTier = { provider: titleRequest.provider, options: titleOptions };
       if (wantsRetitle) {
         // Explicit: overrides a pinned title and skips the turn-count gate.
         // Awaited, not fire-and-forget — the user asked and is waiting for the
@@ -3194,9 +3216,10 @@ export async function handleMessage(
     // resolved and parked with only a generic error to show for it. The outer
     // catch cannot cover this: it does not know about the resolution.
     // continueResolvedGateRun never throws, so this cannot mask the real error.
+    let reply: string | undefined;
     try {
       if (mode === 'stream') {
-        await handleStreamMode(
+        reply = await handleStreamMode(
           platform,
           conversationId,
           message,
@@ -3213,7 +3236,7 @@ export async function handleMessage(
           userId
         );
       } else {
-        await handleBatchMode(
+        reply = await handleBatchMode(
           platform,
           conversationId,
           message,
@@ -3248,6 +3271,18 @@ export async function handleMessage(
     // A provider may honour an abort by ending its stream rather than throwing;
     // the turn was still cut short, and the transcript must say so either way.
     if (abortSignal?.aborted) await announceInterrupted(platform, conversationId, abortSignal);
+
+    // A turn that ended in a plain reply gets a suggested next message, where the
+    // platform can show one. Fire-and-forget: the reply is already delivered, and
+    // a suggestion that fails or arrives late simply is not shown.
+    if (
+      reply !== undefined &&
+      !abortSignal?.aborted &&
+      smallTier !== undefined &&
+      platform.offerNextMessage !== undefined
+    ) {
+      void offerNextMessage(platform, conversationId, cwd, message, reply, smallTier);
+    }
 
     // Direct-chat turns may have written to source/. If there is local-only state
     // (uncommitted edits, unpushed commits), surface a one-line reminder so the
@@ -3306,152 +3341,192 @@ async function handleStreamMode(
   issueContext?: string,
   requestOptions?: SendQueryOptions,
   userId?: string
-): Promise<void> {
+): Promise<string | undefined> {
   const turnStartedAt = Date.now();
   const allMessages: string[] = [];
   let newSessionId: string | undefined;
   let commandDetected = false;
   let commandFullyParsed = false;
   let lastResult: TurnResultInfo | undefined;
+  const hold = new StopHookHold();
 
-  for await (const msg of aiClient.sendQuery(
-    fullPrompt,
-    cwd,
-    session.assistant_session_id ?? undefined,
-    requestOptions
-  )) {
-    if (msg.type === 'assistant' && msg.content) {
-      // Accumulate only while the command is not yet fully captured; post-command
-      // trailing chunks would corrupt the project-name token if joined without a
-      // whitespace boundary, causing the parse regex to overshoot.
-      if (!commandFullyParsed) {
-        allMessages.push(msg.content);
+  // The agent moved on: send the held text, unless a Stop hook sent it back
+  // (#190). A withheld draft stays in the provider's own session transcript.
+  // Every held chunk was also pushed to allMessages (holding implies no command
+  // yet, which implies still accumulating) and nothing was pushed after them,
+  // so they are its tail — drop them there too, or the draft would still be
+  // parsed for commands and persisted for non-web platforms.
+  const continueTurn = async (): Promise<void> => {
+    const { text, sentBack } = hold.continueTurn();
+    if (sentBack) {
+      allMessages.splice(allMessages.length - text.length);
+      getLog().info(
+        { conversationId, chunks: text.length, chars: text.join('').length },
+        'orchestrator.stop_hook_draft_withheld'
+      );
+      return;
+    }
+    for (const chunk of text) await platform.sendMessage(conversationId, chunk);
+  };
+  const endTurn = async (): Promise<void> => {
+    for (const chunk of hold.endTurn()) await platform.sendMessage(conversationId, chunk);
+  };
+
+  try {
+    for await (const msg of aiClient.sendQuery(
+      fullPrompt,
+      cwd,
+      session.assistant_session_id ?? undefined,
+      requestOptions
+    )) {
+      if (msg.type === 'hook_response' && msg.hookEvent === 'Stop') {
+        hold.stopHookDone();
+        continue;
       }
-      if (!commandDetected) {
-        // Check for orchestrator commands BEFORE streaming to frontend.
-        // If detected, suppress this chunk and all future chunks — the full
-        // response will be parsed post-loop and the command dispatched there.
-        const accumulated = allMessages.join('');
-        const normalizedAccumulated = normalizeCommandText(accumulated);
-        if (
-          INVOKE_WORKFLOW_PREFIX_RE.test(normalizedAccumulated) ||
-          REGISTER_PROJECT_PREFIX_RE.test(normalizedAccumulated)
-        ) {
-          commandDetected = true;
-          // If the complete command pattern is already present, stop accumulating —
-          // no more chunks needed. This prevents trailing chunks from corrupting
-          // the project-name token when the command was fully emitted in one chunk.
+      if (msg.type === 'assistant' || msg.type === 'tool' || msg.type === 'thinking') {
+        await continueTurn();
+      }
+      if (msg.type === 'assistant' && msg.content) {
+        // Accumulate only while the command is not yet fully captured; post-command
+        // trailing chunks would corrupt the project-name token if joined without a
+        // whitespace boundary, causing the parse regex to overshoot.
+        if (!commandFullyParsed) {
+          allMessages.push(msg.content);
+        }
+        if (!commandDetected) {
+          // Check for orchestrator commands BEFORE streaming to frontend.
+          // If detected, suppress this chunk and all future chunks — the full
+          // response will be parsed post-loop and the command dispatched there.
+          const accumulated = allMessages.join('');
+          const normalizedAccumulated = normalizeCommandText(accumulated);
+          if (
+            INVOKE_WORKFLOW_PREFIX_RE.test(normalizedAccumulated) ||
+            REGISTER_PROJECT_PREFIX_RE.test(normalizedAccumulated)
+          ) {
+            commandDetected = true;
+            // If the complete command pattern is already present, stop accumulating —
+            // no more chunks needed. This prevents trailing chunks from corrupting
+            // the project-name token when the command was fully emitted in one chunk.
+            if (isCommandFullyParsed(accumulated)) {
+              commandFullyParsed = true;
+            }
+          } else {
+            // Held, not sent: a Stop hook may yet send this text back (#190).
+            hold.hold(msg.content);
+          }
+        } else if (!commandFullyParsed) {
+          // Post-prefix: keep accumulating until the full command pattern is present.
+          const accumulated = allMessages.join('');
           if (isCommandFullyParsed(accumulated)) {
             commandFullyParsed = true;
           }
-        } else {
-          await platform.sendMessage(conversationId, msg.content);
         }
-      } else if (!commandFullyParsed) {
-        // Post-prefix: keep accumulating until the full command pattern is present.
-        const accumulated = allMessages.join('');
-        if (isCommandFullyParsed(accumulated)) {
-          commandFullyParsed = true;
+      } else if (msg.type === 'tool' && msg.toolName) {
+        if (!commandDetected) {
+          const toolMessage = formatToolCall(msg.toolName, msg.toolInput);
+          await platform.sendMessage(conversationId, toolMessage, {
+            category: 'tool_call_formatted',
+          });
+          if (platform.sendStructuredEvent) {
+            await platform.sendStructuredEvent(conversationId, msg);
+          }
         }
-      }
-    } else if (msg.type === 'tool' && msg.toolName) {
-      if (!commandDetected) {
-        const toolMessage = formatToolCall(msg.toolName, msg.toolInput);
-        await platform.sendMessage(conversationId, toolMessage, {
-          category: 'tool_call_formatted',
-        });
-        if (platform.sendStructuredEvent) {
+      } else if (msg.type === 'tool_result' && msg.toolName) {
+        if (!commandDetected && platform.sendStructuredEvent) {
           await platform.sendStructuredEvent(conversationId, msg);
         }
-      }
-    } else if (msg.type === 'tool_result' && msg.toolName) {
-      if (!commandDetected && platform.sendStructuredEvent) {
-        await platform.sendStructuredEvent(conversationId, msg);
-      }
-    } else if (msg.type === 'thinking' && msg.content) {
-      // Structured only: thinking is not part of the reply, so it never goes
-      // through sendMessage, and a platform without structured events has
-      // nowhere honest to put it.
-      if (!commandDetected && platform.sendStructuredEvent) {
-        await platform.sendStructuredEvent(conversationId, msg);
-      }
-    } else if (msg.type === 'result') {
-      if (msg.isError && msg.errorSubtype === 'error_during_execution') {
-        getLog().warn(
-          {
-            conversationId,
-            errorSubtype: msg.errorSubtype,
-            staleSessionId: msg.sessionId,
-            errors: msg.errors,
-            stopReason: msg.stopReason,
-          },
-          'clearing_stale_session_id'
-        );
-        await tryPersistSessionId(session.id, null);
-        newSessionId = undefined;
-      } else if (msg.sessionId) {
-        newSessionId = msg.sessionId;
-      }
-      // Defense-in-depth: errorSubtype === 'success' is the Claude SDK's marker
-      // for a clean stop_sequence termination (the SDK sets is_error: true
-      // alongside subtype: 'success' to encode "non-default termination, not a
-      // failure"). The Claude provider already filters this; the guard here
-      // defends against a third-party IAgentProvider that forwards the SDK
-      // pair raw — without it, direct chat would surface a spurious error to
-      // the user and drop the actual conversation output.
-      if (msg.isError && msg.errorSubtype !== 'success') {
-        getLog().warn(
-          {
-            conversationId,
-            errorSubtype: msg.errorSubtype,
-            errors: msg.errors,
-            stopReason: msg.stopReason,
-          },
-          'ai_result_error'
-        );
-        // Carry the SDK error detail (not just the subtype code) into the
-        // formatter so it can classify actionable cases like "Not logged in"
-        // rather than emitting a generic message (#1983).
-        const errorDetail = [msg.errorSubtype, ...(msg.errors ?? [])].filter(Boolean).join(': ');
-        const syntheticError = new Error(errorDetail || 'AI result error');
-        await platform.sendMessage(
-          conversationId,
-          classifyAndFormatError(syntheticError, platform)
-        );
-        if (newSessionId) {
-          await tryPersistSessionId(session.id, newSessionId);
+      } else if (msg.type === 'thinking' && msg.content) {
+        // Structured only: thinking is not part of the reply, so it never goes
+        // through sendMessage, and a platform without structured events has
+        // nowhere honest to put it.
+        if (!commandDetected && platform.sendStructuredEvent) {
+          await platform.sendStructuredEvent(conversationId, msg);
         }
-        // Anonymous telemetry: AI returned an error result for this chat turn.
-        captureChatTurn({
-          platform: platform.getPlatformType(),
-          provider: aiClient.getType(),
-          model: requestOptions?.model,
-          durationMs: Date.now() - turnStartedAt,
-          outcome: 'failed',
-        });
-        return;
+      } else if (msg.type === 'result') {
+        // The turn is over, so the held reply is final; it goes out before the
+        // result's own error text or usage event.
+        await endTurn();
+        if (msg.isError && msg.errorSubtype === 'error_during_execution') {
+          getLog().warn(
+            {
+              conversationId,
+              errorSubtype: msg.errorSubtype,
+              staleSessionId: msg.sessionId,
+              errors: msg.errors,
+              stopReason: msg.stopReason,
+            },
+            'clearing_stale_session_id'
+          );
+          await tryPersistSessionId(session.id, null);
+          newSessionId = undefined;
+        } else if (msg.sessionId) {
+          newSessionId = msg.sessionId;
+        }
+        // Defense-in-depth: errorSubtype === 'success' is the Claude SDK's marker
+        // for a clean stop_sequence termination (the SDK sets is_error: true
+        // alongside subtype: 'success' to encode "non-default termination, not a
+        // failure"). The Claude provider already filters this; the guard here
+        // defends against a third-party IAgentProvider that forwards the SDK
+        // pair raw — without it, direct chat would surface a spurious error to
+        // the user and drop the actual conversation output.
+        if (msg.isError && msg.errorSubtype !== 'success') {
+          getLog().warn(
+            {
+              conversationId,
+              errorSubtype: msg.errorSubtype,
+              errors: msg.errors,
+              stopReason: msg.stopReason,
+            },
+            'ai_result_error'
+          );
+          // Carry the SDK error detail (not just the subtype code) into the
+          // formatter so it can classify actionable cases like "Not logged in"
+          // rather than emitting a generic message (#1983).
+          const errorDetail = [msg.errorSubtype, ...(msg.errors ?? [])].filter(Boolean).join(': ');
+          const syntheticError = new Error(errorDetail || 'AI result error');
+          await platform.sendMessage(
+            conversationId,
+            classifyAndFormatError(syntheticError, platform)
+          );
+          if (newSessionId) {
+            await tryPersistSessionId(session.id, newSessionId);
+          }
+          // Anonymous telemetry: AI returned an error result for this chat turn.
+          captureChatTurn({
+            platform: platform.getPlatformType(),
+            provider: aiClient.getType(),
+            model: requestOptions?.model,
+            durationMs: Date.now() - turnStartedAt,
+            outcome: 'failed',
+          });
+          return;
+        }
+        if (!commandDetected && platform.sendStructuredEvent) {
+          await platform.sendStructuredEvent(conversationId, msg);
+        }
+        lastResult = {
+          cost: msg.cost,
+          tokens: msg.tokens,
+          // How full the context was when the turn ended. NOT `tokens.input`,
+          // which sums every request in the turn and is therefore a cost figure
+          // — a tool-heavy turn reports millions against a 200k window.
+          contextTokens: msg.contextTokens,
+          stopReason: msg.stopReason,
+          // Carried because a token count without the model it was spent on
+          // cannot be turned into "how full is this context" — the denominator
+          // is the model's window, and only the provider knows which model
+          // actually answered. A provider that names no model in its result
+          // falls back to the one it was handed, which is still a fact about
+          // this turn rather than a setting the console would have to guess.
+          model: msg.resolvedModel?.id ?? msg.requestedModel,
+          effort: msg.appliedEffort,
+        };
       }
-      if (!commandDetected && platform.sendStructuredEvent) {
-        await platform.sendStructuredEvent(conversationId, msg);
-      }
-      lastResult = {
-        cost: msg.cost,
-        tokens: msg.tokens,
-        // How full the context was when the turn ended. NOT `tokens.input`,
-        // which sums every request in the turn and is therefore a cost figure
-        // — a tool-heavy turn reports millions against a 200k window.
-        contextTokens: msg.contextTokens,
-        stopReason: msg.stopReason,
-        // Carried because a token count without the model it was spent on
-        // cannot be turned into "how full is this context" — the denominator
-        // is the model's window, and only the provider knows which model
-        // actually answered. A provider that names no model in its result
-        // falls back to the one it was handed, which is still a fact about
-        // this turn rather than a setting the console would have to guess.
-        model: msg.resolvedModel?.id ?? msg.requestedModel,
-        effort: msg.appliedEffort,
-      };
     }
+  } finally {
+    // End of stream, a thrown error, or an abort: held text is released on
+    // every exit, never dropped.
+    await endTurn();
   }
 
   if (newSessionId) {
@@ -3536,6 +3611,7 @@ async function handleStreamMode(
     tokensOut: lastResult?.tokens?.output,
     outcome: 'completed',
   });
+  return fullResponse;
 }
 
 // ─── Batch Mode ─────────────────────────────────────────────────────────────
@@ -3559,7 +3635,7 @@ async function handleBatchMode(
   issueContext?: string,
   requestOptions?: SendQueryOptions,
   userId?: string
-): Promise<void> {
+): Promise<string | undefined> {
   const turnStartedAt = Date.now();
   const allChunks: { type: string; content: string }[] = [];
   const assistantMessages: string[] = [];
@@ -3569,6 +3645,9 @@ async function handleBatchMode(
   let commandDetected = false;
   let commandFullyParsed = false;
   let lastResult: TurnResultInfo | undefined;
+  // Batch sends one message at the end, so nothing is released early; the hold
+  // only finds a draft a Stop hook sent back, to cut it from the reply (#190).
+  const hold = new StopHookHold();
 
   for await (const msg of aiClient.sendQuery(
     fullPrompt,
@@ -3576,12 +3655,29 @@ async function handleBatchMode(
     session.assistant_session_id ?? undefined,
     requestOptions
   )) {
+    if (msg.type === 'hook_response' && msg.hookEvent === 'Stop') {
+      hold.stopHookDone();
+      continue;
+    }
+    if (msg.type === 'assistant' || msg.type === 'tool') {
+      const { text, sentBack } = hold.continueTurn();
+      // Held chunks are the tail of assistantMessages; the cap's shift() can
+      // only have trimmed the front.
+      if (sentBack) {
+        assistantMessages.splice(-Math.min(text.length, assistantMessages.length));
+        getLog().info(
+          { conversationId, chunks: text.length, chars: text.join('').length },
+          'orchestrator.stop_hook_draft_withheld'
+        );
+      }
+    }
     if (msg.type === 'assistant' && msg.content) {
       // Always record in allChunks for debug logging; accumulate assistantMessages
       // only while the command is not yet fully captured (same reason as stream mode).
       allChunks.push({ type: 'assistant', content: msg.content });
       if (!commandFullyParsed) {
         assistantMessages.push(msg.content);
+        if (!commandDetected) hold.hold(msg.content);
       }
 
       // Cap assistant-only chunks while no command has been detected.  Once
@@ -3813,6 +3909,7 @@ async function handleBatchMode(
     tokensOut: lastResult?.tokens?.output,
     outcome: 'completed',
   });
+  return finalMessage;
 }
 
 /**
@@ -3823,6 +3920,33 @@ async function handleBatchMode(
  * for a reminder, and a reminder is not worth a migration.
  */
 const nudgeBands = new Map<string, NudgeBand>();
+
+/**
+ * Generate and offer a suggested next message, unless Settings turned it off.
+ * Never throws; a suggestion that cannot be made is simply not offered.
+ */
+async function offerNextMessage(
+  platform: IPlatformAdapter,
+  conversationId: string,
+  cwd: string,
+  userMessage: string,
+  reply: string,
+  smallTier: { provider: string; options: SendQueryOptions }
+): Promise<void> {
+  try {
+    if (!resolveChatsConfig((await loadConfig()).chats).suggestNextMessage) return;
+    const suggestion = await suggestNextMessage(
+      smallTier.provider,
+      cwd,
+      userMessage,
+      reply,
+      smallTier.options
+    );
+    if (suggestion !== null) await platform.offerNextMessage?.(conversationId, suggestion);
+  } catch (error) {
+    getLog().warn({ err: error, conversationId }, 'orchestrator.next_message_offer_failed');
+  }
+}
 
 /**
  * Say something when a chat crosses a fill threshold — once per band.

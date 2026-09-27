@@ -510,6 +510,16 @@ mock.module('../services/title-generator', () => ({
   generateAndSetTitle: mockGenerateAndSetTitle,
 }));
 
+const mockSuggestNextMessage = mock(() =>
+  Promise.resolve<{ text: string; costUsd?: number } | null>({
+    text: 'run the tests',
+    costUsd: 0.0004,
+  })
+);
+mock.module('../services/next-message-suggester', () => ({
+  suggestNextMessage: mockSuggestNextMessage,
+}));
+
 const mockDispatchBackgroundWorkflow = mock<typeof Orchestrator.dispatchBackgroundWorkflow>(() =>
   Promise.resolve()
 );
@@ -656,6 +666,7 @@ import {
   resolveNextChatModel,
   resolveTitleRequest,
   continueResolvedGateRun,
+  listChatProviderCommands,
 } from './orchestrator-agent';
 import { clearProviderCommandCache } from '../handlers/provider-commands';
 import { buildAiProfile } from '@archon/workflows/model-validation';
@@ -5250,6 +5261,101 @@ describe('stale session ID clearing on error_during_execution', () => {
     expect(mockUpdateSession).toHaveBeenCalledWith('session-1', null);
   });
 
+  describe('Stop hook sends a reply back (#190)', () => {
+    const sentTexts = (platform: IPlatformAdapter): string[] =>
+      (platform.sendMessage as ReturnType<typeof mock>).mock.calls.map(c => c[1] as string);
+    const stopHook = {
+      type: 'hook_response',
+      hookId: 'h',
+      hookName: 'Stop',
+      hookEvent: 'Stop',
+      outcome: 'success',
+    } as const;
+
+    test('stream: only the rewrite reaches the chat, not the sent-back draft', async () => {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'draft reply' };
+        yield stopHook;
+        yield { type: 'thinking', content: 'shorten it' };
+        yield { type: 'assistant', content: 'rewritten reply' };
+        yield stopHook;
+        yield { type: 'result', sessionId: 'sid' };
+      });
+      const platform = makePlatform();
+      (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+      await handleMessage(platform, 'conv-1', 'hello');
+
+      const texts = sentTexts(platform);
+      expect(texts).toContain('rewritten reply');
+      expect(texts).not.toContain('draft reply');
+    });
+
+    test('stream: text before a tool call is sent before the tool, no hook involved', async () => {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'checking the file' };
+        yield { type: 'tool', toolName: 'Read', toolInput: { file_path: '/x' } };
+        yield { type: 'assistant', content: 'final answer' };
+        yield { type: 'result', sessionId: 'sid' };
+      });
+      const platform = makePlatform();
+      (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+      await handleMessage(platform, 'conv-1', 'hello');
+
+      const texts = sentTexts(platform);
+      const interim = texts.indexOf('checking the file');
+      const toolCall = texts.findIndex(t => t !== 'checking the file' && t.includes('Read'));
+      expect(interim).toBeGreaterThanOrEqual(0);
+      expect(toolCall).toBeGreaterThan(interim);
+      expect(texts).toContain('final answer');
+    });
+
+    test('stream: a passing Stop hook lets the reply through', async () => {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'good reply' };
+        yield stopHook;
+        yield { type: 'result', sessionId: 'sid' };
+      });
+      const platform = makePlatform();
+      (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+      await handleMessage(platform, 'conv-1', 'hello');
+
+      expect(sentTexts(platform)).toContain('good reply');
+    });
+
+    test('stream: held text is still sent when the stream fails', async () => {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'partial reply' };
+        throw new Error('provider exploded');
+      });
+      const platform = makePlatform();
+      (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+      await handleMessage(platform, 'conv-1', 'hello');
+
+      const texts = sentTexts(platform);
+      const reply = texts.indexOf('partial reply');
+      expect(reply).toBeGreaterThanOrEqual(0);
+      // The reply goes out before the error message, not after it.
+      expect(texts.length).toBeGreaterThan(reply + 1);
+    });
+
+    test('batch: the final message leaves out the sent-back draft', async () => {
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'draft reply' };
+        yield stopHook;
+        yield { type: 'assistant', content: 'rewritten reply' };
+        yield stopHook;
+        yield { type: 'result', sessionId: 'sid' };
+      });
+      const platform = makePlatform();
+      (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('batch');
+      await handleMessage(platform, 'conv-1', 'hello');
+
+      const texts = sentTexts(platform);
+      expect(texts.some(t => t.includes('rewritten reply'))).toBe(true);
+      expect(texts.some(t => t.includes('draft reply'))).toBe(false);
+    });
+  });
+
   test('does NOT surface error to user on stop_sequence success (#1425)', async () => {
     // Regression test for #1425: stop_sequence terminations carry is_error:
     // true + subtype: 'success' under the Claude SDK contract. The Claude
@@ -5323,6 +5429,94 @@ describe('stale session ID clearing on error_during_execution', () => {
 });
 
 // ─── Interrupted turn ─────────────────────────────────────────────────────────
+
+describe('handleMessage — suggested next message', () => {
+  beforeEach(() => {
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() =>
+      Promise.resolve(makeConversation({ title: 'Named already' }))
+    );
+    mockGetCodebase.mockReset();
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockSendQuery.mockReset();
+    mockSendQuery.mockImplementation(async function* () {
+      yield { type: 'assistant', content: 'Fixed the bug.' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+    mockTransitionSession.mockResolvedValue(makeSession({ id: 'session-1' }));
+    mockDiscoverWorkflowsWithConfig.mockReset();
+    mockDiscoverWorkflowsWithConfig.mockImplementation(() =>
+      Promise.resolve({ workflows: [], errors: [] })
+    );
+    mockListCodebases.mockReset();
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+    mockLoadConfig.mockImplementation(() => Promise.resolve(makeConfig()));
+    mockSuggestNextMessage.mockClear();
+  });
+
+  function platformThatOffers(): ReturnType<typeof makePlatform> & {
+    offerNextMessage: ReturnType<typeof mock>;
+  } {
+    const platform = makePlatform();
+    (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+    return Object.assign(platform, { offerNextMessage: mock(() => Promise.resolve()) });
+  }
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  }
+
+  test('a plain reply is followed by a suggestion, offered and never sent', async () => {
+    const platform = platformThatOffers();
+    await handleMessage(platform, 'conv-1', 'fix the bug');
+    await settle();
+    expect(mockSuggestNextMessage).toHaveBeenCalledTimes(1);
+    const args = mockSuggestNextMessage.mock.calls[0] as unknown as unknown[];
+    expect(args[2]).toBe('fix the bug');
+    expect(args[3]).toBe('Fixed the bug.');
+    expect(platform.offerNextMessage).toHaveBeenCalledWith('conv-1', {
+      text: 'run the tests',
+      costUsd: 0.0004,
+    });
+    const sent = (platform.sendMessage as ReturnType<typeof mock>).mock.calls.map(
+      (c: unknown[]) => c[1]
+    );
+    expect(sent).not.toContain('run the tests');
+  });
+
+  test('switched off in Settings, nothing is generated', async () => {
+    mockLoadConfig.mockImplementation(() =>
+      Promise.resolve(makeConfig({ chats: { suggestNextMessage: false } }))
+    );
+    const platform = platformThatOffers();
+    await handleMessage(platform, 'conv-1', 'fix the bug');
+    await settle();
+    expect(mockSuggestNextMessage).not.toHaveBeenCalled();
+    expect(platform.offerNextMessage).not.toHaveBeenCalled();
+  });
+
+  test('a platform that cannot show one is never charged for one', async () => {
+    const platform = makePlatform();
+    (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+    await handleMessage(platform, 'conv-1', 'fix the bug');
+    await settle();
+    expect(mockSuggestNextMessage).not.toHaveBeenCalled();
+  });
+
+  test('a stopped turn gets no suggestion', async () => {
+    const controller = new AbortController();
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'partial' };
+      controller.abort();
+    });
+    const platform = Object.assign(platformThatOffers(), {
+      sendDurableNotice: mock(() => Promise.resolve()),
+    });
+    await handleMessage(platform, 'conv-1', 'fix the bug', { abortSignal: controller.signal });
+    await settle();
+    expect(mockSuggestNextMessage).not.toHaveBeenCalled();
+  });
+});
 
 describe('handleMessage — interrupted turn', () => {
   beforeEach(() => {
@@ -5427,6 +5621,51 @@ describe('handleMessage — interrupted turn', () => {
 
     expect(platform.sendDurableNotice).not.toHaveBeenCalled();
     expect(sentTexts(platform).length).toBeGreaterThan(1);
+  });
+});
+
+describe('handleMessage — mid-turn input', () => {
+  beforeEach(() => {
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() => Promise.resolve(makeConversation()));
+    mockGetCodebase.mockReset();
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockSendQuery.mockReset();
+    mockSendQuery.mockImplementation(async function* () {
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+    mockTransitionSession.mockResolvedValue(makeSession({ id: 'session-1' }));
+    mockDiscoverWorkflowsWithConfig.mockReset();
+    mockDiscoverWorkflowsWithConfig.mockImplementation(() =>
+      Promise.resolve({ workflows: [], errors: [] })
+    );
+    mockListCodebases.mockReset();
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+  });
+
+  const inbox = { next: async () => null, landed: () => undefined };
+
+  test('a provider that declares mid-turn input gets the opened inbox', async () => {
+    const providers = await import('@archon/providers');
+    const capsMock = providers.getProviderCapabilities as ReturnType<typeof mock>;
+    capsMock.mockReturnValue({ ...DEFAULT_PROVIDER_CAPS, midTurnInput: true });
+    const open = mock(() => inbox);
+    try {
+      await handleMessage(makePlatform(), 'conv-1', 'Hello', { midTurnInput: { open } });
+      const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(requestOptions.midTurnInput).toBe(inbox);
+    } finally {
+      capsMock.mockReturnValue({ ...DEFAULT_PROVIDER_CAPS });
+    }
+  });
+
+  test('any other provider leaves the inbox closed, so send-now is never offered', async () => {
+    const open = mock(() => inbox);
+    await handleMessage(makePlatform(), 'conv-1', 'Hello', { midTurnInput: { open } });
+    const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
+    expect(open).not.toHaveBeenCalled();
+    expect(requestOptions.midTurnInput).toBeUndefined();
   });
 });
 
@@ -8064,5 +8303,47 @@ describe('handleMessage — provider commands', () => {
     await handleMessage(platform, 'conv-1', '/compact');
     expect(sent().command).toBeUndefined();
     expect(platform.sendDurableNotice.mock.calls[0]?.[1]).toContain('cli missing');
+  });
+});
+
+describe('listChatProviderCommands — missing workspace (#183)', () => {
+  beforeEach(() => {
+    clearProviderCommandCache();
+    mockListCommands.mockReset();
+    mockListCommands.mockImplementation(() => Promise.resolve({ commands: [], withheld: [] }));
+  });
+
+  test('refuses with the recovery advice and spawns nothing when the chat cwd is gone', async () => {
+    // Listing used to spawn the provider in the missing directory: Node reports a
+    // missing cwd as ENOENT, the SDK words it as a missing binary, and an
+    // unobserved rejection in that path took the server down.
+    const conversation = makeConversation({
+      codebase_id: 'codebase-1',
+      cwd: '/worktrees/deleted-branch',
+      isolation_env_id: 'env-gone',
+    });
+    mockGetCodebase.mockReturnValueOnce(Promise.resolve(makeCodebaseForSync()));
+    mockExistsSync.mockImplementation((p: string) => p !== '/worktrees/deleted-branch');
+
+    const listing = listChatProviderCommands(conversation, undefined);
+
+    await expect(listing).rejects.toThrow('working directory no longer exists');
+    await expect(listing).rejects.toThrow('/worktree remove');
+    expect(mockListCommands).not.toHaveBeenCalled();
+  });
+
+  test('lists normally when the chat cwd exists', async () => {
+    const conversation = makeConversation({
+      codebase_id: 'codebase-1',
+      cwd: '/worktrees/live-branch',
+      isolation_env_id: 'env-live',
+    });
+    mockGetCodebase.mockReturnValueOnce(Promise.resolve(makeCodebaseForSync()));
+    mockExistsSync.mockImplementation(() => true);
+
+    await listChatProviderCommands(conversation, undefined);
+
+    expect(mockListCommands).toHaveBeenCalledTimes(1);
+    expect(mockListCommands.mock.calls[0]?.[0]).toBe('/worktrees/live-branch');
   });
 });

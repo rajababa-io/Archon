@@ -70,6 +70,7 @@ const AXES: readonly { key: keyof ProviderCapabilities; label: string }[] = [
   { key: 'sandbox', label: 'Sandbox (`sandbox`)' },
   { key: 'settingSources', label: 'Setting sources (`settingSources`)' },
   { key: 'nativeTools', label: 'In-process native tools' },
+  { key: 'midTurnInput', label: 'Mid-turn input (send a message into a running turn)' },
   { key: 'containerExec', label: 'Container exec (folder-project container backend)' },
   {
     key: 'requiresAllPropertiesRequired',
@@ -129,8 +130,9 @@ export function renderCell(caps: ProviderCapabilities, key: keyof ProviderCapabi
     if (tier === 'best-effort') return 'best-effort';
     return '❌';
   }
-  // sessionFork predates reporting declarations and explicitly defines omission as unsupported.
-  if (caps[key] === undefined && key !== 'sessionFork') return 'Unknown';
+  // sessionFork predates reporting declarations and, like midTurnInput, explicitly
+  // defines omission as unsupported.
+  if (caps[key] === undefined && key !== 'sessionFork' && key !== 'midTurnInput') return 'Unknown';
   return caps[key] ? '✅' : '❌';
 }
 

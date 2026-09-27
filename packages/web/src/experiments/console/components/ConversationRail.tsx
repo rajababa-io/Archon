@@ -27,6 +27,7 @@ import { MenuCheckItem, MenuItem, RowMenu } from './RowMenu';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
 
 import { chooseNeighbourChat } from '../lib/last-chat';
+import { NEW_CHAT_KEY_LABEL } from '../lib/new-chat-key';
 import {
   applyChatOrder,
   clearChatOrder,
@@ -112,6 +113,8 @@ interface ConversationRailProps {
    * working is the server's conversation lock, awaiting belongs to a run.
    */
   awaitingIds?: ReadonlySet<string>;
+  /** Chats with a workflow run executing, off the same runs feed as `awaitingIds`. */
+  runningIds?: ReadonlySet<string>;
   /** Chats the server is watching CI for, from the same health read as `liveIds`. */
   ciWaitingIds?: ReadonlySet<string>;
   /** Which lifecycle scope the list is showing; the rail does not fetch. */
@@ -167,6 +170,7 @@ export function ConversationRail({
   projectId,
   liveIds,
   awaitingIds,
+  runningIds,
   ciWaitingIds,
 }: ConversationRailProps): ReactElement {
   /* No filter box: a permanent text field for one project's chats was chrome.
@@ -470,11 +474,21 @@ export function ConversationRail({
           // still lands in that chat, so waiting buys nothing and makes the
           // project feel single-threaded when it is not.
           disabled={activeConvId === null}
-          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat (C)'}
+          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat'}
+          aria-keyshortcuts="Meta+Shift+O Control+Shift+O"
           className="newchat disabled:cursor-default disabled:opacity-40"
         >
           <Plus className="h-[13px] w-[13px]" />
           New chat
+          {/* Pinned right so the label stays centred; the same pill as ⌘K on
+              the project rail's Search row. */}
+          <span
+            aria-hidden
+            className="absolute right-2 rounded border px-[5px] py-px text-mini text-text-tertiary"
+            style={{ borderColor: 'var(--border-bright)' }}
+          >
+            {NEW_CHAT_KEY_LABEL}
+          </span>
         </button>
       </div>
 
@@ -537,6 +551,7 @@ export function ConversationRail({
             unread,
             done,
             ready,
+            running: runningIds ?? EMPTY_SET,
             waiting: ciWaitingIds ?? EMPTY_SET,
           });
           const shift =

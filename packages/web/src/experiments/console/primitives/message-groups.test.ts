@@ -15,6 +15,7 @@ const msg = (role: MessageRole, timestamp: string, category: string | null = nul
   workflowResult: null,
   thinking: null,
   files: [],
+  midTurn: false,
   usage: null,
 });
 

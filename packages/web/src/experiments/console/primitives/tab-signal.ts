@@ -26,6 +26,7 @@ export function chatStatuses(
   }[],
   working: ReadonlySet<string>,
   runAwaiting: ReadonlySet<string>,
+  runRunning: ReadonlySet<string>,
   ciWaiting: ReadonlySet<string>
 ): Map<string, ChatStatus> {
   const awaiting = askAwaitingIds(conversations);
@@ -36,6 +37,7 @@ export function chatStatuses(
     unread: unreadIds(conversations),
     done: completedIds(conversations),
     ready: readyIds(conversations),
+    running: runRunning,
     waiting: ciWaiting,
   };
   const out = new Map<string, ChatStatus>();

@@ -13,7 +13,7 @@ import { ChatRunsPanel } from '../components/ChatRunsPanel';
 import { ChangesPanel } from '../components/ChangesPanel';
 import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
-import { useConversationSSE } from '../lib/sse';
+import { useConversationSSE, type NextMessageSuggestion } from '../lib/sse';
 import { useLiveChats } from '../lib/live-chats';
 import { usePageVisible } from '../lib/use-page-visible';
 import { useTabSignal } from '../lib/use-tab-signal';
@@ -25,6 +25,7 @@ import {
   chatStatus,
   completedIds,
   readyIds,
+  runningRunIds,
   unreadIds,
   type ChatStatus,
 } from '../primitives/chat-status';
@@ -33,8 +34,10 @@ import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
-import { useKeymap, type Binding } from '../lib/keymap';
+import { modalIsOpen } from '../lib/keymap';
+import { isNewChatKey } from '../lib/new-chat-key';
 import { sentHistory } from '../lib/composer-history';
+import { askAwaitsAnswer } from '../lib/ask-keys';
 import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
@@ -368,12 +371,16 @@ export function ChatPage(): ReactElement {
     }
   }, []);
 
-  useConversationSSE(activeConvId, onLive);
+  // The last finished turn's suggested next message. Belongs to this chat only,
+  // and to the gap between turns: the next turn starting retires it.
+  const [suggestion, setSuggestion] = useState<NextMessageSuggestion | null>(null);
+  useConversationSSE(activeConvId, onLive, setSuggestion);
 
   // Switching chats must not carry one conversation's preview into another.
   useEffect(() => {
     setLiveSegments([]);
     setLiveChecklist([]);
+    setSuggestion(null);
   }, [activeConvId]);
 
   // A turn the server starts on its own — a queued message — begins with the
@@ -382,7 +389,10 @@ export function ChatPage(): ReactElement {
   // every `TaskCreate` among them would be a duplicate item.
   const wasLockedRef = useRef(locked);
   useEffect(() => {
-    if (locked && !wasLockedRef.current) setLiveChecklist([]);
+    if (locked && !wasLockedRef.current) {
+      setLiveChecklist([]);
+      setSuggestion(null);
+    }
     wasLockedRef.current = locked;
   }, [locked]);
 
@@ -411,7 +421,11 @@ export function ChatPage(): ReactElement {
   // looking at. Pushed on the dashboard stream the moment a chat starts or
   // stops (see lib/sse.ts); the hook's own poll is the backstop for what a push
   // cannot reach, shared with every other reader of the same answer.
-  const { ids: liveIds, tools: liveTools, ciWaiting } = useLiveChats();
+  const { ids: liveIds, tools: liveTools, ciWaiting, ciWaitingSince } = useLiveChats();
+  // Only the CI alarm is read from it. The settings page owns the same cache
+  // key, so a saved change reaches this chip without a reload.
+  const { data: config } = useEntity(K.config, skill.getConfig);
+  const ciAlarmMinutes = config?.config.chats?.ciWaitAlarmMinutes;
 
   /**
    * Chats whose run is paused on an approval.
@@ -429,6 +443,8 @@ export function ChatPage(): ReactElement {
         : skill.listRuns({ codebaseId: projectId, limit: skill.RUN_LIMIT })
   );
   const awaitingIds = useMemo(() => awaitingInputIds(runFeed?.runs ?? []), [runFeed?.runs]);
+  // The same feed, for chats whose run is moving rather than asking.
+  const runningIds = useMemo(() => runningRunIds(runFeed?.runs ?? []), [runFeed?.runs]);
 
   /**
    * Is THIS chat working?
@@ -455,19 +471,20 @@ export function ChatPage(): ReactElement {
     if (newChatRequests > 0) turn.controlRef.current?.focus();
   }, [newChatRequests, turn.controlRef]);
 
-  const newChatBindings = useMemo<readonly Binding[]>(
-    () => [
-      {
-        keys: ['c'],
-        label: 'Start a new chat',
-        run: (): void => {
-          selectConversationRef.current(null);
-        },
-      },
-    ],
-    []
-  );
-  useKeymap({ bindings: newChatBindings, enabled: projectId !== undefined });
+  // ⌘⇧O starts a new chat. A window listener, not the keymap: the keymap is
+  // off while the composer has focus, which on this page is nearly always.
+  useEffect(() => {
+    if (projectId === undefined) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (!isNewChatKey(e) || modalIsOpen()) return;
+      e.preventDefault();
+      selectConversationRef.current(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return (): void => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [projectId]);
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP
@@ -514,8 +531,8 @@ export function ChatPage(): ReactElement {
   // The tab badge and the opt-in notification, read off every chat in the rail
   // by the rail's own rules. Clicking a notification opens its chat here.
   const railStatuses = useMemo(
-    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, ciWaiting),
-    [conversations, railLiveIds, awaitingIds, ciWaiting]
+    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, runningIds, ciWaiting),
+    [conversations, railLiveIds, awaitingIds, runningIds, ciWaiting]
   );
   const railTitles = useMemo(
     () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
@@ -534,6 +551,7 @@ export function ChatPage(): ReactElement {
           unread,
           done: doneIds,
           ready: readySet,
+          running: runningIds,
           waiting: ciWaiting,
         });
 
@@ -747,6 +765,7 @@ export function ChatPage(): ReactElement {
               timestamp: now,
               toolCalls: [],
               files: pendingUser.files,
+              midTurn: false,
               error: null,
               category: null,
               dispatch: null,
@@ -769,6 +788,7 @@ export function ChatPage(): ReactElement {
           timestamp: now,
           toolCalls: [],
           files: [],
+          midTurn: false,
           error: null,
           category: seg.category,
           dispatch: null,
@@ -782,6 +802,17 @@ export function ChatPage(): ReactElement {
 
   // Cheap enough to derive per render; the composer re-renders with the page anyway.
   const sent = sentHistory(renderedMessages);
+  const askWaiting = !working && askAwaitsAnswer(renderedMessages);
+
+  /** Up in an empty message box: the newest answerable card takes the keyboard. */
+  const reachAsk = (): void => {
+    const cards = scrollRef.current?.querySelectorAll<HTMLElement>('[data-ask-live]');
+    cards?.[cards.length - 1]?.focus();
+  };
+  /** Escape in an ask card: back to the message box. */
+  const leaveAsk = useCallback((): void => {
+    turn.controlRef.current?.focus();
+  }, [turn.controlRef]);
 
   onSendRef.current = onSend;
 
@@ -832,6 +863,7 @@ export function ChatPage(): ReactElement {
         openCount={counts.open}
         liveIds={railLiveIds}
         awaitingIds={awaitingIds}
+        runningIds={runningIds}
         ciWaitingIds={ciWaiting}
         activeConvId={activeConvId}
         onSelect={selectConversation}
@@ -860,7 +892,11 @@ export function ChatPage(): ReactElement {
                 />
               ) : (
                 <StreamContextProvider
-                  value={{ runStartedAt: null, assistant: activeConversation?.assistant ?? null }}
+                  value={{
+                    runStartedAt: null,
+                    assistant: activeConversation?.assistant ?? null,
+                    leaveAsk,
+                  }}
                 >
                   <ChatStream
                     messages={renderedMessages}
@@ -874,6 +910,10 @@ export function ChatPage(): ReactElement {
                     <ChatStatusStrip
                       status={status}
                       since={workingSince}
+                      ciSince={
+                        activeConvId === null ? null : (ciWaitingSince[activeConvId] ?? null)
+                      }
+                      ciAlarmMinutes={ciAlarmMinutes}
                       lastActivityAt={lastActivityAt}
                       trace={turnTrace}
                       /* What it is doing, from the server's own map rather
@@ -903,6 +943,8 @@ export function ChatPage(): ReactElement {
                     busyIds={turn.busyIds}
                     onEdit={turn.edit}
                     onRemove={turn.remove}
+                    steerable={turn.steerable}
+                    onSteer={turn.steer}
                   />
                 </StreamContextProvider>
               )}
@@ -951,10 +993,12 @@ export function ChatPage(): ReactElement {
           onStop={activeConvId === null ? undefined : turn.stop}
           stopping={turn.stopping}
           onPullBack={turn.pullBackLast}
+          onReachAsk={askWaiting ? reachAsk : undefined}
           controlRef={turn.controlRef}
           draftKey={draftKey}
           history={sent}
           projectId={projectId}
+          suggestion={working ? null : suggestion}
           chat={
             activeConversation !== undefined
               ? { conversationId: activeConversation.id, provider: activeConversation.assistant }

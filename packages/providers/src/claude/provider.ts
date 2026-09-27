@@ -52,6 +52,7 @@ import { parseClaudeConfig } from './config';
 import { CLAUDE_CAPABILITIES } from './capabilities';
 import { buildContainerSpawn } from './container-spawn';
 import { resolveClaudeBinaryPath, pathKind } from './binary-resolver';
+import { createMidTurnPrompt, tapEvents } from './mid-turn-input';
 import { buildArchonMcpServer, ARCHON_TOOL_SERVER } from './native-tools';
 import {
   CLAUDE_LOCAL_PROBE_COMMAND,
@@ -842,7 +843,11 @@ function buildBaseClaudeOptions(
       ? { executableArgs: ['--no-env-file'] }
       : {}),
     ...spawnOverride,
-    extraArgs: { 'thinking-display': THINKING_DISPLAY },
+    // Thinking switched off entirely has nothing to display, and the SDK's
+    // `thinking` option is the only switch that turns it off.
+    ...(requestOptions?.thinking === 'off'
+      ? { thinking: { type: 'disabled' as const } }
+      : { extraArgs: { 'thinking-display': THINKING_DISPLAY } }),
     env,
     model: requestOptions?.model ?? assistantDefaults.model,
     abortController: controller,
@@ -1612,15 +1617,23 @@ export class ClaudeProvider implements IAgentProvider {
         getLog().debug({ cwd, attempt }, 'starting_new_session');
       }
 
+      // A chat turn that can be handed messages while it runs streams its
+      // prompt; every other query keeps the plain string. Fresh per attempt: a
+      // message taken by a failed attempt never landed, so its sender still
+      // holds it.
+      // A provider command goes as the bare slash command the CLI runs, not as the prompt.
+      const promptText = requestOptions?.command
+        ? claudeCommandPrompt(requestOptions.command.name, requestOptions.command.args)
+        : prompt;
+      const midTurn =
+        requestOptions?.midTurnInput === undefined
+          ? undefined
+          : createMidTurnPrompt(promptText, requestOptions.midTurnInput);
+
       try {
-        // 4. Run query with first-event timeout protection. A provider command
-        //    goes as the bare slash command the CLI runs, not as the prompt.
-        const rawEvents = query({
-          prompt: requestOptions?.command
-            ? claudeCommandPrompt(requestOptions.command.name, requestOptions.command.args)
-            : prompt,
-          options,
-        });
+        // 4. Run query with first-event timeout protection
+        const sdkQuery = query({ prompt: midTurn?.input ?? promptText, options });
+        const rawEvents = midTurn === undefined ? sdkQuery : tapEvents(sdkQuery, midTurn.observe);
         const timeoutMs = getFirstEventTimeoutMs();
         const diagnostics = buildFirstEventHangDiagnostics(
           options.env as Record<string, string>,
@@ -1632,10 +1645,16 @@ export class ClaudeProvider implements IAgentProvider {
         // Claude resumes-or-errors: an invalid resume id throws (and is
         // retried/surfaced), so reaching the result stream means the prior
         // session was restored. Hence `true` whenever a resume was requested.
-        yield* withResumedOutcome(
-          streamClaudeMessages(events, toolResultQueue, options.effort),
-          resumedOutcome(resumeSessionId, true)
-        );
+        try {
+          yield* withResumedOutcome(
+            streamClaudeMessages(events, toolResultQueue, options.effort),
+            resumedOutcome(resumeSessionId, true)
+          );
+        } finally {
+          // However the attempt ends — result, error, abort, or a consumer that
+          // stopped reading — nothing more may be written into it.
+          midTurn?.end();
+        }
         return;
       } catch (error) {
         const err = error as Error;
@@ -1711,6 +1730,13 @@ export class ClaudeProvider implements IAgentProvider {
     try {
       const q = query({ prompt: CLAUDE_LOCAL_PROBE_COMMAND, options: sdkOptions });
       const supported = q.supportedCommands();
+      // Observed now, because the loop below can throw first (a launch that
+      // fails, an abort) and then nothing ever awaits `supported`. Its rejection
+      // would go unhandled, and the server treats an unhandled rejection as fatal
+      // — one chat's failed listing took the whole process down (#183). The loop's
+      // own error is what this call reports; on the success path `await supported`
+      // below still surfaces a rejection of its own.
+      supported.catch(() => undefined);
       let init: ClaudeInitCommandFields | undefined;
       for await (const message of q) {
         if (message.type === 'system' && message.subtype === 'init') {

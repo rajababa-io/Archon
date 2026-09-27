@@ -12,8 +12,12 @@ describe('projectState', () => {
     expect(projectState({ ...base, workingChats: 1 }).status).toBe('working');
   });
 
-  test('a run executing → working', () => {
-    expect(projectState({ ...base, running: 1 }).status).toBe('working');
+  test("a run executing with no chat mid-turn → running, the rail's word for it", () => {
+    expect(projectState({ ...base, running: 1 }).status).toBe('running');
+  });
+
+  test('a chat mid-turn outranks a run carrying on without one', () => {
+    expect(projectState({ ...base, running: 1, workingChats: 1 }).status).toBe('working');
   });
 
   test('awaiting outranks working — the half that needs a human wins', () => {

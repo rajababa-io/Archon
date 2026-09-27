@@ -7,6 +7,11 @@ describe('resolveChatsConfig', () => {
     expect(c.nudgeAt).toBeCloseTo(0.4);
     expect(c.handoffAt).toBeCloseTo(0.5);
     expect(c.autoHandoff).toBe(true);
+    expect(c.suggestNextMessage).toBe(true);
+  });
+
+  test('suggested next messages can be switched off', () => {
+    expect(resolveChatsConfig({ suggestNextMessage: false }).suggestNextMessage).toBe(false);
   });
 
   test('percentages become fractions', () => {
@@ -54,5 +59,19 @@ describe('resolveChatsConfig', () => {
     expect(c.nudgeAt).toBeCloseTo(c.nudgeAtPercent / 100);
     expect(c.handoffAtPercent).toBe(50);
     expect(c.handoffAt).toBeCloseTo(c.handoffAtPercent / 100);
+  });
+
+  test('the CI wait alarm defaults to 20 minutes and keeps a usable value', () => {
+    expect(resolveChatsConfig(undefined).ciWaitAlarmMinutes).toBe(20);
+    expect(resolveChatsConfig({ ciWaitAlarmMinutes: 35 }).ciWaitAlarmMinutes).toBe(35);
+  });
+
+  test('a CI alarm that could never show, or is not whole minutes, falls back to the default', () => {
+    // Past 24 hours the watch has already given up, so the alarm can never
+    // appear; zero would mark every wait overdue the moment it starts.
+    for (const bad of [0, -5, 12.5, Number.NaN, 24 * 60 + 1]) {
+      expect(resolveChatsConfig({ ciWaitAlarmMinutes: bad }).ciWaitAlarmMinutes).toBe(20);
+    }
+    expect(resolveChatsConfig({ ciWaitAlarmMinutes: 24 * 60 }).ciWaitAlarmMinutes).toBe(24 * 60);
   });
 });
