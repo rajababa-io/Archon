@@ -95,7 +95,7 @@ export interface ChatStatusSets {
   /**
    * Chats where the agent has declared the work finished and no human has
    * answered. Ranked BELOW `done` — a human's judgement settles the question
-   * the claim was asking — and ABOVE `idle`, because "someone should decide" is
+   * the claim was asking — and ABOVE `unread` and `idle`, because "someone should decide" is
    * strictly more than "nothing is pending".
    */
   ready: ReadonlySet<string>;
@@ -109,7 +109,8 @@ export interface ChatStatusSets {
 }
 
 /**
- * Exclusive and ordered: awaiting, working, unread, done, ready, waiting, idle.
+ * Exclusive and ordered: awaiting, working, ready, unread, done, waiting, idle
+ * — except that `done` always outranks `ready`.
  *
  * The two live states come first because they are about right now, and right
  * now outranks a claim about the work as a whole. Unread sits under both: a
@@ -126,13 +127,19 @@ export interface ChatStatusSets {
  * unanswered poll would have read as a finished turn — machinery whose only
  * job was to stop a signal lying, which is a signal worth deleting instead.
  *
- * `ready` sits between done and idle. Under `done` because the two answer the
- * same question and the human's answer is the one that settles it — a chat the
- * server has been told is finished must not still be asking. Over `idle`
- * because a claim waiting on a decision is a thing to act on and "nothing is
- * pending" is not. It is also under `unread`, for the same reason `done` is: a
- * chat that has spoken since you looked is worth reading before it is worth
- * filing.
+ * `ready` sits above unread. The agent claiming its work landed IS the new
+ * thing to look at, and the decision it asks for is the reason to open the
+ * chat; showing amber instead hid which chats were finished until each one was
+ * opened (#181). Under both live states for the same reason everything else
+ * is. Over `idle` because a claim waiting on a decision is a thing to act on
+ * and "nothing is pending" is not.
+ *
+ * `done` still outranks `ready`, which is why `ready` is checked only for a
+ * chat that is not done: the two answer the same question and the human's
+ * answer settles it — a chat the server has been told is finished must not
+ * still be asking. The exception is the reason for the `!done` guard, rather
+ * than simply ranking done above both: that would put done over unread too,
+ * and a closed chat that has since spoken is worth looking at again.
  *
  * `waiting` replaces idle and nothing else. Under `working` because a turn in
  * flight is the chat itself moving, where waiting is the server holding a
@@ -145,9 +152,9 @@ export interface ChatStatusSets {
 export function chatStatus(conversationId: string, sets: ChatStatusSets): ChatStatus {
   if (sets.awaiting.has(conversationId)) return 'awaiting';
   if (sets.working.has(conversationId)) return 'working';
+  if (sets.ready.has(conversationId) && !sets.done.has(conversationId)) return 'ready';
   if (sets.unread.has(conversationId)) return 'unread';
   if (sets.done.has(conversationId)) return 'done';
-  if (sets.ready.has(conversationId)) return 'ready';
   if (sets.waiting.has(conversationId)) return 'waiting';
   return 'idle';
 }
