@@ -1933,6 +1933,29 @@ describe('ClaudeProvider', () => {
       }
     });
 
+    // The console shows the rung the turn ran on, so the result reports the
+    // CLAMPED value the SDK was handed — `ultra` ran as `max` — and nothing
+    // when the SDK's own default applied.
+    test('reports the applied effort on the result, clamped, or omits it', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'result', session_id: 'sid' };
+      });
+
+      const clamped = [];
+      for await (const chunk of client.sendQuery('test', '/tmp', undefined, {
+        nodeConfig: { effort: 'ultra' },
+      })) {
+        clamped.push(chunk);
+      }
+      expect(clamped[0]).toMatchObject({ type: 'result', appliedEffort: 'max' });
+
+      const unset = [];
+      for await (const chunk of client.sendQuery('test', '/tmp')) {
+        unset.push(chunk);
+      }
+      expect(unset[0]).not.toHaveProperty('appliedEffort');
+    });
+
     test('passes maxBudgetUsd to SDK', async () => {
       mockQuery.mockImplementation(async function* () {
         yield { type: 'result', session_id: 'sid' };

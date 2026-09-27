@@ -457,6 +457,47 @@ export async function getCurrentBranch(
   }
 }
 
+/** The branch a checkout is on and whether it holds uncommitted work. */
+export interface CheckoutStatus {
+  /** The checked-out branch, or null on a detached HEAD. */
+  branch: BranchName | null;
+  /** True when anything is modified, staged, or untracked. */
+  dirty: boolean;
+}
+
+/**
+ * Read a checkout's branch and uncommitted state in one `git status` call.
+ *
+ * Porcelain v2 rather than `symbolic-ref` plus a second `status`: it is git's
+ * machine format for exactly this question, and one call means the branch and
+ * the dirty flag describe the same instant. Headers start with `#`; every
+ * other line is a changed, unmerged, or untracked path.
+ *
+ * Throws on any git failure. Unlike `hasUncommittedChanges`, which assumes
+ * dirty to protect a cleanup, this feeds a display — the caller decides what
+ * an unreadable checkout shows, and "unknown" is not "dirty".
+ */
+export async function readCheckoutStatus(
+  workingPath: RepoPath | WorktreePath
+): Promise<CheckoutStatus> {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['-C', workingPath, 'status', '--porcelain=v2', '--branch'],
+    { timeout: 10000 }
+  );
+  let branch: BranchName | null = null;
+  let dirty = false;
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('# branch.head ')) {
+      const head = line.slice('# branch.head '.length).trim();
+      branch = head === '(detached)' || head === '' ? null : toBranchName(head);
+    } else if (line.length > 0 && !line.startsWith('#')) {
+      dirty = true;
+    }
+  }
+  return { branch, dirty };
+}
+
 /**
  * Read the checked-out branch for an ownership decision.
  *

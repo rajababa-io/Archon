@@ -7,7 +7,7 @@ import { chooseOpenChat, readLastChat, writeLastChat } from '../lib/last-chat';
 import { readOpenChatRequest } from '../lib/open-chat';
 import { ConversationRail, type ChatScope } from '../components/ConversationRail';
 import { ChatStatusStrip } from '../components/ChatStatusStrip';
-import { ContextBar } from '../components/ContextBar';
+import { StatusDetails } from '../components/StatusDetails';
 import { ChatRunsPanel } from '../components/ChatRunsPanel';
 import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
@@ -849,7 +849,13 @@ export function ChatPage(): ReactElement {
                       /* On the strip's own line, because how full the chat is
                          is the other half of what it is doing: whether to keep
                          going here or start somewhere fresh. */
-                      trailing={<ContextBar messages={renderedMessages} />}
+                      trailing={
+                        <StatusDetails
+                          conversationId={activeConvId}
+                          messages={renderedMessages}
+                          turnKey={`${String(working)}:${renderedMessages.at(-1)?.id ?? ''}`}
+                        />
+                      }
                     />
                   ) : null}
                   <QueuedMessages

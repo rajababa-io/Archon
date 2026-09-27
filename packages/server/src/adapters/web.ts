@@ -2,8 +2,8 @@
  * Web platform adapter implementing IPlatformAdapter with SSE stream management.
  * Bridge between the orchestrator and the React frontend via Server-Sent Events.
  */
-import type { IWebPlatformAdapter, MessageMetadata } from '@archon/core';
-import type { MessageChunk, TokenUsage } from '@archon/providers/types';
+import type { IWebPlatformAdapter, MessageMetadata, TurnResultInfo } from '@archon/core';
+import type { MessageChunk } from '@archon/providers/types';
 import { addMessage, attachUsageToLatestAssistantMessage } from '@archon/core/db/messages';
 import { contextWindowFor } from '@archon/core/orchestrator/context-window';
 import { createLogger } from '@archon/paths';
@@ -164,16 +164,7 @@ export class WebAdapter implements IWebPlatformAdapter {
    *
    * Never throws. A missing reading is a missing gauge, not a failed turn.
    */
-  async sendResultFooter(
-    conversationId: string,
-    info: {
-      cost?: number;
-      tokens?: TokenUsage;
-      contextTokens?: number;
-      stopReason?: string;
-      model?: string;
-    }
-  ): Promise<void> {
+  async sendResultFooter(conversationId: string, info: TurnResultInfo): Promise<void> {
     if (!info.tokens) return;
     try {
       await this.persistence.flush(conversationId);
@@ -189,6 +180,10 @@ export class WebAdapter implements IWebPlatformAdapter {
         ...(cacheWrite === undefined ? {} : { cacheWrite }),
         ...(info.cost === undefined ? {} : { costUsd: info.cost }),
         ...(info.model === undefined ? {} : { model: info.model }),
+        // What the provider was handed, after clamping — absent when it was
+        // left to the SDK's default, so the console shows nothing rather than
+        // a rung it cannot vouch for.
+        ...(info.effort === undefined ? {} : { effort: info.effort }),
         // Resolved here so the console divides rather than looks up. An
         // unknown model writes no window, and the bar then declines to claim
         // a percentage at all.

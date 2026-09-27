@@ -1076,6 +1076,62 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/conversations/{id}/checkout': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The branch and folder a conversation's agent edits, and whether it is dirty */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Current checkout state; unknown fields are null */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ConversationCheckoutResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/conversations/{id}/read': {
     parameters: {
       query?: never;
@@ -4544,6 +4600,13 @@ export interface components {
     ConversationLockResponse: {
       conversationId: string;
       locked: boolean;
+    };
+    ConversationCheckoutResponse: {
+      path: string | null;
+      /** @enum {string|null} */
+      location: 'live' | 'worktree' | null;
+      branch: string | null;
+      dirty: boolean | null;
     };
     CreateConversationResponse: {
       conversationId: string;

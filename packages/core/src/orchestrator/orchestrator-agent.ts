@@ -18,8 +18,9 @@ import type {
   Codebase,
   AttachedFile,
   WorkflowRequest,
+  TurnResultInfo,
 } from '../types';
-import type { SendQueryOptions, TokenUsage } from '@archon/providers/types';
+import type { SendQueryOptions } from '@archon/providers/types';
 import { ConversationNotFoundError, isWebAdapter } from '../types';
 import * as db from '../db/conversations';
 import * as codebaseDb from '../db/codebases';
@@ -2891,15 +2892,7 @@ async function handleStreamMode(
   let newSessionId: string | undefined;
   let commandDetected = false;
   let commandFullyParsed = false;
-  let lastResult:
-    | {
-        cost?: number;
-        tokens?: TokenUsage;
-        contextTokens?: number;
-        stopReason?: string;
-        model?: string;
-      }
-    | undefined;
+  let lastResult: TurnResultInfo | undefined;
 
   for await (const msg of aiClient.sendQuery(
     fullPrompt,
@@ -3025,8 +3018,11 @@ async function handleStreamMode(
         // Carried because a token count without the model it was spent on
         // cannot be turned into "how full is this context" — the denominator
         // is the model's window, and only the provider knows which model
-        // actually answered.
-        model: msg.resolvedModel?.id,
+        // actually answered. A provider that names no model in its result
+        // falls back to the one it was handed, which is still a fact about
+        // this turn rather than a setting the console would have to guess.
+        model: msg.resolvedModel?.id ?? msg.requestedModel,
+        effort: msg.appliedEffort,
       };
     }
   }
@@ -3145,15 +3141,7 @@ async function handleBatchMode(
   let newSessionId: string | undefined;
   let commandDetected = false;
   let commandFullyParsed = false;
-  let lastResult:
-    | {
-        cost?: number;
-        tokens?: TokenUsage;
-        contextTokens?: number;
-        stopReason?: string;
-        model?: string;
-      }
-    | undefined;
+  let lastResult: TurnResultInfo | undefined;
 
   for await (const msg of aiClient.sendQuery(
     fullPrompt,
@@ -3277,8 +3265,11 @@ async function handleBatchMode(
         // Carried because a token count without the model it was spent on
         // cannot be turned into "how full is this context" — the denominator
         // is the model's window, and only the provider knows which model
-        // actually answered.
-        model: msg.resolvedModel?.id,
+        // actually answered. A provider that names no model in its result
+        // falls back to the one it was handed, which is still a fact about
+        // this turn rather than a setting the console would have to guess.
+        model: msg.resolvedModel?.id ?? msg.requestedModel,
+        effort: msg.appliedEffort,
       };
     }
 
@@ -3594,15 +3585,7 @@ async function handoffBlocker(
 async function maybeSendResultFooter(
   platform: IPlatformAdapter,
   conversationId: string,
-  info:
-    | {
-        cost?: number;
-        tokens?: TokenUsage;
-        contextTokens?: number;
-        stopReason?: string;
-        model?: string;
-      }
-    | undefined
+  info: TurnResultInfo | undefined
 ): Promise<void> {
   if (!info) return;
   if (info.cost === undefined && info.tokens === undefined) return;

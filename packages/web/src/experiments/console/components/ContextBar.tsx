@@ -4,13 +4,13 @@ import {
   formatTokens,
   occupancyPercent,
   occupancyTone,
-  shortModel,
 } from '../primitives/context-window';
 import type { Message } from '../primitives/message';
 
 /**
- * How full this chat's context is, said out loud: used, total, and the model
- * whose window that total belongs to.
+ * How full this chat's context is, said out loud: used and total. The model
+ * whose window that total belongs to is named beside it by `StatusDetails`,
+ * which shows it even for a provider that reports no occupancy.
  *
  * A bare percentage was not enough to act on. `81%` of what, on which model,
  * is the difference between "wrap up soon" and "this is fine" — and the same
@@ -31,7 +31,7 @@ export function ContextBar({ messages }: { messages: readonly Message[] }): Reac
   const reading = contextReading(messages);
   if (reading === null) return null;
 
-  const { tokens, window, fraction, model, costUsd } = reading;
+  const { tokens, window, fraction, model } = reading;
   // The BAR clamps, the NUMBER does not. A percentage capped at 100 lets a
   // wrong denominator hide: this read "567k/200k 100%" for a conversation that
   // was 283% of the window it had been given, and the cap is what made that
@@ -45,7 +45,6 @@ export function ContextBar({ messages }: { messages: readonly Message[] }): Reac
       : `${tokens.toLocaleString()} of ${window.toLocaleString()} tokens in context`,
     model === null ? null : model,
     window === null ? 'model window unknown — no percentage claimed' : null,
-    costUsd === null ? null : `$${costUsd.toFixed(2)} so far`,
   ]
     .filter((s): s is string => s !== null)
     .join(' · ');
@@ -72,9 +71,6 @@ export function ContextBar({ messages }: { messages: readonly Message[] }): Reac
         {window === null ? '' : `/${formatTokens(window)}`}
         {pct === null ? '' : ` ${String(occupancyPercent(pct))}%`}
       </span>
-      {model === null ? null : (
-        <span className="truncate text-text-tertiary">{shortModel(model)}</span>
-      )}
     </span>
   );
 }

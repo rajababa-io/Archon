@@ -92,6 +92,22 @@ export const conversationLockResponseSchema = z
   .openapi('ConversationLockResponse');
 
 /**
+ * GET /api/conversations/:id/checkout response — where the chat's agent edits.
+ *
+ * Every field is nullable and null means "not known", never a default: the
+ * console hides an unknown value rather than showing a clean tree or the live
+ * checkout it cannot vouch for.
+ */
+export const conversationCheckoutResponseSchema = z
+  .object({
+    path: z.string().nullable(),
+    location: z.enum(['live', 'worktree']).nullable(),
+    branch: z.string().nullable(),
+    dirty: z.boolean().nullable(),
+  })
+  .openapi('ConversationCheckoutResponse');
+
+/**
  * POST /api/conversations/:id/interrupt response.
  *
  * `stopped` — the running turn received the abort and has ended; the lock is

@@ -107,6 +107,28 @@ function resolveModelReasoningEffort(
 }
 
 /**
+ * Stamp a completed turn's result with the model and effort it ran under.
+ *
+ * Codex's result carries token counts only, so these are the values handed to
+ * `startThread`/`resumeThread` — and a turn that completed ran on them, since
+ * the CLI refuses a model it cannot serve rather than substituting one. An
+ * unset value stays absent: Codex then applies its own config default, which
+ * it does not report.
+ */
+function withAppliedSettings(
+  chunk: Extract<MessageChunk, { type: 'result' }>,
+  threadOptions: ThreadOptions
+): MessageChunk {
+  return {
+    ...chunk,
+    ...(threadOptions.model === undefined ? {} : { requestedModel: threadOptions.model }),
+    ...(threadOptions.modelReasoningEffort === undefined
+      ? {}
+      : { appliedEffort: threadOptions.modelReasoningEffort }),
+  };
+}
+
+/**
  * Build thread options for Codex SDK
  */
 function buildThreadOptions(
@@ -1081,7 +1103,9 @@ export class CodexProvider implements IAgentProvider {
                 resumedOutcome(resumeSessionId, !sessionResumeFailed && attempt === 0)
               )) {
                 providerEventEmitted = true;
-                yield chunk;
+                yield chunk.type === 'result' && chunk.isError !== true
+                  ? withAppliedSettings(chunk, threadOptions)
+                  : chunk;
               }
               return;
             } catch (error) {
