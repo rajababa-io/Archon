@@ -659,6 +659,7 @@
 /* A dashed row, not a button in a header. It sits where a new chat will
    appear, so the affordance is in the place the result shows up. */
 .newchat {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
