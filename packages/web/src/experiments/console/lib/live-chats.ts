@@ -33,7 +33,7 @@
 
 import { useEffect, useMemo } from 'react';
 import * as skill from '../skills';
-import type { ActiveChats, ActiveTool, DeployStatus } from '../skills/activeChats';
+import type { ActiveChats, ActiveTool, DeployDrain, DeployStatus } from '../skills/activeChats';
 import { invalidate, useEntity } from '../store/cache';
 import { K } from '../store/keys';
 
@@ -70,6 +70,8 @@ export interface LiveChats {
    * reads this.
    */
   deploy?: DeployStatus;
+  /** What a drain for a deploy is holding, and when it pauses it. Absent outside a drain. */
+  drain?: DeployDrain;
 }
 
 export function useLiveChats(): LiveChats {
@@ -99,6 +101,7 @@ export function useLiveChats(): LiveChats {
       ciWaitingSince: data?.ciWaitingSince ?? {},
       known: data !== undefined,
       ...(data?.deploy ? { deploy: data.deploy } : {}),
+      ...(data?.drain ? { drain: data.drain } : {}),
     }),
     [data]
   );

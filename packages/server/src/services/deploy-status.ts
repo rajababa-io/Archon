@@ -45,8 +45,11 @@ import { getArchonHome } from '@archon/paths/archon-paths';
 /**
  * The verdicts `record()` can write. Anything else is a history line this reader
  * does not understand, and is reported as no verdict rather than as a new one.
+ *
+ * `HELD` is a request the host set aside without starting it: a merge-sourced
+ * request while the project's Deploy on Merge is off (#211). It opens no log.
  */
-export const DEPLOY_VERDICTS = ['OK', 'FAILED', 'REFUSED', 'KILLED'] as const;
+export const DEPLOY_VERDICTS = ['OK', 'FAILED', 'REFUSED', 'KILLED', 'HELD'] as const;
 export type DeployVerdict = (typeof DEPLOY_VERDICTS)[number];
 
 /** One line of `deploy-history`. */
@@ -144,19 +147,37 @@ function isVerdict(word: string): word is DeployVerdict {
  * one, which is the confident wrong answer this whole module exists to avoid.
  */
 export function parseLastAttempt(history: string): DeployAttempt | undefined {
-  const lines = stripAnsi(history)
+  const lines = historyLines(history);
+  const last = lines.at(-1);
+  return last === undefined ? undefined : parseHistoryLine(last);
+}
+
+function historyLines(history: string): string[] {
+  return stripAnsi(history)
     .split('\n')
     .map(line => line.trimEnd())
     .filter(line => line !== '');
-  const last = lines.at(-1);
-  if (last === undefined) return undefined;
+}
 
-  const match = HISTORY_LINE.exec(last);
+function parseHistoryLine(line: string): DeployAttempt | undefined {
+  const match = HISTORY_LINE.exec(line);
   if (!match) return undefined;
   const [, at, verdict, sha, reason] = match;
   if (at === undefined || verdict === undefined || sha === undefined) return undefined;
   if (!isVerdict(verdict)) return undefined;
   return { at, verdict, sha, ...(reason !== undefined && reason !== '' ? { reason } : {}) };
+}
+
+/**
+ * Every line of `deploy-history` this reader understands, oldest first. Lines it
+ * cannot parse are skipped here — unlike {@link parseLastAttempt}, a caller of
+ * this is looking FOR a particular attempt, and an unreadable line is simply not
+ * that attempt.
+ */
+export function parseAttempts(history: string): DeployAttempt[] {
+  return historyLines(history)
+    .map(parseHistoryLine)
+    .filter((attempt): attempt is DeployAttempt => attempt !== undefined);
 }
 
 /**
@@ -286,11 +307,17 @@ export function deriveDeployStatus(files: DeployFileContents): DeployStatus {
       ? undefined
       : parseDeployLog(files.logHead, files.logTail);
 
+  // Any verdict for this log's commit recorded after it started, not only the
+  // last line: a request HELD or REFUSED after an attempt finished appends a line
+  // about a different commit, and must not make the finished attempt look live
+  // again. HELD itself never ends an attempt — it is written without one.
+  const startedAt = log?.startedAt;
   const finished =
-    log?.startedAt !== undefined &&
-    last !== undefined &&
-    last.sha === log.sha &&
-    last.at >= log.startedAt;
+    startedAt !== undefined &&
+    files.history !== null &&
+    parseAttempts(files.history).some(
+      attempt => attempt.verdict !== 'HELD' && attempt.sha === log?.sha && attempt.at >= startedAt
+    );
   const inFlight = log?.startedAt !== undefined && !finished;
 
   // An attempt already running outranks a pending request, because it is the
@@ -310,7 +337,9 @@ export function deriveDeployStatus(files: DeployFileContents): DeployStatus {
     };
   }
 
-  const pending = files.request?.trim();
+  // The request's first line is the commit; a second line, when present, is who
+  // asked (`merge` or `manual <id>`) and is the host's business, not this one's.
+  const pending = files.request?.trim().split('\n')[0]?.trim();
   if (pending !== undefined && pending !== '') {
     return {
       phase: 'requested',

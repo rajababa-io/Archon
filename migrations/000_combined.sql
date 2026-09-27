@@ -25,6 +25,8 @@
 --   9. remote_agent_user_provider_keys
 --   10. remote_agent_user_ai_prefs
 --   11. remote_agent_parked_work
+--   12. remote_agent_project_deploy
+--   13. remote_agent_deploy_events
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -766,6 +768,32 @@ CREATE TABLE IF NOT EXISTS remote_agent_parked_work (
 COMMENT ON TABLE remote_agent_parked_work IS
   'Chat turns, queued messages and workflow runs a deploy stopped before replacing the container. resumed_at is set exactly once, by whichever process claims the row to resume it.';
 
+-- How a project deploys, and whether merges deploy on their own (#211). No row
+-- means the project has no deploy. See migrations/038_project_deploy.sql.
+CREATE TABLE IF NOT EXISTS remote_agent_project_deploy (
+  codebase_id UUID PRIMARY KEY REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+  method VARCHAR(32) NOT NULL,
+  branch VARCHAR(255) NOT NULL,
+  deploy_on_merge BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_by TEXT
+);
+
+COMMENT ON TABLE remote_agent_project_deploy IS
+  'How a project deploys and whether merges deploy on their own. No row means the project has no deploy. deploy_on_merge is changed only by a person in the console.';
+
+CREATE TABLE IF NOT EXISTS remote_agent_deploy_events (
+  id UUID PRIMARY KEY,
+  codebase_id UUID NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+  kind VARCHAR(32) NOT NULL CHECK (kind IN ('toggle_on', 'toggle_off', 'deploy_requested', 'deploy_cancelled')),
+  actor TEXT,
+  sha VARCHAR(64),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE remote_agent_deploy_events IS
+  'Deploy actions a person took in the console: toggle flips, Deploy now, Cancel deploy. A deploy_requested id is the token the host checks before honouring a manual request.';
+
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases
 -- created the narrow CHECK; re-adding the named constraint converges them. Every
@@ -925,6 +953,10 @@ CREATE INDEX IF NOT EXISTS idx_parked_work_unresumed
   ON remote_agent_parked_work(conversation_id, seq) WHERE resumed_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_parked_work_drain
   ON remote_agent_parked_work(drain_id);
+
+-- Deploy events
+CREATE INDEX IF NOT EXISTS idx_deploy_events_codebase
+  ON remote_agent_deploy_events(codebase_id, created_at);
 
 -- Sessions
 CREATE INDEX IF NOT EXISTS idx_remote_agent_sessions_conversation

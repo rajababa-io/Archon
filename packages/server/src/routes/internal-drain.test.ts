@@ -111,7 +111,15 @@ describe('POST /internal/drain', () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(DRAIN_STATUS);
-    expect(target.beginDrain).toHaveBeenCalledWith(600);
+    expect(target.beginDrain).toHaveBeenCalledWith(600, undefined);
+  });
+
+  test('passes the grace the deploy declared through to the lock manager (#211)', async () => {
+    const { app, target } = makeApp();
+    const response = await post(app, { budgetSeconds: 1800, graceSeconds: 600 });
+
+    expect(response.status).toBe(200);
+    expect(target.beginDrain).toHaveBeenCalledWith(1800, 600);
   });
 
   test('refuses an unauthorized caller without touching the lock manager', async () => {
@@ -146,7 +154,7 @@ describe('POST /internal/drain', () => {
       const { app, target } = makeApp();
       const response = await post(app, { budgetSeconds });
       expect(response.status).toBe(200);
-      expect(target.beginDrain).toHaveBeenCalledWith(budgetSeconds);
+      expect(target.beginDrain).toHaveBeenCalledWith(budgetSeconds, undefined);
     }
   });
 });

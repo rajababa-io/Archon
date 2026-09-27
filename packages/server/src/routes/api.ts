@@ -151,7 +151,8 @@ import type { CiWatchDelivery } from '@archon/core/services/ci-watch';
 import type { DashboardWorkflowRun } from '@archon/core/schemas/workflow-run';
 import { findCommandFiles } from '@archon/core/utils/commands';
 import { conversationCheckout } from '@archon/core/utils/conversation-checkout';
-import { type DeployStatus, getDeployStatus } from '../services/deploy-status';
+import { DEPLOY_VERDICTS, type DeployStatus, getDeployStatus } from '../services/deploy-status';
+import { registerProjectDeployRoutes } from './project-deploy';
 import { resumeWorkflowRunFromServer } from '../services/workflow-resume-service';
 import { TURN_RESUMED_NOTICE, type ParkedTurnDispatcher } from '../services/deploy-park';
 
@@ -2172,6 +2173,7 @@ const getHealthRoute = createRoute({
                   requestedAt: z.string(),
                   expiresAt: z.string(),
                   refusedCount: z.number(),
+                  parkAt: z.string().optional(),
                   holding: z.object({
                     activeConversations: z.number(),
                     queuedMessages: z.number(),
@@ -2206,7 +2208,7 @@ const getHealthRoute = createRoute({
                   last: z
                     .object({
                       at: z.string(),
-                      verdict: z.enum(['OK', 'FAILED', 'REFUSED', 'KILLED']),
+                      verdict: z.enum(DEPLOY_VERDICTS),
                       sha: z.string(),
                       reason: z.string().optional(),
                     })
@@ -6696,6 +6698,14 @@ export function registerApiRoutes(
       getLog().warn({ err, projectId, number }, 'issue.fetch_failed');
       return c.json({ issue: null, repo: slug, reason: 'unreachable' });
     }
+  });
+
+  // The per-project deploy row (#211). Running counts are the same two the
+  // health route reports, so the Deploy now confirm and the drain agree.
+  registerProjectDeployRoutes(app, async () => {
+    const stats = lockManager.getStats();
+    const runs = await workflowDb.getRunningWorkflows();
+    return { chats: stats.active, workflows: runs.length };
   });
 
   /**

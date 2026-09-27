@@ -343,7 +343,7 @@ describePosix('an install with a drain token', () => {
       SWAP_RESERVE_SECONDS: '1000',
     });
 
-    expect(result.drainCalls).toEqual([['POST', '{"budgetSeconds":3600}']]);
+    expect(result.drainCalls).toEqual([['POST', '{"budgetSeconds":3600,"graceSeconds":600}']]);
     expect(result.code).toBe(0);
   });
 

@@ -84,6 +84,13 @@ export const K = {
   /** Rail row numbers. Its own key — see the note in skills/projectCounts.ts. */
   projectCounts: (projectId: string): string => `projectCounts:${projectId}`,
   issues: (projectId: string): string => `issues:${projectId}`,
+  /**
+   * A project's deploy row, and its log. Distinct first segments on purpose:
+   * `invalidate` fans out on `<key>:`, and the row refetches every poll while
+   * the log is read only on the Overview tab.
+   */
+  projectDeploy: (projectId: string): string => `projectDeploy:${projectId}`,
+  projectDeployLog: (projectId: string): string => `projectDeployLog:${projectId}`,
   issue: (projectId: string, number: number): string => `issue:${projectId}:${String(number)}`,
   presentation: (projectId: string): string => `presentation:${projectId}`,
   providerConnections: 'provider-connections' as const,

@@ -95,6 +95,7 @@ import {
 } from '@archon/core/services/ci-watch';
 import { registerGithubWebhookRoute, registerWebhookSourceRoutes } from './routes/webhooks';
 import { registerInternalDrainRoutes } from './routes/internal-drain';
+import { registerDeployPolicyRoute } from './routes/project-deploy';
 import { loadWebhookSourcePlugins } from './services/webhook-source-plugins';
 import { createServerResourceStartHost } from './services/resource-start-hosting';
 import {
@@ -901,6 +902,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   const drainToken = process.env.ARCHON_DRAIN_TOKEN?.trim();
   if (drainToken) {
     registerInternalDrainRoutes(app, lockManager, drainToken, replayParkedWork);
+    registerDeployPolicyRoute(app, drainToken);
   }
 
   // Gitea webhook endpoint

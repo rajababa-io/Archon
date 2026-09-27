@@ -113,6 +113,22 @@ describe('deployStripView', () => {
     expect(view.detail).toBe('exit 1 — the box never went quiet');
   });
 
+  test('reads a HELD merge quietly — the policy declining is not a failure', () => {
+    const last = parseDeploy({
+      phase: 'idle',
+      last: {
+        at: '2026-09-27T06:40:35Z',
+        verdict: 'HELD',
+        sha: SHA,
+        reason: 'deploy-on-merge off',
+      },
+    })?.last;
+    expect(last?.verdict).toBe('HELD');
+    const view = deployStripView(status({ phase: 'idle', last }));
+    expect(view.label).toBe('Deploy held');
+    expect(view.tone).toBe('quiet');
+  });
+
   test('says there are no deploys when the history is empty', () => {
     // A fresh install has never deployed. Not an error, and not a failure.
     const view = deployStripView(status({ phase: 'idle' }));

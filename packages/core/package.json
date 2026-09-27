@@ -137,6 +137,9 @@
       "src/db/messages.order.integration.test.ts"
     ],
     [
+      "src/db/project-deploy.integration.test.ts"
+    ],
+    [
       "src/db/conversations.order.integration.test.ts"
     ],
     [

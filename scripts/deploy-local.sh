@@ -328,8 +328,19 @@ else
     # lost, the server is draining and this script does not know it; setting the
     # flag first means the trap cancels anyway. The reverse order leaves a box
     # refusing work with nobody holding the cancel.
+    # Parking needs the grace to end before the wait does; otherwise there is no
+    # time left after it to park in, and this is the plain wait. Decided before
+    # the drain is armed so the server can be told when parking will start: the
+    # console counts down to it (#211).
+    first_wait=$gap_timeout
+    grace_field=""
+    if [ "$DRAIN_PARK" != "0" ] && [ "$DRAIN_GRACE_SECONDS" -lt "$gap_timeout" ]; then
+      first_wait=$DRAIN_GRACE_SECONDS
+      grace_field=",\"graceSeconds\":$DRAIN_GRACE_SECONDS"
+    fi
+
     DRAIN_ARMED=1
-    drain_code=$(drain_call POST "{\"budgetSeconds\":$drain_budget}") || drain_code=""
+    drain_code=$(drain_call POST "{\"budgetSeconds\":$drain_budget$grace_field}") || drain_code=""
     case "$drain_code" in
       200) ;;
       401) die "the drain endpoint rejected the token in $DRAIN_ENV_FILE — NOTHING was deployed" ;;
@@ -339,11 +350,7 @@ else
     esac
     echo "drain armed for ${drain_budget}s — the server is refusing new work and finishing what it has"
     echo "waiting up to ${gap_timeout}s, holding ${SWAP_RESERVE_SECONDS}s back for the swap"
-    # Parking needs the grace to end before the wait does; otherwise there is no
-    # time left after it to park in, and this is the plain wait.
-    first_wait=$gap_timeout
-    if [ "$DRAIN_PARK" != "0" ] && [ "$DRAIN_GRACE_SECONDS" -lt "$gap_timeout" ]; then
-      first_wait=$DRAIN_GRACE_SECONDS
+    if [ "$first_wait" != "$gap_timeout" ]; then
       echo "after ${DRAIN_GRACE_SECONDS}s, whatever is still running is parked and resumed by the new server"
     fi
     wait_started=$(date -u +%s)
@@ -426,6 +433,10 @@ else
 fi
 
 # ── 6. Up ───────────────────────────────────────────────────────────────────
+# From here on a cancel is no longer safe: the caller stops honouring one once
+# this file exists (#211). Touched BEFORE the step marker, so there is no moment
+# where the log says the swap has begun and a cancel could still be acted on.
+[ -n "${SWAP_MARKER_FILE:-}" ] && touch "$SWAP_MARKER_FILE"
 step "6/7  Restart and wait for health"
 docker compose up -d "$SERVICE" || die "up failed"
 

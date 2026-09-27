@@ -66,6 +66,15 @@
       "src/services/deploy-status.test.ts"
     ],
     [
+      "src/services/deploy-control.test.ts"
+    ],
+    [
+      "src/services/human-pass.test.ts"
+    ],
+    [
+      "src/routes/project-deploy.test.ts"
+    ],
+    [
       "src/services/resource-start-hosting.integration.test.ts"
     ],
     [

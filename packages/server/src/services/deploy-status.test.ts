@@ -330,6 +330,31 @@ describe('deriveDeployStatus', () => {
     expect(status.sha).toBe(SHA);
   });
 
+  test('stays finished when a request for another commit is HELD afterwards (#211)', () => {
+    // A held request appends a line without opening a log. Judging "finished"
+    // by the last line alone would bring the finished attempt back to life.
+    const status = deriveDeployStatus(
+      logFiles(logThrough(7), {
+        history:
+          `2026-09-25T12:28:00Z  OK ${SHA}\n` +
+          `2026-09-25T13:00:00Z  HELD ${OTHER_SHA} — Deploy on Merge is off (merge)\n`,
+      })
+    );
+    expect(status.phase).toBe('idle');
+    expect(status.last?.verdict).toBe('HELD');
+  });
+
+  test('reads the commit from the first line of a request that says who asked', () => {
+    const status = deriveDeployStatus({
+      request: `${OTHER_SHA}\nmanual 0f0e0d0c-0b0a-4908-8706-050403020100\n`,
+      history: null,
+      logHead: null,
+      logTail: null,
+    });
+    expect(status.phase).toBe('requested');
+    expect(status.sha).toBe(OTHER_SHA);
+  });
+
   test('prefers the attempt in flight over a request queued behind it', () => {
     const status = deriveDeployStatus(logFiles(logThrough(4), { request: `${OTHER_SHA}\n` }));
     expect(status.phase).toBe('building');

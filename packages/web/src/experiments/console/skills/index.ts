@@ -9,6 +9,7 @@
 
 export * from './auth';
 export * from './activeChats';
+export * from './deploy';
 export * from './projectCounts';
 export * from './issues';
 export * from './presentation';

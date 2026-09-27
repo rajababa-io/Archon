@@ -43,6 +43,7 @@ const DEPLOY_VERDICTS: readonly NonNullable<DeployStatus['last']>['verdict'][] =
   'FAILED',
   'REFUSED',
   'KILLED',
+  'HELD',
 ];
 
 function optionalString(value: unknown): string | undefined {
@@ -105,10 +106,38 @@ export function parseDeploy(raw: unknown): DeployStatus | undefined {
   };
 }
 
+/**
+ * The part of `/api/health`'s drain block the deploy row reads: what the drain
+ * is still waiting for, and when the deploy will pause it (#211).
+ */
+export type DeployDrain = Pick<NonNullable<HealthResponse['drain']>, 'holding' | 'parkAt'>;
+
+function parseDrain(raw: unknown): DeployDrain | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const { holding, parkAt } = raw as { holding?: unknown; parkAt?: unknown };
+  if (typeof holding !== 'object' || holding === null) return undefined;
+  const { activeConversations, queuedMessages, runningWorkflows } = holding as Record<
+    string,
+    unknown
+  >;
+  if (
+    typeof activeConversations !== 'number' ||
+    typeof queuedMessages !== 'number' ||
+    typeof runningWorkflows !== 'number'
+  ) {
+    return undefined;
+  }
+  return {
+    holding: { activeConversations, queuedMessages, runningWorkflows },
+    ...(optionalString(parkAt) !== undefined ? { parkAt: optionalString(parkAt) } : {}),
+  };
+}
+
 interface HealthLive {
   concurrency?: { activeConversationIds?: unknown; activeTools?: unknown };
   ciWaitingConversationIds?: unknown;
   ciWaitingSince?: unknown;
+  drain?: unknown;
   deploy?: unknown;
 }
 
@@ -140,6 +169,8 @@ export interface ActiveChats {
    * strip says nothing rather than guessing.
    */
   deploy?: DeployStatus;
+  /** Present only while the server is draining for a restart. */
+  drain?: DeployDrain;
 }
 
 function parseTools(raw: unknown): Record<string, ActiveTool> {
@@ -180,11 +211,13 @@ function parseIds(raw: unknown): string[] {
 export async function getActiveChats(): Promise<ActiveChats> {
   const res = await requestJson<HealthLive>('/api/health');
   const deploy = parseDeploy(res.deploy);
+  const drain = parseDrain(res.drain);
   return {
     ids: parseIds(res.concurrency?.activeConversationIds),
     tools: parseTools(res.concurrency?.activeTools),
     ciWaiting: parseIds(res.ciWaitingConversationIds),
     ciWaitingSince: parseSince(res.ciWaitingSince),
     ...(deploy ? { deploy } : {}),
+    ...(drain ? { drain } : {}),
   };
 }

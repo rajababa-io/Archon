@@ -8,8 +8,10 @@ import { issueType } from '../primitives/issue-board';
 import { conversationLabel } from '../primitives/conversation';
 import type { Run } from '../primitives/run';
 import { relativeTime } from '../lib/format';
+import { DEPLOY_LOG_LABEL } from '../lib/deploy-row';
+import { shortSha } from '../lib/deploy-strip';
 import * as skill from '../skills';
-import type { GithubIssue, IssuesResponse } from '../skills';
+import type { DeployLogEntry, GithubIssue, IssuesResponse, ProjectDeploy } from '../skills';
 import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import { IssueTypeChip } from '../components/IssueTypeChip';
@@ -66,6 +68,16 @@ export function OverviewPage(): ReactElement {
     () => skill.listConversations(projectId, 'open')
   );
   const chats = chatList?.chats;
+  // The header reads the same key, so this costs no request; the log is asked
+  // for only once it is known the project has a deploy to log.
+  const { data: deploy } = useEntity<ProjectDeploy | null>(K.projectDeploy(projectId), () =>
+    skill.getProjectDeploy(projectId)
+  );
+  const hasDeploy = deploy !== undefined && deploy !== null;
+  const { data: deployLog } = useEntity<DeployLogEntry[]>(
+    hasDeploy ? K.projectDeployLog(projectId) : 'noop:no-deploy-log',
+    () => (hasDeploy ? skill.getProjectDeployLog(projectId) : Promise.resolve([]))
+  );
 
   const runs = feed?.runs ?? [];
   const now = useNow();
@@ -188,6 +200,57 @@ export function OverviewPage(): ReactElement {
             </div>
           )}
         </Section>
+
+        {/* The deploy's own history — who pressed what, and what the host did
+            about it. Only for a project that deploys. */}
+        {hasDeploy ? (
+          <Section label="Deploys">
+            {deployLog === undefined ? (
+              <p className="text-body text-text-tertiary">Loading…</p>
+            ) : deployLog.length === 0 ? (
+              <p className="text-body text-text-tertiary">Nothing logged yet.</p>
+            ) : (
+              <div className="flex flex-col overflow-hidden rounded-lg border border-border">
+                {deployLog.slice(0, 10).map(entry => (
+                  <div
+                    key={`${entry.at}:${entry.kind}:${entry.sha ?? ''}`}
+                    className="flex items-center gap-2 border-b border-border px-3 py-1.25 last:border-b-0"
+                  >
+                    <time
+                      dateTime={entry.at}
+                      className="w-14 shrink-0 text-mini text-text-tertiary"
+                    >
+                      {relativeTime(entry.at)}
+                    </time>
+                    <span className="shrink-0 text-body text-text-secondary">
+                      {DEPLOY_LOG_LABEL[entry.kind]}
+                    </span>
+                    {entry.sha !== null ? (
+                      <code className="shrink-0 text-mini text-text-tertiary">
+                        {shortSha(entry.sha)}
+                      </code>
+                    ) : null}
+                    {entry.detail !== null ? (
+                      <span
+                        title={entry.detail}
+                        className="min-w-0 flex-1 truncate text-mini text-text-tertiary"
+                      >
+                        {entry.detail}
+                      </span>
+                    ) : (
+                      <span className="flex-1" />
+                    )}
+                    {entry.actor !== null ? (
+                      <span className="shrink-0 text-mini text-text-tertiary">{entry.actor}</span>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+        ) : (
+          <></>
+        )}
 
         {/* 4 — state, by type. */}
         <Section
