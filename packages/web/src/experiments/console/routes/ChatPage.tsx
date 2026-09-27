@@ -30,6 +30,7 @@ import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
+import { useKeymap, type Binding } from '../lib/keymap';
 import { sentHistory } from '../lib/composer-history';
 import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
@@ -119,6 +120,9 @@ export function ChatPage(): ReactElement {
   // below would immediately put them back in the most recent conversation, so
   // the button would appear to do nothing.
   const [startingNew, setStartingNew] = useState(false);
+  // Bumped on every new-chat request, including one made while already on a
+  // new chat, so the composer is focused each time and not only on the first.
+  const [newChatRequests, setNewChatRequests] = useState(0);
   // Switching project must release the previous project's conversation. The
   // auto-select effect below only fires when activeConvId is null, so without
   // this the page kept showing a chat belonging to the project just left.
@@ -141,6 +145,7 @@ export function ChatPage(): ReactElement {
   const selectConversation = (id: string | null): void => {
     setError(null);
     setStartingNew(id === null);
+    if (id === null) setNewChatRequests(n => n + 1);
     setActiveConvId(id);
     // `sending` describes the conversation being read, not the page. Leaving it
     // set while switching made one chat's pending reply lock every other chat
@@ -152,6 +157,9 @@ export function ChatPage(): ReactElement {
     setPendingUser(null);
     if (projectId !== undefined) writeLastChat(projectId, id);
   };
+
+  const selectConversationRef = useRef(selectConversation);
+  selectConversationRef.current = selectConversation;
 
   const invalidateConversationsRef = useRef<() => void>(() => undefined);
 
@@ -400,6 +408,27 @@ export function ChatPage(): ReactElement {
   const working = sending || locked || serverWorking;
   // Stop, queue and take back. Its own hook so the page only routes to it.
   const turn = useTurnControls(activeConvId, locked);
+
+  // After the commit, not in selectConversation: the composer is keyed by
+  // conversation and remounts on the switch, so the element to focus only
+  // exists once this render has landed.
+  useEffect(() => {
+    if (newChatRequests > 0) turn.controlRef.current?.focus();
+  }, [newChatRequests, turn.controlRef]);
+
+  const newChatBindings = useMemo<readonly Binding[]>(
+    () => [
+      {
+        keys: ['c'],
+        label: 'Start a new chat',
+        run: (): void => {
+          selectConversationRef.current(null);
+        },
+      },
+    ],
+    []
+  );
+  useKeymap({ bindings: newChatBindings, enabled: projectId !== undefined });
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP
