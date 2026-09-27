@@ -112,7 +112,9 @@ export class WebAdapter implements IWebPlatformAdapter {
     message: string,
     metadata?: MessageMetadata
   ): Promise<void> {
-    this.persistence.appendText(conversationId, message, metadata);
+    // The stream carries the same seam the buffered row gets, so a live view
+    // that appends pieces as they arrive renders what a reload will show.
+    const seam = this.persistence.appendText(conversationId, message, metadata);
 
     // Categories that are handled structurally in the web UI (not as chat messages)
     if (
@@ -127,7 +129,7 @@ export class WebAdapter implements IWebPlatformAdapter {
     // than re-deriving it by pattern-matching the message text.
     const event = JSON.stringify({
       type: 'text',
-      content: message,
+      content: seam + message,
       isComplete: true,
       timestamp: Date.now(),
       ...(metadata?.category ? { category: metadata.category } : {}),
