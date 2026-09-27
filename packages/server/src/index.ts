@@ -87,6 +87,12 @@ import {
   CONVERSATION_EVENT_NOTIFY_CHANNEL,
 } from '@archon/core/db/adapters/types';
 import { registerApiRoutes } from './routes/api';
+import {
+  settleCiWatchesForHead,
+  startCiWatchReconcileScheduler,
+  stopCiWatchReconcileScheduler,
+  type CiWatchDeps,
+} from '@archon/core/services/ci-watch';
 import { registerGithubWebhookRoute, registerWebhookSourceRoutes } from './routes/webhooks';
 import { registerInternalDrainRoutes } from './routes/internal-drain';
 import { loadWebhookSourcePlugins } from './services/webhook-source-plugins';
@@ -811,10 +817,21 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   }
 
   // Register Web UI API routes
-  registerApiRoutes(app, webAdapter, lockManager, activePlatforms);
+  const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms);
 
-  // GitHub webhook endpoint
+  // GitHub webhook endpoint. CI watches ride it: GitHub is the only forge a
+  // watch can name, so with no GitHub adapter there is nothing to watch with.
+  let ciWatchDeps: CiWatchDeps | null = null;
   if (github) {
+    const forge = github;
+    const deps: CiWatchDeps = {
+      readHeadChecks: (repo, headSha) => forge.readHeadChecks(repo, headSha),
+      deliver: apiRoutes.deliverCiWatchMessage,
+    };
+    forge.onCheckRunCompleted(async (repo, headSha) => {
+      await settleCiWatchesForHead(repo, headSha, deps);
+    });
+    ciWatchDeps = deps;
     registerGithubWebhookRoute(app, github);
     getLog().info('github_webhook_registered');
   }
@@ -1126,12 +1143,16 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   );
   if (resourceStartHostId)
     getLog().info({ hostId: resourceStartHostId }, 'resource_start_host_enabled');
+  // Started with the continuations, for the same reason: a firing watch starts
+  // a chat turn, which needs every provider and adapter initialized.
+  if (ciWatchDeps) startCiWatchReconcileScheduler(ciWatchDeps);
 
   // Graceful shutdown
   const shutdown = (): void => {
     getLog().info('server_shutting_down');
     stopCleanupScheduler();
     stopWorkflowContinuationScheduler();
+    stopCiWatchReconcileScheduler();
     persistence.stopPeriodicFlush();
 
     // Flush all buffered messages before stopping adapters
