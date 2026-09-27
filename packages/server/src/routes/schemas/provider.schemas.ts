@@ -47,6 +47,9 @@ export const providerInfoSchema = z
     capabilities: providerCapabilitiesSchema,
     builtIn: z.boolean(),
     effortLevels: z.array(z.enum(EFFORT_LADDER)).optional(),
+    suggestedModels: z
+      .array(z.object({ id: z.string(), note: z.string().optional() }).openapi('ModelSuggestion'))
+      .optional(),
   })
   .openapi('ProviderInfo');
 

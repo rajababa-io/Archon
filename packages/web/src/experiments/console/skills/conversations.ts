@@ -367,3 +367,34 @@ export async function setConversationColor(
     { method: 'PATCH', body: JSON.stringify({ color }) }
   );
 }
+
+/** What a chat's next turn runs on — provider, model, effort — and its own pin (#132). */
+export type ChatModel = components['schemas']['ChatModel'];
+export type SetChatModelBody = components['schemas']['SetChatModelBody'];
+
+/**
+ * Ask the server what this chat's next turn will run on.
+ *
+ * Resolved server-side by the same function a turn uses, so the picker never
+ * describes a model the turn would not ask for.
+ */
+export async function getChatModel(conversationPlatformId: string): Promise<ChatModel> {
+  return requestJson<ChatModel>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/model`
+  );
+}
+
+/**
+ * Pin this chat's model and/or effort from its next turn. Null for a half means
+ * the default for that half; both null clears the pin. Other chats and every
+ * default are untouched — the pin lives on this conversation only.
+ */
+export async function setChatModel(
+  conversationPlatformId: string,
+  body: SetChatModelBody
+): Promise<ChatModel> {
+  return requestJson<ChatModel>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/model`,
+    { method: 'PUT', body: JSON.stringify(body) }
+  );
+}

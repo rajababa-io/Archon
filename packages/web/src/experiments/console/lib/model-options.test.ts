@@ -1,8 +1,5 @@
 import { describe, test, expect } from 'bun:test';
 import {
-  CLAUDE_MODEL_OPTIONS,
-  CODEX_MODEL_OPTIONS,
-  COPILOT_MODEL_OPTIONS,
   curatedOptionsForAgent,
   effortOptionsForAgent,
   filterModelOptions,
@@ -66,16 +63,26 @@ describe('modelPickerShape', () => {
 });
 
 describe('curatedOptionsForAgent', () => {
-  test('claude/codex/copilot get their curated lists; others get none', () => {
-    expect(curatedOptionsForAgent('claude')).toBe(CLAUDE_MODEL_OPTIONS);
-    expect(curatedOptionsForAgent('codex')).toBe(CODEX_MODEL_OPTIONS);
-    expect(curatedOptionsForAgent('copilot')).toBe(COPILOT_MODEL_OPTIONS);
-    expect(curatedOptionsForAgent('pi')).toEqual([]);
-    expect(curatedOptionsForAgent('')).toEqual([]);
+  const listed = [
+    { id: 'claude', suggestedModels: [{ id: 'opus' }, { id: 'sonnet' }] },
+    { id: 'copilot', suggestedModels: [{ id: 'auto', note: 'Copilot picks' }] },
+    { id: 'pi' },
+  ];
+
+  test("reads the registry's suggestions, carrying a note as the hint", () => {
+    expect(curatedOptionsForAgent('claude', listed)).toEqual([
+      { value: 'opus' },
+      { value: 'sonnet' },
+    ]);
+    expect(curatedOptionsForAgent('copilot', listed)).toEqual([
+      { value: 'auto', hint: 'Copilot picks' },
+    ]);
   });
 
-  test("copilot's list includes 'auto' (the SDK default when nothing is configured)", () => {
-    expect(COPILOT_MODEL_OPTIONS.some(o => o.value === 'auto')).toBe(true);
+  test('an agent with no list, an unknown agent, or no data yet yields none', () => {
+    expect(curatedOptionsForAgent('pi', listed)).toEqual([]);
+    expect(curatedOptionsForAgent('', listed)).toEqual([]);
+    expect(curatedOptionsForAgent('claude', undefined)).toEqual([]);
   });
 });
 

@@ -110,6 +110,16 @@ export const conversationRowSchema = z.object({
    * above and the console's `chat-status.ts`.
    */
   ready_at: z.date().nullable(),
+  /**
+   * The model and effort this chat runs on, chosen inside it (#132). The
+   * provider travels with the pin because a model id only means something on
+   * the provider it was chosen for: a turn that resolves to another provider
+   * ignores the pin. `pinned_model` and `pinned_effort` are independent — either
+   * may be set without the other. All NULL means the chat follows the defaults.
+   */
+  pinned_provider: z.string().nullable(),
+  pinned_model: z.string().nullable(),
+  pinned_effort: z.string().nullable(),
   deleted_at: z.date().nullable(),
   last_activity_at: z.date().nullable(),
   user_id: z.string().nullable(),

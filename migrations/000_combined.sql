@@ -434,6 +434,18 @@ $migration_033$;
 ALTER TABLE remote_agent_conversations
   ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP WITH TIME ZONE;
 
+-- From migration 036: the model and effort one chat runs on, chosen inside it.
+-- The provider is recorded with the pin because a model id only means
+-- something on the provider it was chosen for; a turn on another provider
+-- ignores the pin. NULL throughout means no pin, which is true of every row
+-- that predates the columns, so there is nothing to backfill.
+ALTER TABLE remote_agent_conversations
+  ADD COLUMN IF NOT EXISTS pinned_provider VARCHAR(64);
+ALTER TABLE remote_agent_conversations
+  ADD COLUMN IF NOT EXISTS pinned_model VARCHAR(255);
+ALTER TABLE remote_agent_conversations
+  ADD COLUMN IF NOT EXISTS pinned_effort VARCHAR(16);
+
 -- From migrations 031 and 032: the chat's unit of work is finished, and every
 -- chat archived before the column existed becomes a finished one.
 --
@@ -878,6 +890,12 @@ COMMENT ON COLUMN remote_agent_conversations.last_read_at IS
   'When a human last read this chat to the end. Unread is last_activity_at > last_read_at; NULL means never read.';
 COMMENT ON COLUMN remote_agent_conversations.ready_at IS
   'When the agent declared this chat''s work finished, pending a human''s judgement. Cleared when a human marks it done or sends another message. NULL means no claim. Distinct from completed_at, which is the human''s answer.';
+COMMENT ON COLUMN remote_agent_conversations.pinned_provider IS
+  'Provider the chat''s model/effort pin was chosen for. A turn on another provider ignores the pin. NULL means no pin.';
+COMMENT ON COLUMN remote_agent_conversations.pinned_model IS
+  'Model this chat runs on, overriding every default for this conversation only. NULL means the default model.';
+COMMENT ON COLUMN remote_agent_conversations.pinned_effort IS
+  'Reasoning effort rung this chat runs on, overriding the default. NULL means the default effort.';
 
 -- Sessions
 CREATE INDEX IF NOT EXISTS idx_remote_agent_sessions_conversation

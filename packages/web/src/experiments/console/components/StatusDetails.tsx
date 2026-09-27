@@ -4,6 +4,7 @@ import { formatCost, shortModel, turnFacts } from '../primitives/context-window'
 import type { Message } from '../primitives/message';
 import type { ConversationCheckout } from '../skills';
 import { ContextBar } from './ContextBar';
+import { ChatModelPicker } from './ChatModelPicker';
 
 const LOCATION_LABEL = { live: 'live checkout', worktree: 'worktree' } as const;
 
@@ -31,7 +32,14 @@ export function StatusDetails({
 }): ReactElement {
   const facts = turnFacts(messages);
   const checkout = useConversationCheckout(conversationId, turnKey);
-  return <StatusDetailsView messages={messages} facts={facts} checkout={checkout} />;
+  return (
+    <StatusDetailsView
+      messages={messages}
+      facts={facts}
+      checkout={checkout}
+      conversationId={conversationId}
+    />
+  );
 }
 
 /** The rendering half, split out so it can be rendered with fixed inputs. */
@@ -39,10 +47,13 @@ export function StatusDetailsView({
   messages,
   facts,
   checkout,
+  conversationId = null,
 }: {
   messages: readonly Message[];
   facts: ReturnType<typeof turnFacts>;
   checkout: ConversationCheckout | undefined;
+  /** When set, model and effort render as the chat's picker (#132). */
+  conversationId?: string | null;
 }): ReactElement {
   const where = checkout === undefined ? null : checkoutLabel(checkout);
   const model = facts?.model ?? null;
@@ -51,13 +62,21 @@ export function StatusDetailsView({
   return (
     <span className="flex min-w-0 items-center gap-3 font-mono text-[10.5px] text-text-tertiary">
       <ContextBar messages={messages} />
-      {model === null ? null : (
-        <span title={model} className="truncate">
-          {shortModel(model)}
-        </span>
-      )}
-      {effort === null ? null : (
-        <span title="Reasoning effort the last turn ran with">effort {effort}</span>
+      {conversationId !== null ? (
+        // The same two facts as below, as a control: clicking them changes
+        // what this chat's NEXT turn runs on.
+        <ChatModelPicker conversationId={conversationId} last={{ model, effort }} />
+      ) : (
+        <>
+          {model === null ? null : (
+            <span title={model} className="truncate">
+              {shortModel(model)}
+            </span>
+          )}
+          {effort === null ? null : (
+            <span title="Reasoning effort the last turn ran with">effort {effort}</span>
+          )}
+        </>
       )}
       {where === null ? null : (
         <span title={checkout?.path ?? undefined} className="truncate">

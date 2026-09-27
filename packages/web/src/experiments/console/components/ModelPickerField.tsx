@@ -2,7 +2,6 @@ import { useState, type ReactElement } from 'react';
 import * as skill from '../skills';
 import type { AgentCredentials, OpencodeCredentialProvider, PiModelInfo } from '../skills';
 import {
-  COPILOT_MODEL_OPTIONS,
   curatedOptionsForAgent,
   filterModelOptions,
   findPiModel,
@@ -15,6 +14,8 @@ import {
   type ModelOption,
 } from '../lib/model-options';
 import { useCancelledRef } from '../lib/use-cancelled-ref';
+import { useEntity } from '../store/cache';
+import { K } from '../store/keys';
 import { INPUT_CLASS, SELECT_CLASS, SelectShell } from './SettingsFormPrimitives';
 
 /** Cap on rendered Pi suggestions — the catalog is ~920 models. */
@@ -116,6 +117,7 @@ function ModelCombobox({
   piModels,
 }: ModelPickerFieldProps): ReactElement {
   const [open, setOpen] = useState(false);
+  const { data: providers } = useEntity(K.providers, skill.listProviders);
   // Pi only: include backends without a usable credential in the suggestions.
   const [showAll, setShowAll] = useState(false);
   const shape = modelPickerShape(agentId);
@@ -163,7 +165,7 @@ function ModelCombobox({
     options =
       ocPhase === 'loaded' ? filterModelOptions(opencodeBackendOptions(ocProviders), value) : [];
   } else {
-    options = filterModelOptions(curatedOptionsForAgent(agentId), value);
+    options = filterModelOptions(curatedOptionsForAgent(agentId, providers), value);
   }
 
   const pick = (o: ModelOption): void => {
@@ -335,8 +337,8 @@ function OpencodeDropdownFooter({
 const CUSTOM_SENTINEL = '__custom__';
 
 /**
- * Copilot's fixed select (the curated list is hand-maintained, see
- * COPILOT_MODEL_OPTIONS provenance) with a "Custom…" free-text escape. A saved
+ * Copilot's fixed select (the curated list is hand-maintained in its provider
+ * registration) with a "Custom…" free-text escape. A saved
  * value outside the list renders in custom mode so it's never misdisplayed.
  */
 function CopilotModelSelect({
@@ -348,7 +350,9 @@ function CopilotModelSelect({
   className = '',
   selectEmptyLabel,
 }: ModelPickerFieldProps): ReactElement {
-  const inList = value === '' || COPILOT_MODEL_OPTIONS.some(o => o.value === value);
+  const { data: providers } = useEntity(K.providers, skill.listProviders);
+  const listed = curatedOptionsForAgent('copilot', providers);
+  const inList = value === '' || listed.some(o => o.value === value);
   const [customMode, setCustomMode] = useState(false);
   const custom = customMode || !inList;
 
@@ -398,7 +402,7 @@ function CopilotModelSelect({
         className={`${SELECT_CLASS} ${disabled ? 'opacity-50' : ''}`}
       >
         <option value="">{selectEmptyLabel ?? 'Select model…'}</option>
-        {COPILOT_MODEL_OPTIONS.map(o => (
+        {listed.map(o => (
           <option key={o.value} value={o.value}>
             {o.value}
             {o.hint !== undefined ? ` — ${o.hint}` : ''}

@@ -423,6 +423,13 @@ export class SqliteAdapter implements IDatabase {
       if (!colNames.has('ready_at')) {
         this.db.run('ALTER TABLE remote_agent_conversations ADD COLUMN ready_at TEXT');
       }
+      // The chat's own model/effort pin (migration 036). NULL is "no pin" and
+      // true of every older row, so there is nothing to backfill.
+      for (const col of ['pinned_provider', 'pinned_model', 'pinned_effort']) {
+        if (!colNames.has(col)) {
+          this.db.run(`ALTER TABLE remote_agent_conversations ADD COLUMN ${col} TEXT`);
+        }
+      }
       // Indexes must be created here, not in createSchema(): these columns don't
       // exist on older databases until the ALTER TABLE statements above run, and
       // CREATE INDEX on a missing column aborts the entire createSchema()
@@ -833,6 +840,9 @@ export class SqliteAdapter implements IDatabase {
         completed_at TEXT,
         last_read_at TEXT,
         ready_at TEXT,
+        pinned_provider TEXT,
+        pinned_model TEXT,
+        pinned_effort TEXT,
         deleted_at TEXT,
         hidden INTEGER DEFAULT 0,
         user_id TEXT REFERENCES remote_agent_users(id) ON DELETE SET NULL,

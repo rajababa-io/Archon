@@ -1,9 +1,10 @@
-import { describe, test, expect, mock, beforeAll, afterAll } from 'bun:test';
+import { describe, test, expect, mock, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { removeTempTree } from '@archon/paths/test-utils';
+import { registerBuiltinProviders } from '@archon/providers';
 import type { ConversationLockManager, TurnContext } from '@archon/core';
 import type { WebAdapter } from '../adapters/web';
 import { validationErrorHook } from './openapi-defaults';
@@ -44,6 +45,14 @@ const mockListConversations = mock(
   }> => ({ rows: [], counts: { open: 0, done: 0, all: 0 } })
 );
 
+const mockSetConversationModelPin = mock(async (_id: string, _pin: unknown) => {});
+const mockGetConversationById = mock(async (_id: string): Promise<unknown> => MOCK_CONV);
+const mockResolveNextChatModel = mock(async (_conv: unknown, _userId: unknown) => ({
+  provider: 'claude',
+  model: 'opus' as string | undefined,
+  pinned: false,
+  preset: undefined as { provider: string; model: string; effort?: string } | undefined,
+}));
 const mockGenerateAndSetTitle = mock(async (..._args: unknown[]) => {});
 const mockResolveTitleRequest = mock(async () => ({
   provider: 'claude',
@@ -68,6 +77,7 @@ mock.module('@archon/core', () => ({
   },
   generateAndSetTitle: mockGenerateAndSetTitle,
   resolveTitleRequest: mockResolveTitleRequest,
+  resolveNextChatModel: mockResolveNextChatModel,
   getArchonWorkspacesPath: () => '/tmp/.archon/workspaces',
   createLogger: () => ({
     fatal: mock(() => undefined),
@@ -106,6 +116,8 @@ mock.module('@archon/core/db/conversations', () => ({
   setConversationOrder: mockSetConversationOrder,
   setConversationCompleted: mockSetConversationCompleted,
   setConversationReady: mockSetConversationReady,
+  setConversationModelPin: mockSetConversationModelPin,
+  getConversationById: mockGetConversationById,
   markConversationRead: mockMarkConversationRead,
   setConversationArchived: mockSetConversationArchived,
   listConversations: mockListConversations,
@@ -1349,5 +1361,80 @@ describe('GET /api/conversations/:id/changes', () => {
       );
       expect(response.status).toBe(404);
     }
+  });
+// ─── #132: the chat's own model/effort pin ────────────────────────────────────
+
+describe('GET/PUT /api/conversations/:id/model', () => {
+  const put = async (body: unknown): Promise<Response> => {
+    const app = new OpenAPIHono();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+    return app.request('/api/conversations/web-test-abc/model', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  };
+
+  beforeEach(() => {
+    registerBuiltinProviders();
+    mockFindConversationByPlatformId.mockImplementation(async () => MOCK_CONV);
+    mockSetConversationModelPin.mockClear();
+    mockResolveNextChatModel.mockClear();
+  });
+
+  test('GET answers with what the next turn runs on', async () => {
+    const app = new OpenAPIHono();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+    const response = await app.request('/api/conversations/web-test-abc/model');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      provider: 'claude',
+      model: 'opus',
+      effort: null,
+      pin: null,
+    });
+  });
+
+  test('PUT pins model and effort on this conversation, and nowhere else', async () => {
+    const response = await put({ provider: 'claude', model: 'haiku', effort: 'high' });
+    expect(response.status).toBe(200);
+    expect(mockSetConversationModelPin).toHaveBeenCalledTimes(1);
+    expect(mockSetConversationModelPin).toHaveBeenCalledWith('internal-uuid-123', {
+      provider: 'claude',
+      model: 'haiku',
+      effort: 'high',
+    });
+  });
+
+  test('PUT with both halves null clears the pin', async () => {
+    const response = await put({ provider: 'claude', model: null, effort: null });
+    expect(response.status).toBe(200);
+    expect(mockSetConversationModelPin).toHaveBeenCalledWith('internal-uuid-123', null);
+  });
+
+  // A pin only applies on the provider the chat resolves to; storing one for
+  // another provider would be a choice no turn ever honours.
+  test('PUT for a provider the chat no longer runs on is refused, and nothing is stored', async () => {
+    const response = await put({ provider: 'codex', model: 'gpt-5.6-sol', effort: null });
+    expect(response.status).toBe(409);
+    expect(mockSetConversationModelPin).not.toHaveBeenCalled();
+  });
+
+  test('PUT refuses an effort outside the registry ladder', async () => {
+    const response = await put({ provider: 'claude', model: null, effort: 'turbo' });
+    expect(response.status).toBe(400);
+    expect(mockSetConversationModelPin).not.toHaveBeenCalled();
+  });
+
+  test('PUT refuses a blank model rather than storing it', async () => {
+    const response = await put({ provider: 'claude', model: '   ', effort: null });
+    expect(response.status).toBe(400);
+    expect(mockSetConversationModelPin).not.toHaveBeenCalled();
+  });
+
+  test('an unknown chat is a 404', async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => null);
+    const response = await put({ provider: 'claude', model: 'haiku', effort: null });
+    expect(response.status).toBe(404);
   });
 });

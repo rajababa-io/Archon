@@ -54,53 +54,20 @@ export function modelPickerShape(agentId: string): ModelPickerShape {
 }
 
 // ---------------------------------------------------------------------------
-// Curated lists. These are CONVENIENCE suggestions, not authority — the SDKs
-// ship models faster than Archon can enumerate them, so every consumer keeps a
-// free-text escape and nothing client-side blocks an unlisted model string.
+// Curated lists. Owned by the provider registry and served on GET
+// /api/providers as `suggestedModels`, so the Web UI holds no second opinion
+// about which models an agent has. CONVENIENCE suggestions, not authority:
+// every consumer keeps a free-text escape and the server's strict parser is
+// the gate.
 // ---------------------------------------------------------------------------
 
-/**
- * Claude SDK model keywords, mirroring the `.archon/config.yaml` examples in
- * CLAUDE.md and docs/getting-started/ai-assistants.md (`model: sonnet # or
- * 'opus', 'haiku', 'claude-*'`). Full `claude-*` ids are free-typed.
- */
-export const CLAUDE_MODEL_OPTIONS: readonly ModelOption[] = [
-  { value: 'sonnet' },
-  { value: 'opus' },
-  { value: 'haiku' },
-];
-
-/**
- * Codex model strings mirroring the current lineup in the repo's config
- * examples (docs/getting-started/ai-assistants.md and CLAUDE.md): `gpt-5.6-sol`
- * (flagship), `gpt-5.6-terra` (mid), `gpt-5.6-luna` (light).
- */
-export const CODEX_MODEL_OPTIONS: readonly ModelOption[] = [
-  { value: 'gpt-5.6-sol' },
-  { value: 'gpt-5.6-terra' },
-  { value: 'gpt-5.6-luna' },
-];
-
-/**
- * Copilot model list. PROVENANCE: no Archon API exposes Copilot's model
- * catalog (the Copilot CLI negotiates it per subscription at runtime), so this
- * is hand-curated from docs/getting-started/ai-assistants.md ("'gpt-5',
- * 'gpt-5-mini', 'claude-sonnet-4.5', 'auto', etc."). NOT authoritative — the
- * select keeps a "Custom…" free-text escape for anything Copilot ships next.
- */
-export const COPILOT_MODEL_OPTIONS: readonly ModelOption[] = [
-  { value: 'auto', hint: 'Copilot picks' },
-  { value: 'gpt-5' },
-  { value: 'gpt-5-mini' },
-  { value: 'claude-sonnet-4.5' },
-];
-
-/** Curated suggestions for an agent's combobox; empty when none exist. */
-export function curatedOptionsForAgent(agentId: string): readonly ModelOption[] {
-  if (agentId === 'claude') return CLAUDE_MODEL_OPTIONS;
-  if (agentId === 'codex') return CODEX_MODEL_OPTIONS;
-  if (agentId === 'copilot') return COPILOT_MODEL_OPTIONS;
-  return [];
+/** Curated suggestions for an agent's picker; empty when the registry lists none. */
+export function curatedOptionsForAgent(
+  agentId: string,
+  providers: readonly Pick<ProviderInfo, 'id' | 'suggestedModels'>[] | undefined
+): ModelOption[] {
+  const listed = providers?.find(p => p.id === agentId)?.suggestedModels ?? [];
+  return listed.map(m => (m.note === undefined ? { value: m.id } : { value: m.id, hint: m.note }));
 }
 
 // ---------------------------------------------------------------------------

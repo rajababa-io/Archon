@@ -23,6 +23,7 @@ import {
   nextOrderSlots,
   markConversationRead,
   setConversationReady,
+  setConversationModelPin,
   setConversationCompleted,
   setConversationOrder,
 } from './conversations';
@@ -62,6 +63,9 @@ describe('conversations', () => {
       completed_at: null,
       last_read_at: null,
       ready_at: null,
+      pinned_provider: null,
+      pinned_model: null,
+      pinned_effort: null,
       hidden: false,
       deleted_at: null,
       user_id: null,
@@ -312,6 +316,9 @@ describe('conversations', () => {
       completed_at: null,
       last_read_at: null,
       ready_at: null,
+      pinned_provider: null,
+      pinned_model: null,
+      pinned_effort: null,
       hidden: false,
       deleted_at: null,
       user_id: null,
@@ -630,6 +637,42 @@ describe('conversations', () => {
       mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
       await setConversationCompleted('conv-1', false);
       expect(mockQuery.mock.calls).toHaveLength(1);
+    });
+  });
+
+  describe('setConversationModelPin', () => {
+    test('writes the pin onto this conversation row only', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationModelPin('conv-1', {
+        provider: 'claude',
+        model: 'haiku',
+        effort: 'high',
+      });
+      const [sql, params] = mockQuery.mock.calls[0] ?? [];
+      expect(String(sql)).toContain('UPDATE remote_agent_conversations');
+      expect(String(sql)).toContain('WHERE id = $1');
+      expect(params).toEqual(['conv-1', 'claude', 'haiku', 'high']);
+    });
+
+    // A provider with nothing pinned on it asserts nothing; stored, it would
+    // read as a pin while changing no turn.
+    test('a pin with both halves empty is stored as a clear', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationModelPin('conv-1', { provider: 'claude', model: null, effort: null });
+      expect(mockQuery.mock.calls[0]?.[1]).toEqual(['conv-1', null, null, null]);
+    });
+
+    test('null clears it', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationModelPin('conv-1', null);
+      expect(mockQuery.mock.calls[0]?.[1]).toEqual(['conv-1', null, null, null]);
+    });
+
+    test('a missing conversation is an error, not a silent no-op', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 0));
+      await expect(setConversationModelPin('nope', null)).rejects.toBeInstanceOf(
+        ConversationNotFoundError
+      );
     });
   });
 

@@ -11,6 +11,7 @@ import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { createLogger, captureChatTurn, canonicalizeProjectPath } from '@archon/paths';
+import { isEffortRung } from '@archon/paths/effort';
 import type {
   IPlatformAdapter,
   HandleMessageContext,
@@ -278,6 +279,152 @@ export function resolveChatModelRequest(
     return { ...request, model: installModel };
   }
   return request;
+}
+
+/**
+ * The model one chat turn runs on, and the profile and provider it came from.
+ *
+ * One function for the turn itself and for anything that needs to say what the
+ * NEXT turn will run on (the console's model picker), so the two cannot give
+ * different answers. Precedence, highest first: the chat's own pin (#132), then
+ * everything `resolveChatModelRequest` resolves.
+ */
+export async function resolveChatTurnModel(
+  conversation: Pick<
+    Conversation,
+    'ai_assistant_type' | 'pinned_provider' | 'pinned_model' | 'pinned_effort'
+  >,
+  config: Pick<MergedConfig, 'assistants' | 'tiers' | 'aliases'>,
+  executionUserId: string | undefined
+): Promise<{
+  configuredProviderKey: string;
+  aiProfile: ReturnType<typeof buildAiProfile>;
+  chatRequest: ChatModelRequest;
+}> {
+  // Per-user AI prefs (Phase 3): the user's tiers/aliases/default-assistant
+  // override install config (highest precedence). `{}` (no identity, no row,
+  // or DB failure) keeps config-only behavior byte-for-byte.
+  const userAiPrefs = executionUserId ? await resolveUserAiPrefsForChat(executionUserId) : {};
+  let configuredProviderKey = userAiPrefs.defaultProvider ?? conversation.ai_assistant_type;
+  let aiProfile: ReturnType<typeof buildAiProfile>;
+  try {
+    aiProfile = buildAiProfile(configuredProviderKey, {
+      repoTiers: config.tiers,
+      repoAliases: config.aliases,
+      userTiers: userAiPrefs.tiers,
+      userAliases: userAiPrefs.aliases,
+    });
+  } catch (profileErr) {
+    // Structurally invalid STORED prefs (corrupt DB row) must not break the
+    // user's chat — degrade to config-only. A broken config layer still
+    // fails fast: the rebuild rethrows the same error.
+    getLog().error(
+      { err: profileErr as Error, userId: executionUserId },
+      'orchestrator.user_ai_prefs_profile_invalid'
+    );
+    configuredProviderKey = conversation.ai_assistant_type;
+    aiProfile = buildAiProfile(configuredProviderKey, {
+      repoTiers: config.tiers,
+      repoAliases: config.aliases,
+    });
+  }
+  // Main chat model: per-user default_model > configured `large` tier >
+  // install assistants.<p>.model > built-in tier default (#1998).
+  const defaultRequest = resolveChatModelRequest(aiProfile, configuredProviderKey, userAiPrefs, {
+    assistants: config.assistants,
+    tiers: config.tiers,
+  });
+  return {
+    configuredProviderKey,
+    aiProfile,
+    chatRequest: applyChatModelPin(defaultRequest, conversation),
+  };
+}
+
+/**
+ * What the NEXT turn of this chat will run on — the answer the console's model
+ * picker shows (#132).
+ *
+ * Loads config the way a turn does (the conversation's worktree, else the
+ * project's checkout, else global only) and then asks `resolveChatTurnModel`,
+ * so the picker cannot describe a model the turn would not use. The identity
+ * is the caller's, falling back to the chat's creator, matching a turn.
+ */
+export async function resolveNextChatModel(
+  conversation: Conversation,
+  userId: string | undefined
+): Promise<ChatModelRequest> {
+  let configPath: string | undefined;
+  if (conversation.codebase_id !== null) {
+    const codebase = await codebaseDb.getCodebase(conversation.codebase_id);
+    if (codebase) configPath = conversation.cwd ?? codebase.default_cwd;
+  }
+  const config = await loadConfig(configPath);
+  const { chatRequest } = await resolveChatTurnModel(
+    conversation,
+    config,
+    userId ?? conversation.user_id ?? undefined
+  );
+  return chatRequest;
+}
+
+/** A resolved chat request, marked when the chat's own pin decided any of it. */
+export interface ChatModelRequest extends ResolvedModelRequest {
+  pinned: boolean;
+}
+
+/**
+ * Lay the chat's own model/effort pin (#132) over the defaults.
+ *
+ * The pin applies only on the provider it was chosen for: a model id means
+ * nothing on another provider, and a turn that resolves elsewhere (the default
+ * assistant changed after the pin was set) runs on its defaults with a warning
+ * rather than handing one vendor's model to another. Same rule as the per-user
+ * default model in `resolveChatModelRequest`.
+ *
+ * Either half may be pinned alone. A pinned model is no longer the tier's
+ * choice, so `matchedTier` is dropped — otherwise the tier-fallback nudge would
+ * describe a preset this turn is not using.
+ */
+export function applyChatModelPin(
+  request: ResolvedModelRequest,
+  pin: Pick<Conversation, 'pinned_provider' | 'pinned_model' | 'pinned_effort'>
+): ChatModelRequest {
+  const model = pin.pinned_model ?? undefined;
+  // The route validates effort against the registry before storing it; a row
+  // that still holds something else was written by another binary, and is
+  // ignored rather than guessed at.
+  const effort = isEffortRung(pin.pinned_effort) ? pin.pinned_effort : undefined;
+  if (pin.pinned_provider === null || (model === undefined && effort === undefined)) {
+    return { ...request, pinned: false };
+  }
+  if (pin.pinned_provider !== request.provider) {
+    getLog().warn(
+      { pinnedProvider: pin.pinned_provider, provider: request.provider },
+      'orchestrator.chat_model_pin_provider_mismatch'
+    );
+    return { ...request, pinned: false };
+  }
+  const resolvedModel = model ?? request.model;
+  const resolvedEffort = effort ?? request.preset?.effort;
+  const pinned: ChatModelRequest = {
+    provider: request.provider,
+    model: resolvedModel,
+    pinned: true,
+    ...(model === undefined && request.matchedTier !== undefined
+      ? { matchedTier: request.matchedTier }
+      : {}),
+  };
+  // The preset is the one channel effort reaches the provider through
+  // (`applyPresetToRequestOptions`); `model` rides on the request itself.
+  if (resolvedEffort !== undefined) {
+    pinned.preset = {
+      provider: request.provider,
+      model: resolvedModel ?? '',
+      effort: resolvedEffort,
+    };
+  }
+  return pinned;
 }
 
 /** A resolved title-generation request: which provider to call, with fully resolved options. */
@@ -2396,39 +2543,24 @@ export async function handleMessage(
         'orchestrator.execution_identity_creator_fallback'
       );
     }
-    // Per-user AI prefs (Phase 3): the user's tiers/aliases/default-assistant
-    // override install config (highest precedence). `{}` (no identity, no row,
-    // or DB failure) keeps config-only behavior byte-for-byte.
-    const userAiPrefs = executionUserId ? await resolveUserAiPrefsForChat(executionUserId) : {};
-    let configuredProviderKey = userAiPrefs.defaultProvider ?? conversation.ai_assistant_type;
-    let aiProfile: ReturnType<typeof buildAiProfile>;
-    try {
-      aiProfile = buildAiProfile(configuredProviderKey, {
-        repoTiers: config.tiers,
-        repoAliases: config.aliases,
-        userTiers: userAiPrefs.tiers,
-        userAliases: userAiPrefs.aliases,
-      });
-    } catch (profileErr) {
-      // Structurally invalid STORED prefs (corrupt DB row) must not break the
-      // user's chat — degrade to config-only. A broken config layer still
-      // fails fast: the rebuild rethrows the same error.
-      getLog().error(
-        { err: profileErr as Error, userId: executionUserId },
-        'orchestrator.user_ai_prefs_profile_invalid'
+    const { configuredProviderKey, aiProfile, chatRequest } = await resolveChatTurnModel(
+      conversation,
+      config,
+      executionUserId
+    );
+    if (chatRequest.pinned) {
+      // Server-side record of the chat's own choice (#132): which model and
+      // effort this turn actually asked for, and that the chat asked for it.
+      getLog().info(
+        {
+          conversationId,
+          provider: chatRequest.provider,
+          model: chatRequest.model,
+          effort: chatRequest.preset?.effort,
+        },
+        'orchestrator.chat_model_pin_applied'
       );
-      configuredProviderKey = conversation.ai_assistant_type;
-      aiProfile = buildAiProfile(configuredProviderKey, {
-        repoTiers: config.tiers,
-        repoAliases: config.aliases,
-      });
     }
-    // Main chat model: per-user default_model > configured `large` tier >
-    // install assistants.<p>.model > built-in tier default (#1998).
-    const chatRequest = resolveChatModelRequest(aiProfile, configuredProviderKey, userAiPrefs, {
-      assistants: config.assistants,
-      tiers: config.tiers,
-    });
     // Tier-fallback nudge (mirrors dag.model_provider_conflict): chat asks for
     // 'large'; when that tier is unset and a sibling preset answered, tell the
     // user ONCE PER CONVERSATION, non-blocking — the dedup Set below is what

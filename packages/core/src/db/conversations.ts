@@ -512,6 +512,42 @@ export async function setConversationReady(id: string, ready: boolean): Promise<
   }
 }
 
+/** A chat's own model/effort choice. `model`/`effort` null = that half follows the default. */
+export interface ConversationModelPin {
+  provider: string;
+  model: string | null;
+  effort: string | null;
+}
+
+/**
+ * Pin, or clear, the model and effort this one chat runs on (#132).
+ *
+ * `null` clears the whole pin. A pin with both halves null is stored as a
+ * clear too: a provider with nothing pinned on it asserts nothing, and keeping
+ * it would leave a row that reads as pinned while changing no turn.
+ *
+ * Validation is the caller's: this stores what it is given. The API route
+ * checks the values against the provider registry before calling this.
+ *
+ * Takes effect on the next turn. A turn already running resolved its model
+ * before this write and keeps it — the orchestrator reads the row once, at the
+ * start of each turn.
+ */
+export async function setConversationModelPin(
+  id: string,
+  pin: ConversationModelPin | null
+): Promise<void> {
+  const dialect = getDialect();
+  const effective = pin !== null && (pin.model !== null || pin.effort !== null) ? pin : null;
+  const result = await pool.query(
+    `UPDATE remote_agent_conversations SET pinned_provider = $2, pinned_model = $3, pinned_effort = $4, updated_at = ${dialect.now()} WHERE id = $1`,
+    [id, effective?.provider ?? null, effective?.model ?? null, effective?.effort ?? null]
+  );
+  if (result.rowCount === 0) {
+    throw new ConversationNotFoundError(id);
+  }
+}
+
 /**
  * Record that a human has read this chat to the end.
  *

@@ -55,6 +55,8 @@ export const K = {
   changes: (conversationId: string): string => `changes:${conversationId}`,
   changeDiff: (conversationId: string, path: string): string =>
     `changes:${conversationId}:${encodeURIComponent(path)}`,
+  /** What a chat's next turn runs on, and its own pin (#132). Server-resolved. */
+  chatModel: (conversationId: string): string => `chatModel:${conversationId}`,
   countsGlobal: 'counts:global' as const,
   pendingRuns: 'pendingRuns' as const,
   envVars: (projectId: string): string => `envVars:${projectId}`,

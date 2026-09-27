@@ -107,13 +107,16 @@ export function getRegisteredProviders(): ProviderRegistration[] {
  * Get API-safe provider info (excludes the factory).
  */
 export function getProviderInfoList(): ProviderInfo[] {
-  return getRegisteredProviders().map(({ id, displayName, capabilities, builtIn }) => ({
-    id,
-    displayName,
-    capabilities,
-    builtIn,
-    ...(capabilities.effortControl ? { effortLevels: EFFORT_LADDER } : {}),
-  }));
+  return getRegisteredProviders().map(
+    ({ id, displayName, capabilities, builtIn, suggestedModels }) => ({
+      id,
+      displayName,
+      capabilities,
+      builtIn,
+      ...(capabilities.effortControl ? { effortLevels: EFFORT_LADDER } : {}),
+      ...(suggestedModels !== undefined ? { suggestedModels } : {}),
+    })
+  );
 }
 
 /**
@@ -136,6 +139,9 @@ export function registerBuiltinProviders(): void {
       capabilities: CLAUDE_CAPABILITIES,
       builtIn: true,
       parseConfig: parseClaudeConfigStrict,
+      // The SDK's model keywords; each follows the family's newest release.
+      // Full `claude-*` ids are free-typed.
+      suggestedModels: [{ id: 'opus' }, { id: 'sonnet' }, { id: 'haiku' }],
       credentials: {
         kind: 'static',
         specs: [
@@ -154,6 +160,9 @@ export function registerBuiltinProviders(): void {
       capabilities: CODEX_CAPABILITIES,
       builtIn: true,
       parseConfig: parseCodexConfigStrict,
+      // Current lineup: flagship, mid, light. Retired ids are remapped in
+      // codex/provider.ts rather than listed here.
+      suggestedModels: [{ id: 'gpt-5.6-sol' }, { id: 'gpt-5.6-terra' }, { id: 'gpt-5.6-luna' }],
       credentials: {
         kind: 'static',
         specs: [
