@@ -63,10 +63,16 @@ describe('chatStatus', () => {
   test('ready outranks idle — a claim waiting on a decision is not nothing', () => {
     expect(chatStatus('a', sets([], [], [], [], ['a']))).toBe('ready');
   });
-  // Ranked with `done`, for the same reason `done` is: a chat that has spoken
-  // since you looked is worth reading before it is worth filing.
-  test('unread outranks ready', () => {
-    expect(chatStatus('a', sets([], [], [], ['a'], ['a']))).toBe('unread');
+  // The agent claiming its work landed is the new thing to read, and the
+  // decision it asks for is why the chat is worth opening (#181).
+  test('ready outranks unread', () => {
+    expect(chatStatus('a', sets([], [], [], ['a'], ['a']))).toBe('ready');
+  });
+  // `ready` jumps unread without dragging `done` over unread with it: a closed
+  // chat that has since spoken still shows unread, and done still settles ready.
+  test('done beats ready even when unread, and unread still beats done alone', () => {
+    expect(chatStatus('a', sets([], [], ['a'], ['a'], ['a']))).toBe('unread');
+    expect(chatStatus('a', sets([], [], ['a'], [], ['a']))).toBe('done');
   });
   // Both live states are about right now, which outranks any claim about the
   // work as a whole — the rule `done` already follows.
