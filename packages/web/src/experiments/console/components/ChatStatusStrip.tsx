@@ -104,7 +104,7 @@ export function ChatStatusStrip({
   trailing,
 }: ChatStatusStripProps): ReactElement {
   const elapsed = useElapsed(status === 'working' ? since : null);
-  // Both settled states earn the timestamp: "Done" and "Idle" each say that
+  // Both settled states earn the timestamp: "Closed" and "Idle" each say that
   // nothing is happening, and how long ago it stopped is the one fact neither
   // word carries. The two live states have a clock or a tool name instead.
   const ago = status === 'idle' || status === 'done' ? agoLabel(lastActivityAt) : null;
