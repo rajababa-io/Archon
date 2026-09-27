@@ -112,6 +112,17 @@ nodes:
     # This workflow declares no top-level model, so every AI node here names its
     # own tier. Choosing between two booleans off a diff is small-tier work.
     model: small
+    # The command reads the PR and diff itself, so the implement and pr
+    # sessions it would otherwise fork add nothing but tokens. Inherited, they
+    # tripled its context, and both runs that failed here were the largest:
+    # the small model answered in prose instead of calling the structured-output
+    # tool and the node died with the draft PR already open.
+    context: fresh
+    # One more attempt on a missing verdict. A failure here still fails the run
+    # rather than defaulting a lens off, so it can never narrow the review.
+    retry:
+      max_attempts: 1
+      on_error: all
     depends_on: [pr]
     mutates_checkout: false
     output_type: review-scope

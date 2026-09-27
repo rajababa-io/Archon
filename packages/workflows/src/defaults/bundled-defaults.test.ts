@@ -356,6 +356,19 @@ describe('bundled-defaults', () => {
       expect(review.with).not.toHaveProperty('pr_head');
     });
 
+    it('archon-deliver classifies review scope in a fresh session with one retry', () => {
+      const parsed = parseWorkflow(BUNDLED_WORKFLOWS['archon-deliver'], 'archon-deliver.yaml');
+      if (parsed.workflow === null) throw new Error(parsed.error.error);
+
+      const classify = parsed.workflow.nodes.find(node => node.id === 'classify');
+      if (classify?.kind !== 'agent') throw new Error('classify is not an agent node');
+      // Forking the implement/pr sessions tripled the classifier's context, and the
+      // two runs where it did so returned prose instead of the structured verdict.
+      expect(classify.context).toBe('fresh');
+      expect(classify.retry).toEqual({ max_attempts: 1, on_error: 'all' });
+      expect(classify.model).toBe('small');
+    });
+
     it('archon-deliver delegates the optional CI read timeout to the engine', () => {
       const parsed = parseWorkflow(BUNDLED_WORKFLOWS['archon-deliver'], 'archon-deliver.yaml');
       if (parsed.workflow === null) throw new Error(parsed.error.error);
