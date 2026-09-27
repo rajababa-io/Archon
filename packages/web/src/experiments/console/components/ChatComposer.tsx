@@ -24,6 +24,7 @@ import { AttachedFiles } from './AttachedFiles';
 import { AT_DRAFT, caretAtEdge, stepHistory, type HistoryWalk } from '../lib/composer-history';
 import { saveDraftText } from '../lib/draft-store';
 import { SlashMenu, slashOptionId } from './SlashMenu';
+import { escapeAction } from '../lib/escape-key';
 import { useSlashMenu } from '../hooks/useSlashMenu';
 
 /** What the user has typed and attached but not yet sent, for one conversation. */
@@ -89,7 +90,7 @@ const MAX_HEIGHT = 200;
 
 /**
  * Console-native chat composer. Auto-growing textarea, Enter sends,
- * Shift+Enter newline, Escape blurs. Attach files with the paperclip icon, by
+ * Shift+Enter newline, Escape stops a working agent and otherwise blurs. Attach files with the paperclip icon, by
  * dropping them anywhere on the composer, or by pasting a copied image (the
  * send skill builds the multipart upload).
  *
@@ -308,7 +309,10 @@ export function ChatComposer({
       return;
     }
     if (e.key === 'Escape') {
-      e.currentTarget.blur();
+      const action = escapeAction({ working, canStop: onStop !== undefined, stopping });
+      if (action === 'blur') e.currentTarget.blur();
+      else e.preventDefault();
+      if (action === 'stop') onStop?.();
       return;
     }
     // Only in an empty box, and only when something was actually pulled back:
@@ -468,12 +472,22 @@ export function ChatComposer({
                 type="button"
                 onClick={onStop}
                 disabled={onStop === undefined || stopping}
-                title={stopping ? 'Stopping…' : 'Stop the agent'}
+                title={stopping ? 'Stopping…' : 'Stop the agent · Esc'}
                 aria-label={stopping ? 'Stopping' : 'Stop'}
                 className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border border-error/50 bg-error/10 px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-error transition-colors hover:bg-error/20 disabled:opacity-60"
               >
                 <Square aria-hidden className="h-3 w-3 fill-current" />
                 {stopping ? 'Stopping…' : 'Stop'}
+                {/* Same treatment as Send's ↵. Hidden on narrow screens, which
+                    are the ones without an Escape key. */}
+                {stopping ? null : (
+                  <span
+                    aria-hidden
+                    className="hidden font-mono text-[length:var(--text-micro)] font-normal opacity-70 sm:inline"
+                  >
+                    esc
+                  </span>
+                )}
               </button>
             </>
           ) : (
@@ -508,6 +522,17 @@ export function ChatComposer({
               ⇧↵
             </span>{' '}
             newline
+            {working ? (
+              <>
+                <span
+                  className="ml-2 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] font-mono text-[length:var(--text-micro)] text-text-secondary"
+                  style={{ borderColor: 'var(--border-bright)' }}
+                >
+                  esc
+                </span>{' '}
+                stop
+              </>
+            ) : null}
           </span>
         </div>
       </div>
