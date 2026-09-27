@@ -33,6 +33,8 @@ interface ParsedEvent {
   locked?: boolean;
   content?: string;
   category?: string;
+  name?: string;
+  input?: unknown;
 }
 
 function parse(raw: string): ParsedEvent | null {
@@ -444,7 +446,7 @@ export function useRunStreamSSE(conversationPlatformId: string | null, runId: st
  *
  *   text / tool_call / tool_result → messages changed (debounced refetch)
  *   conversation_lock              → the lock cache key, written from the event
- *   text / tool_call / retract     → onLive(event), for the streamed preview
+ *   text / tool_call / thinking / retract → onLive(event), for the streamed preview
  *
  * The lock is a cache key rather than a callback so it can survive a gap. A
  * turn that ends while the socket is down emits its unlock to nobody, and
@@ -499,10 +501,11 @@ export function useConversationSSE(
 
       // The live preview renders straight from the payload and never stands in
       // for the refetch below: the persisted row that supersedes it is
-      // authoritative once it exists. `retract` is preview-only — the
-      // orchestrator withdrew streamed prose that turned out to be a workflow
-      // dispatch — and carries no target, so the table below invalidates
-      // nothing for it, which is correct rather than an omission.
+      // authoritative once it exists. `thinking` and `retract` are preview-only
+      // and carry no target, so the table below invalidates nothing for them:
+      // thinking is buffered with the reply and lands when its rows do, and a
+      // retract withdraws streamed prose that turned out to be a workflow
+      // dispatch. Both absences are correct rather than omissions.
       switch (ev.type) {
         case 'text':
           if (typeof ev.content === 'string') {
@@ -510,7 +513,18 @@ export function useConversationSSE(
           }
           break;
         case 'tool_call':
-          onLive?.({ kind: 'tool' });
+          onLive?.({
+            kind: 'tool',
+            ...(typeof ev.name === 'string' ? { name: ev.name } : {}),
+            ...(typeof ev.input === 'object' && ev.input !== null && !Array.isArray(ev.input)
+              ? { input: ev.input as Record<string, unknown> }
+              : {}),
+          });
+          break;
+        case 'thinking':
+          if (typeof ev.content === 'string' && ev.content.trim() !== '') {
+            onLive?.({ kind: 'thinking', content: ev.content });
+          }
           break;
         case 'retract':
           onLive?.({ kind: 'retract' });

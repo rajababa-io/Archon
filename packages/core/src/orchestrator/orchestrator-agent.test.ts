@@ -7518,3 +7518,38 @@ describe('mark_ready_to_close', () => {
     expect(names).not.toContain('close_chat');
   });
 });
+
+describe('thinking in a streamed turn', () => {
+  beforeEach(() => {
+    mockSendQuery.mockClear();
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() => Promise.resolve(makeConversation()));
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+  });
+
+  test('reaches the platform as a structured event and never as reply text', async () => {
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'thinking', content: 'Check the lockfile first.' };
+      yield { type: 'assistant', content: 'Done.' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+    const platform = {
+      ...makePlatform(),
+      getStreamingMode: mock<IPlatformAdapter['getStreamingMode']>(() => 'stream'),
+      sendStructuredEvent: mock<NonNullable<IPlatformAdapter['sendStructuredEvent']>>(() =>
+        Promise.resolve()
+      ),
+    } satisfies IPlatformAdapter;
+
+    await handleMessage(platform, 'conv-1', 'go');
+
+    expect(platform.sendStructuredEvent).toHaveBeenCalledWith('conv-1', {
+      type: 'thinking',
+      content: 'Check the lockfile first.',
+    });
+    const texts = platform.sendMessage.mock.calls.map(c => String(c[1]));
+    expect(texts.some(t => t.includes('lockfile'))).toBe(false);
+    expect(texts).toContain('Done.');
+  });
+});

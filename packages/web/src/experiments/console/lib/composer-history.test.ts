@@ -20,6 +20,7 @@ function msg(role: Message['role'], content: string): Message {
     category: null,
     dispatch: null,
     workflowResult: null,
+    thinking: null,
     files: [],
     usage: null,
   };

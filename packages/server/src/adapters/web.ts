@@ -343,6 +343,16 @@ export class WebAdapter implements IWebPlatformAdapter {
         duration,
         timestamp: now,
       });
+    } else if (chunk.type === 'thinking' && chunk.content) {
+      // Written into the same buffered segment the reply's text lands in, so
+      // the history carries it beside the text it preceded — see
+      // `MessagePersistence.appendThinking`.
+      this.persistence.appendThinking(conversationId, chunk.content);
+      event = JSON.stringify({
+        type: 'thinking',
+        content: chunk.content,
+        timestamp: Date.now(),
+      });
     } else if (chunk.type === 'result' && chunk.sessionId) {
       event = JSON.stringify({
         type: 'session_info',

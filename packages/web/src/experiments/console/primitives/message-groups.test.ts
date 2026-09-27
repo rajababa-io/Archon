@@ -13,6 +13,7 @@ const msg = (role: MessageRole, timestamp: string, category: string | null = nul
   category,
   dispatch: null,
   workflowResult: null,
+  thinking: null,
   files: [],
   usage: null,
 });

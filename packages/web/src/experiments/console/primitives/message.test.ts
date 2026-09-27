@@ -162,3 +162,16 @@ describe('toMessage — usage effort', () => {
     expect(empty.usage).not.toHaveProperty('effort');
   });
 });
+
+describe('toMessage — thinking', () => {
+  test('carries the thinking the adapter wrote', () => {
+    const m = toMessage(raw({ id: 'm1' }, { thinking: 'Check the lockfile first.' }));
+    expect(m.thinking).toBe('Check the lockfile first.');
+  });
+
+  test('no thinking, blank thinking, or a wrong type all read as none', () => {
+    expect(toMessage(raw({ id: 'm1' })).thinking).toBeNull();
+    expect(toMessage(raw({ id: 'm2' }, { thinking: '   ' })).thinking).toBeNull();
+    expect(toMessage(raw({ id: 'm3' }, { thinking: 42 })).thinking).toBeNull();
+  });
+});

@@ -2072,6 +2072,32 @@ describe('ClaudeProvider', () => {
       expect(chunks).toHaveLength(1);
       expect(chunks[0]).toEqual({ type: 'assistant', content: 'Real content' });
     });
+
+    test('forwards thinking text, and drops a thinking block whose text was omitted', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: {
+            content: [
+              { type: 'thinking', thinking: 'Check the lockfile first.', signature: 's1' },
+              { type: 'text', text: 'Done.' },
+              // Display omitted: the block still arrives, with no text in it.
+              { type: 'thinking', thinking: '', signature: 's2' },
+            ],
+          },
+        };
+      });
+
+      const chunks = [];
+      for await (const chunk of client.sendQuery('test', '/workspace')) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks).toEqual([
+        { type: 'thinking', content: 'Check the lockfile first.' },
+        { type: 'assistant', content: 'Done.' },
+      ]);
+    });
   });
 });
 
