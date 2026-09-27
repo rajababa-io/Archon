@@ -1510,11 +1510,16 @@ nodes:
           Print `[DRY] would POST to Slack (<bytes> chars):` followed by
           the full payload text. Do NOT curl.
 
-      Otherwise — unless `$ARTIFACTS_DIR/slack-posted` exists, which means
-      an interrupted earlier attempt of this node already posted (print
-      "Slack post skipped: already posted this run." and stop). Slack gives
-      no way to read the channel back, so write that file IMMEDIATELY after
-      an `ok` response:
+      Otherwise, if `$ARTIFACTS_DIR/slack-posted` exists, an earlier
+      attempt of this node already reached the send: print
+      "Slack post skipped: already attempted this run." and stop.
+
+      Slack gives no way to read the channel back, so a post cut off
+      mid-flight (a deploy park, a crash) cannot be told apart from one
+      that landed. The marker therefore goes down BEFORE the send and
+      "marked" counts as "sent": a resumed run may miss the post, never
+      repeat it. Write the marker and send in ONE command, exactly:
+          touch "$ARTIFACTS_DIR/slack-posted" && \
           curl -sS -X POST -H 'Content-Type: application/json' \
             --data "@$ARTIFACTS_DIR/slack-payload.json" \
             -w "\nHTTP_STATUS:%{http_code}\n" \
@@ -1534,7 +1539,8 @@ nodes:
       Slack posting is a side channel, not the source of truth. If curl
       fails (non-zero exit, non-`ok` body), log the error to stdout but
       do NOT fail the node — the digest.md on disk is authoritative.
-      Append a line to the node's stdout:
+      Leave `slack-posted` in place; do not retry the send. Append a line
+      to the node's stdout:
 
           Slack post FAILED: <curl error or Slack response body>
 
