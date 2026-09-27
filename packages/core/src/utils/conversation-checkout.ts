@@ -8,6 +8,10 @@
  * which describe that folder. A reader that computed its own answer could
  * describe a different tree than the one the agent edits.
  *
+ * A git-project chat with no `cwd` and no active provider session is given its
+ * own worktree at the start of its next turn; until then this answers with the
+ * project checkout.
+ *
  * Returns null for an unscoped chat. The orchestrator then runs in the
  * workspaces root, which is not one checkout and has no changes to show.
  */

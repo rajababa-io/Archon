@@ -85,12 +85,13 @@ export function detectPlanToExecuteTransition(
  * Commands that have known trigger mappings.
  * Used for function overloads to return non-null for known commands.
  */
-export type DeactivatingCommand = 'reset' | 'setproject' | 'worktree-remove';
+export type DeactivatingCommand = 'reset' | 'setproject' | 'worktree-remove' | 'worktree-live';
 
 const COMMAND_TRIGGER_MAP: Record<DeactivatingCommand, TransitionTrigger> = {
   reset: 'reset-requested',
   setproject: 'project-changed',
   'worktree-remove': 'worktree-removed',
+  'worktree-live': 'isolation-changed',
 };
 
 /**
@@ -115,7 +116,7 @@ export function getTriggerForCommand(commandName: string): TransitionTrigger | n
  * practically unreachable, but the catch keeps the command from failing on it.
  *
  * Single shared implementation for every deactivating command (/reset,
- * /setproject, /worktree remove) — the trigger is resolved through
+ * /setproject, /worktree remove, /worktree live) — the trigger is resolved through
  * COMMAND_TRIGGER_MAP, never hardcoded at call sites.
  */
 export async function safeDeactivateSession(

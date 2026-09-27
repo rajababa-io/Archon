@@ -589,6 +589,45 @@ async function handleWorktreeCommand(
       }
     }
 
+    case 'live': {
+      // The opt-out from the default chat worktree (#184): pins `cwd` to the
+      // live checkout, which the orchestrator never overrides. It refuses rather
+      // than detaching an attached worktree, so `/worktree remove` stays the one
+      // verb that deletes a directory.
+      if (conversation.isolation_env_id) {
+        const existingEnv = await isolationEnvDb.getById(conversation.isolation_env_id);
+        const worktreeLabel = existingEnv
+          ? shortenPath(existingEnv.working_path, mainPath)
+          : conversation.isolation_env_id;
+        return {
+          success: false,
+          message:
+            `This conversation works in worktree ${worktreeLabel}.\n\n` +
+            'Run /worktree remove to delete it and switch to the live checkout.',
+        };
+      }
+      if (conversation.cwd === mainPath) {
+        return { success: true, message: 'Already working in the live checkout.' };
+      }
+
+      await db.updateConversation(conversation.id, { cwd: mainPath });
+      // A null `cwd` already ran in the live checkout; only a stranded override
+      // moves the agent, and a provider session cannot follow it.
+      if (conversation.cwd !== null) {
+        const session = await sessionDb.getActiveSession(conversation.id);
+        if (session) {
+          await safeDeactivateSession(session.id, 'worktree-live');
+        }
+      }
+      return {
+        success: true,
+        message:
+          "This conversation now works in the project's live checkout, shared with other chats.\n\n" +
+          'Run /reset to go back to a worktree of its own.',
+        modified: true,
+      };
+    }
+
     case 'orphans': {
       try {
         // Show all worktrees from git perspective (source of truth)

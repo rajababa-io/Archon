@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A chat on a git project now works in its own worktree by default, created when its AI session starts, so concurrent chats no longer share one checkout's staged files, HEAD, and commits. A chat that already has a live session keeps its directory until `/reset` or `/setproject`. `/worktree live` keeps a chat in the project's shared checkout; folder projects are unchanged. If the worktree cannot be created the turn stops with the reason instead of falling back to the shared checkout. A background workflow with `worktree.enabled: false` now runs in the live checkout, as the foreground path already did, rather than in the parent chat's directory. (#184)
 - CLI commands write their logs to stderr, so stdout carries only the command's output: `archon workflow list --full > out.txt` captures the listing and nothing else. Every command except `archon serve` now logs at `warn` by default; pass `--verbose` or set `LOG_LEVEL=debug` for more. `archon serve` still logs at `info` on stdout. (#3444)
 - Workflow definition problems (deprecated or unknown keys, fields ignored on a node type, and files that fail to load) are no longer logged at `warn` on every discovery. They are reported where the author looks: `archon validate workflows`, `archon workflow list`, the `workflow run` preamble, and `/api/workflows`. The log line is still written at `debug`, so a server running at the default `info` level no longer shows them. (#3444)
 

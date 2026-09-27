@@ -2095,6 +2095,48 @@ async function resolveChatCwd(
 }
 
 /**
+ * Binds a git-project chat to its own worktree through the same resolver a
+ * workflow run uses, and returns the conversation with the new `cwd` and
+ * `isolation_env_id` (the resolver has already persisted both).
+ *
+ * Hint-less callers fall back to the thread request every chat adapter sends:
+ * without a `workflowId` the resolver keys every such chat on `''`, and they
+ * would all share one worktree.
+ *
+ * Never falls back to the project checkout. A blocked resolution has already
+ * told the user why and throws `IsolationBlockedError`; any other failure throws.
+ */
+async function bindDefaultChatWorktree(
+  platform: IPlatformAdapter,
+  conversationId: string,
+  conversation: Conversation,
+  codebase: Codebase,
+  isolationHints: HandleMessageContext['isolationHints'],
+  userId: string | undefined
+): Promise<Conversation> {
+  const result = await validateAndResolveIsolation(
+    conversation,
+    codebase,
+    platform,
+    conversationId,
+    isolationHints ?? { workflowType: 'thread', workflowId: conversationId },
+    false,
+    userId
+  );
+  if (result.env === null) {
+    throw new Error(
+      `Isolation resolver returned no worktree for git project "${codebase.name}" ` +
+        `(conversation ${conversation.id})`
+    );
+  }
+  getLog().info(
+    { conversationId, codebaseId: codebase.id, cwd: result.cwd, status: result.status },
+    'orchestrator.chat_worktree_bound'
+  );
+  return { ...conversation, cwd: result.cwd, isolation_env_id: result.env.id };
+}
+
+/**
  * The provider a chat's next message goes to, and that provider's commands for
  * the chat's directory — the `/` menu's provider section. Resolved exactly as
  * a turn resolves them; the listing is cached (see `listProviderCommands`).
@@ -2374,9 +2416,12 @@ export async function handleMessage(
     // SDK reports as a binary/libc mismatch, sending the operator after entirely
     // the wrong thing.
     //
+    // Git-project chats reach this state in the normal course: each gets its own
+    // worktree by default (#184), and the merged-branch sweep reaps a clean one.
+    //
     // Deliberately does NOT fall back to codebase.default_cwd: this conversation
-    // asked to work in an isolated worktree, and quietly relocating the agent
-    // into the live checkout would widen its write scope without consent. Runs
+    // works in an isolated worktree, and quietly relocating the agent into the
+    // live checkout would widen its write scope without consent. Runs
     // before the persist below so a refused turn leaves no `user` row without its
     // `assistant` pair, and after the deterministic-command early-returns above so
     // the commands that get out of this state keep working. Which of them applies
@@ -2399,16 +2444,19 @@ export async function handleMessage(
         // `isolation_env_id` and leaves `cwd` set, so a workflow run can strand a
         // conversation exactly here and the next chat turn would be told to run a
         // command that dead-ends. `/setproject` clears the cwd override and works
-        // in both states, so it is the one suggestion that always applies.
+        // in both states, so it is the one suggestion that always applies. `/reset`
+        // clears the override too, and the next turn starts in a fresh worktree.
         await platform.sendMessage(
           conversationId,
           `This conversation's working directory no longer exists:\n\`${conversation.cwd}\`\n\n` +
             (conversation.isolation_env_id !== null
               ? 'Its isolated worktree was removed after this conversation was bound to it. ' +
-                'Run `/worktree remove` to detach and go back to the project root, or ' +
-                '`/setproject <name>` to rebind this conversation to a project.'
+                'Run `/reset` to start fresh in a new worktree, `/worktree remove` to detach ' +
+                'and go back to the project root, or `/setproject <name>` to rebind this ' +
+                'conversation to a project.'
               : 'This conversation is not bound to an isolated workspace, so there is nothing ' +
-                'to detach. Run `/setproject <name>` to rebind this conversation to a project.')
+                'to detach. Run `/reset` to start fresh in a new worktree, or ' +
+                '`/setproject <name>` to rebind this conversation to a project.')
         );
         return;
       }
@@ -2475,6 +2523,40 @@ export async function handleMessage(
             '- `/setproject <name>` to switch this conversation to a different project'
         );
         return;
+      }
+    }
+
+    // A git-project chat gets its own worktree when its provider session starts,
+    // so its edits cannot collide with other chats in the shared checkout (#184).
+    // Only with no active session: a provider session is bound to the directory
+    // it started in (Claude files transcripts under a key derived from `cwd`), so
+    // moving a chat that already has one would break its resume. Legacy chats
+    // with a live session therefore keep running in the project checkout until
+    // `/reset` or `/setproject`. A chat with any `cwd` is left alone — a worktree
+    // it already has, or the live checkout pinned by `/worktree live`. Folder
+    // projects cannot make worktrees. Runs before the persist below, so a refused
+    // turn leaves no orphaned user row.
+    const activeSession = await sessionDb.getActiveSession(conversation.id);
+    if (conversation.codebase_id !== null && conversation.cwd === null && activeSession === null) {
+      const scoped = codebases.find(c => c.id === conversation.codebase_id);
+      if (scoped !== undefined && scoped.kind !== 'folder') {
+        try {
+          conversation = await bindDefaultChatWorktree(
+            platform,
+            conversationId,
+            conversation,
+            scoped,
+            isolationHints,
+            userId
+          );
+        } catch (error) {
+          if (!(error instanceof IsolationBlockedError)) throw error;
+          getLog().warn(
+            { conversationId, codebaseId: scoped.id, reason: error.reason },
+            'orchestrator.chat_worktree_blocked'
+          );
+          return;
+        }
       }
     }
 
@@ -2645,7 +2727,7 @@ export async function handleMessage(
     if (machineOrigin === undefined) {
       await db.setConversationReady(conversation.id, false);
     }
-    let session = await sessionDb.getActiveSession(conversation.id);
+    let session = activeSession;
     if (!session) {
       session = await sessionDb.transitionSession(conversation.id, 'first-message', {
         ai_assistant_type: conversation.ai_assistant_type,
