@@ -117,3 +117,24 @@ describe('Markdown', () => {
     expect(html).toContain('type="checkbox"');
   });
 });
+
+/**
+ * An image scaled into the message column is unreadable, so it has to open at
+ * full size. That used to depend on each agent wrapping it in a link by hand.
+ */
+describe('Markdown images', () => {
+  test('a bare image opens its full-size self', () => {
+    const html = renderToStaticMarkup(<Markdown>{'![diagram](/files/a/pic.jpg)'}</Markdown>);
+    expect(html).toContain('<a href="/files/a/pic.jpg" target="_blank"');
+    expect(html).toContain('<img src="/files/a/pic.jpg" alt="diagram"/>');
+  });
+
+  test('an image the author already linked keeps that link, and only that one', () => {
+    const html = renderToStaticMarkup(
+      <Markdown>{'[![diagram](/files/a/pic.jpg)](https://example.com/full.jpg)'}</Markdown>
+    );
+    expect(html.match(/<a /g)).toHaveLength(1);
+    expect(html).toContain('href="https://example.com/full.jpg"');
+    expect(html).toContain('<img src="/files/a/pic.jpg"');
+  });
+});
