@@ -3,6 +3,7 @@ import {
   askAwaitingIds,
   awaitingInputIds,
   chatStatus,
+  chatStatusSets,
   completedIds,
   markUnreadBlocker,
   readyIds,
@@ -427,5 +428,33 @@ describe('markUnreadBlocker', () => {
 
   test('a chat with no activity is refused — the mark could not show', () => {
     expect(markUnreadBlocker('idle', false, false)).toBe('Nothing to read yet');
+  });
+});
+
+describe('chatStatusSets', () => {
+  const ASK = '```ask\n{"questions":[{"id":"q1","question":"Pick one","options":["a","b"]}]}\n```';
+  const row = (id: string, over: { ready?: boolean; askCandidate?: string | null } = {}) => ({
+    id,
+    completed: false,
+    ready: over.ready ?? false,
+    askCandidate: over.askCandidate ?? null,
+    lastActivityAt: '2026-09-27T10:00:00Z',
+    lastReadAt: '2026-09-27T10:00:00Z',
+  });
+  const none = new Set<string>();
+  const live = { working: none, runAwaiting: none, running: none, waiting: none };
+
+  test('an unanswered question outranks the agent saying it is ready (#217)', () => {
+    // The exact case that split the bar from the dot: `ready` set, and an ask
+    // block still unanswered. Built here, it is awaiting for every reader.
+    const rows = [row('a', { ready: true, askCandidate: ASK })];
+    expect(chatStatus('a', chatStatusSets(rows, live))).toBe('awaiting');
+  });
+
+  test('merges a run paused on a gate into awaiting', () => {
+    const rows = [row('a', { ready: true })];
+    const sets = chatStatusSets(rows, { ...live, runAwaiting: new Set(['a']) });
+    expect(chatStatus('a', sets)).toBe('awaiting');
+    expect(chatStatus('a', chatStatusSets(rows, live))).toBe('ready');
   });
 });

@@ -7,39 +7,17 @@
  * chat is; a tab that worked it out again from messages or timers would be a
  * second vocabulary that could disagree with the dot beside the chat.
  */
-import { askAwaitingIds, chatStatus, completedIds, readyIds, unreadIds } from './chat-status';
-import type { ChatStatus } from './chat-status';
+import { chatStatus } from './chat-status';
+import type { ChatStatus, ChatStatusSets } from './chat-status';
 
 /**
- * Every listed chat's status, by the same sets and the same precedence the rail
- * draws. A run paused on an approval and an unanswered ask block both count as
- * awaiting, merged exactly as the rail merges them.
+ * Every listed chat's status, from the same sets the rail and the status bar
+ * read — `chatStatusSets` builds them, `chatStatus` ranks them.
  */
 export function chatStatuses(
-  conversations: readonly {
-    id: string;
-    completed: boolean;
-    ready: boolean;
-    askCandidate: string | null;
-    lastActivityAt: string | null;
-    lastReadAt: string | null;
-  }[],
-  working: ReadonlySet<string>,
-  runAwaiting: ReadonlySet<string>,
-  runRunning: ReadonlySet<string>,
-  ciWaiting: ReadonlySet<string>
+  conversations: readonly { id: string }[],
+  sets: ChatStatusSets
 ): Map<string, ChatStatus> {
-  const awaiting = askAwaitingIds(conversations);
-  for (const id of runAwaiting) awaiting.add(id);
-  const sets = {
-    working,
-    awaiting,
-    unread: unreadIds(conversations),
-    done: completedIds(conversations),
-    ready: readyIds(conversations),
-    running: runRunning,
-    waiting: ciWaiting,
-  };
   const out = new Map<string, ChatStatus>();
   for (const c of conversations) out.set(c.id, chatStatus(c.id, sets));
   return out;

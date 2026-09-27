@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { chatStatusSets } from '../primitives/chat-status';
 import type { ConversationSummary } from '../primitives/conversation';
 import { ConversationRail } from './ConversationRail';
 
@@ -18,6 +19,15 @@ const chat = (id: string, completed = false): ConversationSummary => ({
   ready: false,
 });
 
+const ASK = '```ask\n{"questions":[{"id":"q1","question":"Pick one","options":["a","b"]}]}\n```';
+
+const NO_LIVE = {
+  working: new Set<string>(),
+  runAwaiting: new Set<string>(),
+  running: new Set<string>(),
+  waiting: new Set<string>(),
+};
+
 const draw = (overrides: Partial<Parameters<typeof ConversationRail>[0]> = {}): string =>
   renderToStaticMarkup(
     <ConversationRail
@@ -35,6 +45,7 @@ const draw = (overrides: Partial<Parameters<typeof ConversationRail>[0]> = {}): 
       omitted={0}
       pendingNew={false}
       projectId="project-1"
+      statusSets={chatStatusSets(overrides.conversations ?? [chat('one'), chat('two')], NO_LIVE)}
       {...overrides}
     />
   );
@@ -84,5 +95,16 @@ describe('ConversationRail — New chat', () => {
     expect(html).toContain('⌘⇧O');
     expect(html).toContain('aria-keyshortcuts="Meta+Shift+O Control+Shift+O"');
     expect(html).not.toContain('(C)');
+  });
+});
+
+describe('ConversationRail — status', () => {
+  test('the dot is drawn from the sets it is given, not from its own copy (#217)', () => {
+    // The page hands the same object to the status bar. A rail that rebuilt
+    // the sets itself is how the two came to disagree.
+    const rows = [{ ...chat('asked'), ready: true, askCandidate: ASK }];
+    const html = draw({ conversations: rows, statusSets: chatStatusSets(rows, NO_LIVE) });
+    expect(html).toContain('chat-status is-awaiting');
+    expect(html).not.toContain('chat-status is-ready');
   });
 });

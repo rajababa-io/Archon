@@ -23,10 +23,8 @@ import { K } from '../store/keys';
 import {
   awaitingInputIds,
   chatStatus,
-  completedIds,
-  readyIds,
+  chatStatusSets,
   runningRunIds,
-  unreadIds,
   type ChatStatus,
 } from '../primitives/chat-status';
 import type { Run } from '../primitives/run';
@@ -525,25 +523,33 @@ export function ChatPage(): ReactElement {
     return new Set([...liveIds, activeConvId]);
   }, [liveIds, activeConvId, working]);
 
-  /** Finished chats, read off the same rows the rail draws. */
-  const doneIds = useMemo(() => completedIds(conversations ?? []), [conversations]);
-  const readySet = useMemo(() => readyIds(conversations ?? []), [conversations]);
-
   /**
-   * Chats with unseen activity, off the same rows.
+   * Every status input, built once. The rail's dots, the status bar under the
+   * open chat and the tab badge all read THIS object — none of them assembles
+   * its own — so the bar cannot say one thing while the dot beside it says
+   * another (#217).
    *
-   * The chat on screen is included rather than excluded. Being open is not the
-   * same as having been read — that is the whole point of clearing the mark at
-   * the BOTTOM of the stream — so exempting it here would make this header
-   * disagree with the rail row beside it.
+   * The chat on screen is included in `unread` rather than exempted: being open
+   * is not the same as having been read, which is the whole point of clearing
+   * the mark at the BOTTOM of the stream.
    */
-  const unread = useMemo(() => unreadIds(conversations ?? []), [conversations]);
-
-  // The tab badge and the opt-in notification, read off every chat in the rail
-  // by the rail's own rules. Clicking a notification opens its chat here.
-  const railStatuses = useMemo(
-    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, runningIds, ciWaiting),
+  const statusSets = useMemo(
+    () =>
+      chatStatusSets(conversations ?? [], {
+        working: railLiveIds,
+        runAwaiting: awaitingIds,
+        running: runningIds,
+        waiting: ciWaiting,
+      }),
     [conversations, railLiveIds, awaitingIds, runningIds, ciWaiting]
+  );
+  const unread = statusSets.unread;
+
+  // The tab badge and the opt-in notification. Clicking a notification opens
+  // its chat here.
+  const railStatuses = useMemo(
+    () => chatStatuses(conversations ?? [], statusSets),
+    [conversations, statusSets]
   );
   const railTitles = useMemo(
     () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
@@ -551,20 +557,9 @@ export function ChatPage(): ReactElement {
   );
   useTabSignal(railStatuses, railTitles, selectConversation);
 
-  /** The status of the chat being READ. Same states and same ordering as
-   * every row in the rail — `chatStatus` owns the precedence. */
-  const status: ChatStatus =
-    activeConvId === null
-      ? 'idle'
-      : chatStatus(activeConvId, {
-          working: railLiveIds,
-          awaiting: awaitingIds,
-          unread,
-          done: doneIds,
-          ready: readySet,
-          running: runningIds,
-          waiting: ciWaiting,
-        });
+  /** The status of the chat being READ — the same call, on the same sets, as
+   * its row in the rail. */
+  const status: ChatStatus = activeConvId === null ? 'idle' : chatStatus(activeConvId, statusSets);
 
   // Belt and braces: an echo must never outlive its turn. If the reply has
   // landed and released the composer, whatever the echo was waiting for is
@@ -872,10 +867,7 @@ export function ChatPage(): ReactElement {
             : conversationList.total - conversationList.chats.length
         }
         openCount={counts.open}
-        liveIds={railLiveIds}
-        awaitingIds={awaitingIds}
-        runningIds={runningIds}
-        ciWaitingIds={ciWaiting}
+        statusSets={statusSets}
         activeConvId={activeConvId}
         onSelect={selectConversation}
         onRename={renameConversation}

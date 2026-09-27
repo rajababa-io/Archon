@@ -183,6 +183,50 @@ export function chatStatus(conversationId: string, sets: ChatStatusSets): ChatSt
 }
 
 /**
+ * Every set `chatStatus` reads, built from the conversation rows plus the three
+ * live feeds — the one place they are assembled.
+ *
+ * `chatStatus` owning the precedence was not enough on its own: the rail, the
+ * status bar under the open chat and the tab badge each built these sets by
+ * hand, and the status bar's copy forgot that an unanswered ask block is
+ * awaiting too. The rail dot said "Needs you" while the bar beneath the
+ * question said "Ready to close" (#217). Every surface that shows a chat's
+ * status reads the object this returns, so they cannot be fed different
+ * inputs.
+ *
+ * `runAwaiting` is a run paused on a gate; an unanswered question is read off
+ * the rows here and merged in, because both mean "your move".
+ */
+export function chatStatusSets(
+  conversations: readonly {
+    id: string;
+    completed: boolean;
+    ready: boolean;
+    askCandidate: string | null;
+    lastActivityAt: string | null;
+    lastReadAt: string | null;
+  }[],
+  live: {
+    working: ReadonlySet<string>;
+    runAwaiting: ReadonlySet<string>;
+    running: ReadonlySet<string>;
+    waiting: ReadonlySet<string>;
+  }
+): ChatStatusSets {
+  const awaiting = askAwaitingIds(conversations);
+  for (const id of live.runAwaiting) awaiting.add(id);
+  return {
+    working: live.working,
+    awaiting,
+    unread: unreadIds(conversations),
+    done: completedIds(conversations),
+    ready: readyIds(conversations),
+    running: live.running,
+    waiting: live.waiting,
+  };
+}
+
+/**
  * Chats the agent has declared finished, as the set `chatStatus` reads.
  *
  * Nothing is derived here, deliberately. The server clears the flag when a
