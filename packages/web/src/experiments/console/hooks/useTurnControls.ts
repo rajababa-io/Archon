@@ -35,9 +35,9 @@ export interface TurnControls {
  *
  * @param conversationId - Platform id of the chat on screen; null for a chat
  *   not yet created, which has no turn to stop and nothing queued.
- * @param working - Whether that chat is executing a turn.
+ * @param locked - The server's lock on that chat: a turn is executing right now.
  */
-export function useTurnControls(conversationId: string | null, working: boolean): TurnControls {
+export function useTurnControls(conversationId: string | null, locked: boolean): TurnControls {
   const { data: queue } = useEntity<skill.ConversationQueue>(
     conversationId !== null ? K.conversationQueue(conversationId) : 'noop:no-conv-queue',
     () =>
@@ -59,11 +59,13 @@ export function useTurnControls(conversationId: string | null, working: boolean)
     setBusyIds(new Set());
   }, [conversationId]);
 
-  // The stopped turn has ended when the server's lock says so — that, not the
-  // stop request's reply, is what retires "Stopping…".
+  // The stopped turn has ended when the server says so: its reply `stopped`,
+  // or — for a turn slower than the reply waits — its lock going down. The
+  // LOCK, not `working`: a queued message starts the next turn the moment the
+  // stopped one ends, and `working` can stay true straight across the gap.
   useEffect(() => {
-    if (!working) setStopping(false);
-  }, [working]);
+    if (!locked) setStopping(false);
+  }, [locked]);
 
   const stop = useCallback((): void => {
     if (conversationId === null) return;
@@ -75,6 +77,7 @@ export function useTurnControls(conversationId: string | null, working: boolean)
         if (result.status === 'stopping') {
           setNotice('Stop sent — the agent has not ended its turn yet.');
         } else {
+          setStopping(false);
           // Stopped or already idle: ask the lock again rather than waiting on
           // an event, in case this tab missed it.
           invalidate(K.conversationLock(conversationId));

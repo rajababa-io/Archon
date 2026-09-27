@@ -397,7 +397,7 @@ export function ChatPage(): ReactElement {
   const serverWorking = activeConvId !== null && liveIds.has(activeConvId);
   const working = sending || locked || serverWorking;
   // Stop, queue and take back. Its own hook so the page only routes to it.
-  const turn = useTurnControls(activeConvId, working);
+  const turn = useTurnControls(activeConvId, locked);
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP
