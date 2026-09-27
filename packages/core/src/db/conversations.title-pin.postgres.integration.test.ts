@@ -14,8 +14,11 @@
 import { describe, test, expect, beforeAll, afterAll, mock } from 'bun:test';
 import type { Pool as PgPool } from 'pg';
 
+// The real @archon/paths with only the logger silenced: conversations.ts reaches
+// exports a hand-listed replacement would have to restate.
+const paths = await import('@archon/paths');
 mock.module('@archon/paths', () => ({
-  BUNDLED_IS_BINARY: false,
+  ...paths,
   createLogger: () => ({
     info() {},
     warn() {},
