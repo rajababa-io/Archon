@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 import { ChatStream } from '../components/ChatStream';
 import { ChatComposer, type ChatDraft } from '../components/ChatComposer';
 import { QueuedMessages } from '../components/QueuedMessages';
 import { chooseOpenChat, readLastChat, writeLastChat } from '../lib/last-chat';
+import { readOpenChatRequest } from '../lib/open-chat';
 import { ConversationRail, type ChatScope } from '../components/ConversationRail';
 import { ChatStatusStrip } from '../components/ChatStatusStrip';
 import { ContextBar } from '../components/ContextBar';
@@ -160,6 +161,18 @@ export function ChatPage(): ReactElement {
 
   const selectConversationRef = useRef(selectConversation);
   selectConversationRef.current = selectConversation;
+
+  // A chat asked for by name from elsewhere — the ⌘K palette. Declared after
+  // the project-change reset above so that, arriving from another project, the
+  // reset runs first and this choice is the one that stands. A done chat also
+  // moves the rail to the done scope, where it is listed.
+  const location = useLocation();
+  useEffect(() => {
+    const request = readOpenChatRequest(location.state);
+    if (request === null) return;
+    setScope(request.done ? 'done' : 'open');
+    selectConversationRef.current(request.openChat);
+  }, [location.key, location.state]);
 
   const invalidateConversationsRef = useRef<() => void>(() => undefined);
 
