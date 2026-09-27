@@ -624,9 +624,11 @@ describe('PATCH /api/conversations/:id', () => {
     expect(body.success).toBe(true);
     // Pinned: a rename through this route is a person choosing the name, and
     // the pin is what stops automatic re-titling from undoing it.
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(MOCK_CONV.id, 'Updated Title', {
-      pinned: true,
-    });
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      MOCK_CONV.id,
+      'Updated Title',
+      'person'
+    );
   });
 
   test('truncates title to 255 characters', async () => {

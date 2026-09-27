@@ -93,12 +93,13 @@ export async function generateAndSetTitle(
     if (!title) {
       getLog().warn({ conversationDbId, raw: generatedTitle }, 'title.generate_empty');
       const fallback = truncateMessage(userMessage);
-      await conversationDb.updateConversationTitle(conversationDbId, fallback);
+      await setGeneratedTitle(conversationDbId, fallback);
       return;
     }
 
-    await conversationDb.updateConversationTitle(conversationDbId, title);
-    getLog().info({ conversationDbId, title }, 'title.generate_completed');
+    if (await setGeneratedTitle(conversationDbId, title)) {
+      getLog().info({ conversationDbId, title }, 'title.generate_completed');
+    }
   } catch (error) {
     const err = error as Error;
     getLog().warn({ err, conversationDbId }, 'title.generate_failed');
@@ -106,13 +107,31 @@ export async function generateAndSetTitle(
     // Fallback: try to set a truncated message title
     try {
       const fallback = truncateMessage(userMessage);
-      await conversationDb.updateConversationTitle(conversationDbId, fallback);
-      getLog().info({ conversationDbId, title: fallback }, 'title.fallback_set');
+      if (await setGeneratedTitle(conversationDbId, fallback)) {
+        getLog().info({ conversationDbId, title: fallback }, 'title.fallback_set');
+      }
     } catch (_fallbackErr: unknown) {
       // Double failure — just log and move on
       getLog().warn({ conversationDbId }, 'title.fallback_also_failed');
     }
   }
+}
+
+/**
+ * Write a generated title unless a person has pinned one meanwhile.
+ *
+ * The first title is generated after a model call that takes seconds, and the
+ * chat is often renamed inside that window (a spawned chat is renamed the
+ * moment it exists). The pin check therefore lives in the write, not here.
+ */
+async function setGeneratedTitle(conversationDbId: string, title: string): Promise<boolean> {
+  const written = await conversationDb.updateConversationTitle(
+    conversationDbId,
+    title,
+    'automation'
+  );
+  if (!written) getLog().debug({ conversationDbId }, 'title.generate_skipped_pinned');
+  return written;
 }
 
 /**
@@ -241,7 +260,17 @@ export async function reconsiderConversationTitle(
     }
     if (answer.toLowerCase() === current.toLowerCase()) return;
 
-    await conversationDb.updateConversationTitle(conversationDbId, answer);
+    // The pin read above can be stale by now — a rename may have landed during
+    // the model call — so the automatic write re-checks it atomically.
+    const written = await conversationDb.updateConversationTitle(
+      conversationDbId,
+      answer,
+      force ? 'request' : 'automation'
+    );
+    if (!written) {
+      getLog().debug({ conversationDbId }, 'title.retitle_skipped_pinned');
+      return;
+    }
     getLog().info({ conversationDbId, from: current, to: answer }, 'title.retitled');
   } catch (error) {
     // Fire-and-forget — the existing title stands.
