@@ -5,7 +5,8 @@ export const SHORTCUTS: readonly KeymapGroup[] = [
   {
     title: 'Anywhere',
     entries: [
-      { keys: ['p'], label: 'Pick a project' },
+      { keys: ['⌘K'], label: 'Find a chat or project' },
+      { keys: ['p'], label: 'Find a chat or project, outside a text field' },
       { keys: ['n'], label: 'Start a new run' },
       { keys: [','], label: 'Open settings' },
       { keys: ['?'], label: 'Show this help' },

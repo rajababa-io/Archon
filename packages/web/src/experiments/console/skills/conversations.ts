@@ -135,6 +135,39 @@ export async function listConversations(
   return { chats, counts: raw.counts, total, truncated: total > chats.length };
 }
 
+/** A chat as the palette finds it: the row, and the project it opens in. */
+export interface FoundChat {
+  chat: ConversationSummary;
+  /** Codebase id. The console routes chats per project, so this is the route. */
+  projectId: string;
+}
+
+/**
+ * Every chat of the caller's, open and done, across every project — one read
+ * the palette filters locally, so typing never asks the server anything.
+ *
+ * A chat with no codebase is left out: the console only shows chats inside a
+ * project, so the palette would have nowhere to take it. The route's cap still
+ * applies; `truncated` says when it bit.
+ */
+export async function listAllConversations(): Promise<{
+  chats: FoundChat[];
+  truncated: boolean;
+}> {
+  const raw = await requestJson<{
+    conversations: (Parameters<typeof toConversationSummary>[0] & {
+      codebase_id: string | null;
+    })[];
+    counts: { open: number; done: number; all: number };
+  }>('/api/conversations?mine=true&archived=active&state=all');
+  const chats: FoundChat[] = [];
+  for (const row of raw.conversations) {
+    if (row.codebase_id === null) continue;
+    chats.push({ chat: toConversationSummary(row), projectId: row.codebase_id });
+  }
+  return { chats, truncated: raw.counts.all > raw.conversations.length };
+}
+
 /**
  * Arrange a run of chats: `ids` is the order they should appear in, top first.
  *
