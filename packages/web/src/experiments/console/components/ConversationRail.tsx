@@ -48,13 +48,13 @@ const EMPTY_SET: ReadonlySet<string> = new Set();
  * A chat row carries a wrapped title and a line of activity under it, not a
  * name and a table of counts, so it stays readable further down than 232 —
  * and needs less than 440 to stop wrapping every title to two lines. The
- * initial value fits a one-line row with its time beside the title.
+ * initial value is the 236 the rail shipped at.
  */
 const CHATLIST_WIDTH: PaneBounds = {
   key: 'archon.console.chatRailWidth',
   min: 200,
   max: 420,
-  initial: 280,
+  initial: 236,
 };
 
 /**

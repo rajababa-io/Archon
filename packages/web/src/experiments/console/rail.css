@@ -573,7 +573,7 @@
    value here establishes a clipping box, which cuts off the resize handle
    straddling the right border. */
 .chatlist {
-  width: 280px;
+  width: 236px;
   flex: 0 0 auto;
   min-height: 0;
   padding: 8px 8px 8px 0;
@@ -585,9 +585,11 @@
   gap: 7px;
   padding: 2px 8px 7px;
 }
-/* A chat row is ONE line — title, then its time on the right — so the list
-   scans like the project rail above it. It pins its height rather than letting
-   the contents decide — see .rail-row.
+/* A chat row is taller than a rail row: the title wraps to up to three lines
+   and the time sits under it. Only a handful of chats run at once, so the
+   list spends vertical space on reading the title rather than on fitting
+   more rows. It still pins its height rather than letting the contents
+   decide — see .rail-row.
 
    The left gutter is 26px, not the rail's 17px. Two marks live in that column
    — the drag grip on hover, and the status dot — and at 17px the grip's right
@@ -596,24 +598,32 @@
    things and they have to read as two objects. 26px leaves 10px between
    them. */
 .chatlist .rail-row {
-  padding: 0 8px 0 26px;
-}
-.chatlist .rail-row > button {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  height: auto;
+  min-height: calc(17px + 2 * var(--row-y));
+  padding: 6px 8px 6px 26px;
+  align-items: flex-start;
 }
 .chatlist .rail-grip-dots {
   left: 6px;
 }
 .chatlist .rail-row .rail-text {
-  flex: 1 1 auto;
-  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  overflow: hidden;
   line-height: 1.35;
 }
 /* The kind glyph is smaller and quieter than a project's, so a chat and a
-   project read as different KINDS of thing rather than as two lists. A slot
-   one title line tall, so the glyph centres on the line it labels. */
+   project read as different KINDS of thing rather than as two lists.
+
+   Centred on the title's FIRST LINE the same way `.chat-status` is, and for
+   the same reason: the row is `align-items: flex-start`, so a glyph with no
+   slot sits at the top of a two-line card rather than on the line it belongs
+   to. A hand-tuned `margin-top: 1px` was doing that job and was 1.28px out —
+   the line box is 17.55px and a 15px glyph needs 2.28px above it. Derived from
+   the two values that decide where the line sits, so it follows a change to
+   the title's size or leading instead of drifting from it. */
 .chat-kind {
   flex: 0 0 auto;
   width: 15px;
@@ -631,10 +641,12 @@
    primitives/chat-status.ts, so the casing is a rendering choice made here
    rather than a second copy of the vocabulary. */
 .chat-stamp {
-  flex: 0 0 auto;
+  display: block;
   text-transform: lowercase;
-  font-size: var(--text-small);
+  margin-top: 2px;
+  font-size: var(--text-mini);
   color: var(--text-tertiary);
+  letter-spacing: 0.3px;
   font-variant-numeric: tabular-nums;
 }
 /* A dashed row, not a button in a header. It sits where a new chat will
@@ -721,9 +733,12 @@
 }
 .chatlist .rail-row > .chat-status {
   width: 8px;
-  /* A slot exactly one title line tall, with `place-items: center` doing the
-     arithmetic, so a change to the title's size or leading moves the dot with
-     it instead of leaving it to drift. */
+  /* Centred on the title's FIRST LINE, not on the row — a dot centred on a
+     two-line card floats between them. Derived from the two values that
+     decide where that line sits (see `.chatlist .rail-row .rail-text`)
+     rather than hand-tuned as a margin: a slot exactly one line box tall,
+     with `place-items: center` doing the arithmetic. Change the title's size
+     or leading and the dot follows instead of drifting. */
   height: calc(var(--text-body) * 1.35);
 }
 /* Every state is this dot. Size and radius are stated ONCE, so no state can
