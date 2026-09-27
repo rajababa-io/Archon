@@ -162,6 +162,14 @@ describe('MessagePersistence', () => {
       );
     });
 
+    test('returns the seam it placed, and nothing for the first piece of a segment', () => {
+      expect(persistence.appendText('conv-1', '```ask\n{"questions":[]}\n```')).toBe('');
+      expect(persistence.appendText('conv-1', '## Issue status')).toBe('\n\n');
+      expect(persistence.appendText('conv-1', 'skip me', { category: 'isolation_context' })).toBe(
+        ''
+      );
+    });
+
     test('a seam that already has a newline is left alone', async () => {
       persistence.setConversationDbId('conv-1', 'db-uuid-1');
       persistence.appendText('conv-1', 'first\n');

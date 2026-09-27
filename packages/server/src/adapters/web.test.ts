@@ -42,7 +42,7 @@ import type { WorkflowEventBridge } from './web/workflow-bridge';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeAdapter(options?: { dashboardConnected?: boolean }): {
+function makeAdapter(options?: { dashboardConnected?: boolean; seam?: string }): {
   adapter: WebAdapter;
   emitted: string[];
   dashboard: string[];
@@ -69,7 +69,7 @@ function makeAdapter(options?: { dashboardConnected?: boolean }): {
       appendToolResultCalls.push([_id, name, output, duration]);
     }),
     appendToolCall: mock(() => {}),
-    appendText: mock(() => {}),
+    appendText: mock(() => options?.seam ?? ''),
     flush: mock(async () => {
       dbCalls.push('flush');
     }),
@@ -185,6 +185,15 @@ describe('WebAdapter.sendMessage — text event category', () => {
     });
 
     expect(emitted.length).toBe(0);
+  });
+
+  test('streams the seam the buffer placed, so the live view matches the saved row', async () => {
+    const { adapter, emitted } = makeAdapter({ seam: '\n\n' });
+
+    await adapter.sendMessage('conv-1', 'Issue #96 — all green.');
+
+    const parsed = JSON.parse(emitted[0]!) as { content: string };
+    expect(parsed.content).toBe('\n\nIssue #96 — all green.');
   });
 });
 

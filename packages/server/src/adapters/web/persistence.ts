@@ -46,15 +46,20 @@ export class MessagePersistence {
     return this.dbIdMap.get(platformConversationId);
   }
 
-  appendText(conversationId: string, message: string, metadata?: MessageMetadata): void {
+  /**
+   * Buffer one piece of assistant text. Returns the seam placed in front of it —
+   * `''` unless the piece extended an existing segment across a bare boundary —
+   * so the live stream can carry exactly the text the row will hold.
+   */
+  appendText(conversationId: string, message: string, metadata?: MessageMetadata): string {
     if (metadata?.category === 'tool_call_formatted') {
       getLog().debug({ conversationId }, 'persistence_skip_tool_call_formatted');
-      return;
+      return '';
     }
 
     if (metadata?.category === 'isolation_context') {
       getLog().debug({ conversationId }, 'persistence_skip_isolation_context');
-      return;
+      return '';
     }
 
     // Buffer assistant text for persistence (segment-based to preserve message structure)
@@ -79,6 +84,7 @@ export class MessagePersistence {
           lastSeg.metadata?.category === 'workflow_status' ||
           lastSeg.metadata?.category === 'workflow_dispatch_status'));
 
+    let seam = '';
     if (needsNewSegment) {
       buf.segments.push({
         content: message,
@@ -86,7 +92,8 @@ export class MessagePersistence {
         metadata,
       });
     } else {
-      lastSeg.content += blockSeam(lastSeg.content, message) + message;
+      seam = blockSeam(lastSeg.content, message);
+      lastSeg.content += seam + message;
     }
     this.assistantBuffer.set(conversationId, buf);
 
@@ -97,6 +104,7 @@ export class MessagePersistence {
         getLog().error({ conversationId, err: e }, 'buffer_overflow_flush_failed');
       });
     }
+    return seam;
   }
 
   /**
