@@ -1362,6 +1362,8 @@ describe('GET /api/conversations/:id/changes', () => {
       expect(response.status).toBe(404);
     }
   });
+});
+
 // ─── #132: the chat's own model/effort pin ────────────────────────────────────
 
 describe('GET/PUT /api/conversations/:id/model', () => {
