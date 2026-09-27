@@ -926,4 +926,11 @@
   height: 11px;
   display: block;
 }
-/* Collapsed the labels are hidden with `rail-hide`; nothing to arrange at 63px. */
+/* Collapsed, the label keeps its box and loses its paint. `rail-hide` would
+   take it out of layout and lift every project icon below it; `visibility`
+   also takes the move buttons out of the tab order and the accessibility tree.
+   It stays a `rail-hide` so the peek fades it in with the other labels. */
+.rail-panel.is-collapsed .rail-owner.rail-hide {
+  display: flex;
+  visibility: hidden;
+}
