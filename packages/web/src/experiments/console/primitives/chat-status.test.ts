@@ -41,22 +41,23 @@ describe('chatStatus', () => {
     expect(chatStatus('a', sets([], []))).toBe('idle');
   });
 
-  // The state exists to stop idle saying "nothing is pending" while the server
-  // is waiting on CI for the chat — and to replace idle only.
-  test('waiting replaces idle and nothing else', () => {
+  // #209: a chat that calls watch_ci nearly always ends its turn with a reply,
+  // so under unread the state was almost never seen. It outranks unread, done
+  // and running; the live states and ready still outrank it.
+  test('waiting outranks unread, done and running, and nothing above them', () => {
     expect(chatStatus('a', sets(['a'], [], [], [], [], ['a']))).toBe('working');
     expect(chatStatus('a', sets([], ['a'], [], [], [], ['a']))).toBe('awaiting');
-    expect(chatStatus('a', sets([], [], [], ['a'], [], ['a']))).toBe('unread');
-    expect(chatStatus('a', sets([], [], ['a'], [], [], ['a']))).toBe('done');
+    expect(chatStatus('a', sets([], [], [], ['a'], [], ['a']))).toBe('waiting');
+    expect(chatStatus('a', sets([], [], ['a'], [], [], ['a']))).toBe('waiting');
+    expect(chatStatus('a', sets([], [], [], [], [], ['a'], ['a']))).toBe('waiting');
     expect(chatStatus('a', sets([], [], [], [], ['a'], ['a']))).toBe('ready');
     expect(chatStatus('b', sets([], [], [], [], [], ['a']))).toBe('idle');
   });
 
   // #188: a chat whose run executed for twenty minutes read "Nothing is running
-  // in this chat". Running takes idle's place, and CI's, and nothing else's.
-  test('a running run replaces idle and waiting, and nothing that outranks them', () => {
+  // in this chat". Running takes idle's place and nothing else's.
+  test('a running run replaces idle, and nothing that outranks it', () => {
     expect(chatStatus('a', sets([], [], [], [], [], [], ['a']))).toBe('running');
-    expect(chatStatus('a', sets([], [], [], [], [], ['a'], ['a']))).toBe('running');
     expect(chatStatus('a', sets(['a'], [], [], [], [], [], ['a']))).toBe('working');
     expect(chatStatus('a', sets([], ['a'], [], [], [], [], ['a']))).toBe('awaiting');
     expect(chatStatus('a', sets([], [], [], ['a'], [], [], ['a']))).toBe('unread');
