@@ -968,7 +968,7 @@ The handler is split into focused functions per command group:
 - `handleCommand()` -- Top-level dispatcher (switch on command name)
 - `handleRepoCommand()` -- `/repo` (switch repos, pull, auto-load commands)
 - `handleRepoRemoveCommand()` -- `/repo-remove` (delete repo + codebase record)
-- `handleWorktreeCommand()` -- `/worktree` subcommands (create, list, remove, cleanup, orphans)
+- `handleWorktreeCommand()` -- `/worktree` subcommands (create, list, remove, cleanup, orphans, live)
 - `handleWorkflowCommand()` -- `/workflow` subcommands (list, reload, run, status, cancel, resume, abandon, approve, reject). The status/resume/abandon/approve/reject cases delegate to shared operations in `packages/core/src/operations/workflow-operations.ts`
 - `resolveRepoArg()` -- Shared helper for repo lookup by number or name
 
@@ -1094,7 +1094,7 @@ remote_agent_conversations
 ├── platform_type (VARCHAR) -- 'web' | 'telegram' | 'github' | 'slack' | 'discord' | 'gitea' | 'gitlab' | 'cli'
 ├── platform_conversation_id (VARCHAR) -- Platform-specific ID
 ├── codebase_id (UUID -> remote_agent_codebases.id)
-├── cwd (VARCHAR) -- Explicit working-directory override, usually null (set by worktree create/remove; effective cwd falls back to codebase.default_cwd)
+├── cwd (VARCHAR) -- Working-directory override: the chat's worktree once its first AI turn on a git project binds one, or codebase.default_cwd when pinned with /worktree live or after /worktree remove. Null before that first turn, for a folder project, and after /reset or /setproject; a null cwd falls back to codebase.default_cwd
 ├── ai_assistant_type (VARCHAR) -- LOCKED at creation
 ├── title (VARCHAR) -- User-friendly conversation title (Web UI)
 ├── deleted_at (TIMESTAMP) -- Soft-delete support
@@ -1110,7 +1110,7 @@ remote_agent_sessions
 ├── active (BOOLEAN) -- Only one active per conversation
 ├── parent_session_id (UUID -> remote_agent_sessions.id)
 ├── transition_reason (TEXT) -- Why this session was created (TransitionTrigger)
-└── metadata (JSONB) -- {lastCommand: "plan-feature", ...}
+└── metadata (JSONB) -- {lastCommand: "plan-feature", worktreePath: "<worktree the session started in>", ...}
 
 remote_agent_isolation_environments
 ├── id (UUID)
