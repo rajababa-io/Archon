@@ -59,11 +59,6 @@ export function wantingCount(statuses: ReadonlyMap<string, ChatStatus>): number 
   return n;
 }
 
-/** The tab title: `(N) base`, or the bare base when nothing wants you. */
-export function tabTitle(base: string, count: number): string {
-  return count > 0 ? `(${String(count)}) ${base}` : base;
-}
-
 /**
  * The favicon badge's text, Gmail's way: the number up to nine, `9+` past it,
  * nothing at zero. A 16px icon has room for two characters and no more.
