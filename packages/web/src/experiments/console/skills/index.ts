@@ -14,6 +14,7 @@ export * from './issues';
 export * from './presentation';
 export * from './projects';
 export * from './workflows';
+export * from './slashCommands';
 export * from './worktrees';
 export * from './files';
 export * from './runs';

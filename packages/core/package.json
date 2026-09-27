@@ -17,6 +17,7 @@
     "./isolation-store": "./src/db/isolation-environments.ts",
     "./orchestrator": "./src/orchestrator/orchestrator.ts",
     "./handlers": "./src/handlers/command-handler.ts",
+    "./handlers/command-registry": "./src/handlers/command-registry.ts",
     "./config": "./src/config/index.ts",
     "./config/run-config-handoff": "./src/config/run-config-handoff.ts",
     "./config/resolve-assistant": "./src/config/resolve-assistant.ts",

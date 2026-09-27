@@ -42,6 +42,17 @@ import {
   resetWorkflowNodeSessions,
 } from '../operations/workflow-operations';
 import { safeDeactivateSession } from '../state/session-transitions';
+import {
+  SLASH_COMMANDS,
+  WORKFLOW_SUBCOMMANDS,
+  WORKTREE_SUBCOMMANDS,
+  commandSynopsis,
+  findSlashCommand,
+  resolveWorkflowSubcommand,
+  resolveWorktreeSubcommand,
+  type SlashCommandName,
+  type SlashCommandSpec,
+} from './command-registry';
 import { createLogger } from '@archon/paths';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
@@ -361,7 +372,13 @@ async function handleWorktreeCommand(
   }
 
   const mainPath = codebase.default_cwd;
-  const subcommand = args[0];
+  const subcommand = resolveWorktreeSubcommand(args[0]);
+  if (subcommand === undefined) {
+    return {
+      success: false,
+      message: `Usage:\n${WORKTREE_SUBCOMMANDS.map(s => `  /worktree ${commandSynopsis(s)}`).join('\n')}`,
+    };
+  }
 
   switch (subcommand) {
     case 'create': {
@@ -667,12 +684,10 @@ async function handleWorktreeCommand(
       }
     }
 
-    default:
-      return {
-        success: false,
-        message:
-          'Usage:\n  /worktree create <branch>\n  /worktree list\n  /worktree remove [--force]\n  /worktree cleanup merged|stale\n  /worktree orphans',
-      };
+    default: {
+      const unhandled: never = subcommand;
+      throw new Error(`Unhandled /worktree subcommand: ${String(unhandled)}`);
+    }
   }
 }
 
@@ -698,7 +713,7 @@ async function handleWorkflowCommand(
   args: string[],
   surface: WorkflowCommandSurface
 ): Promise<CommandResult> {
-  const subcommand = args[0];
+  const subcommand = resolveWorkflowSubcommand(args[0]);
   const cmd = (command: string): string => spellWorkflowCommand(surface, command);
 
   // Workflow commands work with or without a project context
@@ -710,9 +725,18 @@ async function handleWorkflowCommand(
     ? (conversation.cwd ?? codebase.default_cwd)
     : getArchonWorkspacesPath();
 
+  if (subcommand === undefined) {
+    return {
+      success: false,
+      message: [
+        'Usage:',
+        ...WORKFLOW_SUBCOMMANDS.map(s => `  ${cmd(commandSynopsis(s))} - ${s.description}`),
+      ].join('\n'),
+    };
+  }
+
   switch (subcommand) {
-    case 'list':
-    case 'ls': {
+    case 'list': {
       let workflowEntries: readonly WorkflowWithSource[];
       let errors: readonly WorkflowLoadError[];
       try {
@@ -1191,23 +1215,10 @@ async function handleWorkflowCommand(
       };
     }
 
-    default:
-      return {
-        success: false,
-        message: [
-          'Usage:',
-          `  ${cmd('list')} - Show available workflows`,
-          `  ${cmd('reload')} - Reload workflow definitions`,
-          `  ${cmd('status')} - Show all active workflows`,
-          `  ${cmd('cancel [id]')} - Cancel a running workflow (default: the one in this conversation)`,
-          `  ${cmd('resume <id>')} - Resume a failed or paused run`,
-          `  ${cmd('abandon <id>')} - Abandon a running, failed, or paused run`,
-          `  ${cmd('approve <id> [comment]')} - Approve a paused gate`,
-          `  ${cmd('reject <id> [reason]')} - Reject a paused gate`,
-          `  ${cmd('reset-sessions <name> [<node-id>]')} - Clear persisted AI session memory for this conversation`,
-          `  ${cmd('run <name> [args]')} - Run a workflow directly`,
-        ].join('\n'),
-      };
+    default: {
+      const unhandled: never = subcommand;
+      throw new Error(`Unhandled /workflow subcommand: ${String(unhandled)}`);
+    }
   }
 }
 
@@ -1219,7 +1230,15 @@ export async function handleCommand(
   const { command, args } = parseCommand(message);
   const cmd = (workflowCommand: string): string => spellWorkflowCommand(surface, workflowCommand);
 
-  switch (command) {
+  const spec = findSlashCommand(command);
+  if (spec?.owner !== 'handler') {
+    return {
+      success: false,
+      message: `Unknown command: /${command}\n\nType /help to see available commands.`,
+    };
+  }
+
+  switch (spec.name) {
     case 'help':
       return {
         success: true,
@@ -1235,26 +1254,13 @@ Talk naturally — the orchestrator routes your requests to the right workflow a
 - Ask to "run [workflow] on [project]" for explicit invocation
 
 **Workflows**
-- \`${cmd('list')}\` — List available workflows
-- \`${cmd('run <name> [message]')}\` — Run a workflow explicitly
-- \`${cmd('status')}\` — Show all active workflows
-- \`${cmd('cancel [id]')}\` — Cancel a running workflow (default: the one in this conversation)
-- \`${cmd('resume <id>')}\` — Resume a failed or paused run
-- \`${cmd('abandon <id>')}\` — Abandon a running, failed, or paused run
-- \`${cmd('approve <id>')}\` — Approve a paused gate
-- \`${cmd('reject <id>')}\` — Reject a paused gate
-- \`${cmd('reset-sessions <name> [<node-id>]')}\` — Clear persisted AI session memory for this conversation
+${WORKFLOW_SUBCOMMANDS.map(w => `- \`${cmd(commandSynopsis(w))}\` — ${w.description}`).join('\n')}
 
 **Projects**
-- \`/register-project <name> <path>\` — Register a local project
-- \`/update-project <name> <new-path>\` — Update a project's path
-- \`/remove-project <name>\` — Remove a registered project
-- \`/setproject <name>\` — Bind this conversation to a registered project
+${helpLines(SLASH_COMMANDS.filter(c => c.name !== 'workflow' && !SESSION_COMMANDS.includes(c.name)))}
 
 **Session**
-- \`/status\` — Show current session and project info
-- \`/reset\` — Clear conversation and start fresh
-- \`/help\` — Show this help message
+${helpLines(SESSION_COMMANDS.map(requireCommand))}
 
 ### Tips
 - You don't need to select a project first — just describe what you want
@@ -1563,10 +1569,22 @@ Commands are auto-discovered from .archon/commands/ — no registration needed.`
       }
     }
 
-    default:
-      return {
-        success: false,
-        message: `Unknown command: /${command}\n\nType /help to see available commands.`,
-      };
+    default: {
+      const unhandled: never = spec;
+      throw new Error(`Unhandled command: /${String(unhandled)}`);
+    }
   }
+}
+
+/** Listed under Session in /help; every other command except /workflow falls under Projects. */
+const SESSION_COMMANDS: readonly SlashCommandName[] = ['status', 'reset', 'help'];
+
+function requireCommand(name: SlashCommandName): SlashCommandSpec {
+  const spec = SLASH_COMMANDS.find(c => c.name === name);
+  if (spec === undefined) throw new Error(`/${name} is not registered`);
+  return spec;
+}
+
+function helpLines(specs: readonly SlashCommandSpec[]): string {
+  return specs.map(spec => `- \`/${commandSynopsis(spec)}\` — ${spec.description}`).join('\n');
 }

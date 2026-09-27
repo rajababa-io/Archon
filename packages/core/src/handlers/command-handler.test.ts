@@ -465,6 +465,7 @@ mock.module('@archon/paths', () => ({
 import { parseCommand, handleCommand } from './command-handler';
 import { startRunLiveOwner } from '../services/run-live-owner';
 import { quoteCommandArg } from '../utils/command-args';
+import { SLASH_COMMANDS, WORKFLOW_SUBCOMMANDS, commandSynopsis } from './command-registry';
 
 // Helper to clear all mocks
 function clearAllMocks(): void {
@@ -788,6 +789,17 @@ describe('CommandHandler', () => {
         expect(result.message).toContain('/workflow list');
         expect(result.message).toContain('/workflow resume <id>` — Resume a failed or paused run');
         expect(result.message).toContain('/status');
+      });
+
+      test('lists every registered command and workflow subcommand', async () => {
+        const result = await handleCommand(baseConversation, '/help');
+        for (const spec of SLASH_COMMANDS) {
+          if (spec.name === 'workflow') continue;
+          expect(result.message).toContain(`/${commandSynopsis(spec)}\` — ${spec.description}`);
+        }
+        for (const sub of WORKFLOW_SUBCOMMANDS) {
+          expect(result.message).toContain(`/workflow ${commandSynopsis(sub)}\``);
+        }
       });
     });
 

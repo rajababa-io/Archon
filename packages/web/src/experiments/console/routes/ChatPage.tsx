@@ -861,6 +861,7 @@ export function ChatPage(): ReactElement {
           controlRef={turn.controlRef}
           draftKey={draftKey}
           history={sent}
+          projectId={projectId}
         />
       </div>
     </section>

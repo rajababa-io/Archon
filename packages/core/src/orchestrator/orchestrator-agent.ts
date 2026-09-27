@@ -25,6 +25,7 @@ import * as db from '../db/conversations';
 import * as codebaseDb from '../db/codebases';
 import * as sessionDb from '../db/sessions';
 import * as commandHandler from '../handlers/command-handler';
+import { findSlashCommand } from '../handlers/command-registry';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
@@ -2013,53 +2014,36 @@ export async function handleMessage(
     // 2. Check for deterministic commands
     if (trimmedMessage.startsWith('/')) {
       const { command } = commandHandler.parseCommand(message);
-      const deterministicCommands = [
-        'help',
-        'status',
-        'reset',
-        'workflow',
-        'register-project',
-        'update-project',
-        'remove-project',
-        'setproject',
-        'commands',
-        'init',
-        'worktree',
-      ];
-
-      if (deterministicCommands.includes(command)) {
-        if (command === 'register-project') {
-          getLog().debug({ command, conversationId }, 'deterministic_command');
-          const result = await handleRegisterProject(message, platform, conversationId);
-          await platform.sendMessage(conversationId, result);
-          return;
-        }
-
-        if (command === 'update-project') {
-          getLog().debug({ command, conversationId }, 'deterministic_command');
-          const result = await handleUpdateProject(message);
-          await platform.sendMessage(conversationId, result);
-          return;
-        }
-
-        if (command === 'remove-project') {
-          getLog().debug({ command, conversationId }, 'deterministic_command');
-          const result = await handleRemoveProject(message);
-          await platform.sendMessage(conversationId, result);
-          return;
-        }
-
-        if (command === 'setproject') {
-          getLog().debug({ command, conversationId }, 'deterministic_command');
-          // Pass the full Conversation — handleSetProject updates by the DB
-          // primary key (conversation.id, not the platform conversation id)
-          // and needs the prior cwd/isolation state for the detach note.
-          const result = await handleSetProject(message, conversation);
-          await platform.sendMessage(conversationId, result);
-          return;
-        }
-
+      const spec = findSlashCommand(command);
+      if (spec !== undefined) {
         getLog().debug({ command, conversationId }, 'deterministic_command');
+        if (spec.owner === 'orchestrator') {
+          let reply: string;
+          switch (spec.name) {
+            case 'register-project':
+              reply = await handleRegisterProject(message, platform, conversationId);
+              break;
+            case 'update-project':
+              reply = await handleUpdateProject(message);
+              break;
+            case 'remove-project':
+              reply = await handleRemoveProject(message);
+              break;
+            case 'setproject':
+              // Pass the full Conversation — handleSetProject updates by the DB
+              // primary key (conversation.id, not the platform conversation id)
+              // and needs the prior cwd/isolation state for the detach note.
+              reply = await handleSetProject(message, conversation);
+              break;
+            default: {
+              const unhandled: never = spec;
+              throw new Error(`Unhandled orchestrator command: /${String(unhandled)}`);
+            }
+          }
+          await platform.sendMessage(conversationId, reply);
+          return;
+        }
+
         const result = await commandHandler.handleCommand(conversation, message, platform);
         await platform.sendMessage(conversationId, result.message);
 

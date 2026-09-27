@@ -339,6 +339,11 @@ import {
   listArtifactsResponseSchema,
 } from './schemas/workflow.schemas';
 import {
+  slashCommandListQuerySchema,
+  slashCommandListResponseSchema,
+} from './schemas/command.schemas';
+import { SLASH_COMMANDS, type SlashCommandSpec } from '@archon/core/handlers/command-registry';
+import {
   conversationListResponseSchema,
   listConversationsQuerySchema,
   conversationIdParamsSchema,
@@ -587,6 +592,15 @@ async function resolveContainedPath(root: string, rawRelative: string): Promise<
 // OpenAPI route configs (module-scope — pure config, no runtime dependencies)
 // =========================================================================
 
+/** First non-blank line of a workflow description — the one line the `/` menu shows. */
+function firstLine(text: string | undefined): string | null {
+  const line = text
+    ?.split('\n')
+    .map(l => l.trim())
+    .find(l => l.length > 0);
+  return line ?? null;
+}
+
 /** Helper to build a JSON error response entry for createRoute configs. */
 function jsonError(description: string): {
   content: { 'application/json': { schema: typeof errorSchema } };
@@ -612,6 +626,22 @@ const getWorkflowsRoute = createRoute({
       description: 'OK',
     },
     400: jsonError('Bad request'),
+    500: jsonError('Server error'),
+  },
+});
+
+const getSlashCommandsRoute = createRoute({
+  method: 'get',
+  path: '/api/slash-commands',
+  tags: ['Commands'],
+  summary: "List the chat slash commands and the project's workflows, for the composer menu",
+  request: { query: slashCommandListQuerySchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: slashCommandListResponseSchema } },
+      description: 'OK',
+    },
+    404: jsonError('Project not found'),
     500: jsonError('Server error'),
   },
 });
@@ -4564,6 +4594,42 @@ export function registerApiRoutes(
   // =========================================================================
   // Workflow endpoints
   // =========================================================================
+
+  // GET /api/slash-commands - Slash commands + discovered workflows for the composer's `/` menu.
+  // Every entry derives from the command registry the chat dispatch narrows to,
+  // so the menu cannot miss a command the chat answers.
+  registerOpenApiRoute(getSlashCommandsRoute, async c => {
+    const codebaseId = c.req.query('codebaseId');
+    try {
+      let workingDir: string | null = null;
+      if (codebaseId !== undefined) {
+        const codebase = await codebaseDb.getCodebase(codebaseId);
+        if (codebase === null) return apiError(c, 404, 'Project not found');
+        workingDir = codebase.default_cwd;
+      }
+
+      const commands = SLASH_COMMANDS.flatMap((spec: SlashCommandSpec) => [
+        { command: `/${spec.name}`, args: spec.args, description: spec.description },
+        ...(spec.subcommands ?? []).map(sub => ({
+          command: `/${spec.name} ${sub.name}`,
+          args: sub.args,
+          description: sub.description,
+        })),
+      ]);
+
+      const { workflows } = await discoverWorkflowsWithConfig(workingDir, loadConfig);
+      return c.json({
+        commands,
+        workflows: workflows.map(({ workflow }) => ({
+          name: workflow.name,
+          summary: firstLine(workflow.description),
+        })),
+      });
+    } catch (error) {
+      getLog().error({ err: error, codebaseId }, 'commands.list_failed');
+      return apiError(c, 500, 'Failed to list commands');
+    }
+  });
 
   // GET /api/workflows - Discover available workflows
   registerOpenApiRoute(getWorkflowsRoute, async c => {

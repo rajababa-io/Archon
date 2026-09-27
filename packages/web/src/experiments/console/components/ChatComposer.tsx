@@ -4,6 +4,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useId,
   useRef,
   useState,
   type ClipboardEvent,
@@ -22,6 +23,8 @@ import {
 import { AttachedFiles } from './AttachedFiles';
 import { AT_DRAFT, caretAtEdge, stepHistory, type HistoryWalk } from '../lib/composer-history';
 import { saveDraftText } from '../lib/draft-store';
+import { SlashMenu, slashOptionId } from './SlashMenu';
+import { useSlashMenu } from '../hooks/useSlashMenu';
 
 /** What the user has typed and attached but not yet sent, for one conversation. */
 export interface ChatDraft {
@@ -76,6 +79,8 @@ interface ChatComposerProps {
    */
   onPullBack?: () => boolean;
   controlRef?: Ref<ComposerControl>;
+  /** Project whose workflows the `/` menu offers. */
+  projectId?: string;
 }
 
 const MAX_HEIGHT = 200;
@@ -90,7 +95,7 @@ const MAX_HEIGHT = 200;
  * which no longer exists — #3402 retired the classic UI and deleted it.
  *
  * Direction-B `cbox` shell: rounded card with `:focus-within` magenta ring,
- * paperclip attach + decorative `/` lead buttons, gradient `.brand-bar` Send
+ * paperclip attach + `/` command-menu lead buttons, gradient `.brand-bar` Send
  * button + glow, kbd-hint row beneath. Attached files render as removable
  * chips above.
  */
@@ -107,6 +112,7 @@ export function ChatComposer({
   stopping = false,
   onPullBack,
   controlRef,
+  projectId,
 }: ChatComposerProps): ReactElement {
   /**
    * The in-flight text is LOCAL. It used to live on the page, so every
@@ -206,6 +212,13 @@ export function ChatComposer({
     el.setSelectionRange(value.length, value.length);
   }, [value]);
 
+  const menuId = useId();
+  const slash = useSlashMenu(projectId, value, text => {
+    setValue(text);
+    textareaRef.current?.focus();
+  });
+  const menuOpen = slash.matches.length > 0;
+
   const addFiles = (incoming: File[]): void => {
     const admitted = admitFiles(files, incoming);
     setFiles(admitted.files);
@@ -283,6 +296,7 @@ export function ChatComposer({
     // Don't submit while an IME composition is in progress (Japanese,
     // Chinese, Korean, etc. — the first Enter accepts a candidate).
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (slash.onKeyDown(e)) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -324,6 +338,9 @@ export function ChatComposer({
     walkRef.current = step.walk;
     recalledRef.current = true;
     setValue(step.text);
+    // A recalled `/help` is history, not a search: open it with the menu
+    // closed so the next Up keeps walking back instead of moving the menu.
+    slash.closeFor(step.text);
   };
 
   return (
@@ -342,7 +359,7 @@ export function ChatComposer({
           className="mb-[10px]"
         />
         <div
-          className={`flex items-end gap-[0.625rem] rounded-[var(--radius-panel)] border bg-[color:var(--surface-elevated)] py-[0.5rem] pl-[14px] pr-[8px] transition-[border-color,box-shadow] focus-within:border-[color:color-mix(in_oklch,var(--accent),transparent_40%)] focus-within:shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_92%)]${
+          className={`relative flex items-end gap-[0.625rem] rounded-[var(--radius-panel)] border bg-[color:var(--surface-elevated)] py-[0.5rem] pl-[14px] pr-[8px] transition-[border-color,box-shadow] focus-within:border-[color:color-mix(in_oklch,var(--accent),transparent_40%)] focus-within:shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_92%)]${
             dragging ? ' shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_92%)]' : ''
           }`}
           style={{
@@ -353,6 +370,15 @@ export function ChatComposer({
               : 'var(--border-bright)',
           }}
         >
+          {menuOpen ? (
+            <SlashMenu
+              id={menuId}
+              matches={slash.matches}
+              active={slash.active}
+              onHover={slash.setActive}
+              onChoose={slash.complete}
+            />
+          ) : null}
           <div className="flex shrink-0 items-end gap-[0.375rem] pb-[7px] text-text-tertiary">
             <button
               type="button"
@@ -380,8 +406,12 @@ export function ChatComposer({
               type="button"
               tabIndex={-1}
               aria-label="Commands"
-              disabled
-              title="Commands (coming soon)"
+              title="Commands and workflows · /"
+              onClick={() => {
+                if (value.length === 0) setValue('/');
+                slash.reopen();
+                textareaRef.current?.focus();
+              }}
               className="flex h-[22px] items-center justify-center rounded-md px-[0.125rem] text-[length:var(--text-large)] leading-none transition-colors hover:bg-[color:var(--surface-hover)] hover:text-text-primary disabled:cursor-default disabled:opacity-50"
             >
               /
@@ -399,6 +429,11 @@ export function ChatComposer({
             onKeyDown={onKeyDown}
             onBlur={commit}
             onPaste={onPaste}
+            role="combobox"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? menuId : undefined}
+            aria-autocomplete="list"
+            aria-activedescendant={menuOpen ? slashOptionId(menuId, slash.active) : undefined}
             rows={1}
             placeholder={placeholder}
             className="min-h-0 flex-1 resize-none bg-transparent py-[0.4375rem] text-[length:var(--text-medium)] leading-[1.5] text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
