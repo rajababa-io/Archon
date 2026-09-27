@@ -607,6 +607,19 @@
 }
 .chatlist .rail-grip-dots {
   left: 6px;
+  /* Above the button's cover below, so a drag still starts here. */
+  z-index: 1;
+}
+/* The whole card opens the chat, not just the text in it. The row highlights
+   and shows a pointer everywhere, but the button only spans its own lines — the
+   dot gutter, the padding and a one-line title's spare line were a third of
+   the card and ate the click. A cover on the button rather than a click
+   handler on the row: the row menu is portalled, and a React click from it
+   bubbles to the row, so picking "Close" would also open the chat. */
+.chatlist .rail-row > button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
 }
 .chatlist .rail-row .rail-text {
   display: -webkit-box;
