@@ -36,8 +36,18 @@ export function useFaviconBadge(text: string): void {
       ctx.drawImage(img, 0, 0, SIZE, SIZE);
 
       const h = Math.round(SIZE * BADGE_H);
-      ctx.font = `bold ${String(Math.round(h * GLYPH))}px Arial, Helvetica, sans-serif`;
-      const w = Math.min(SIZE, Math.max(h * 0.8, ctx.measureText(text).width + h * 0.24));
+      const pad = h * 0.24;
+      // Room for the text once the tag and its outline sit inside the icon. Two
+      // digits fit at full size; `99+` is scaled down to fit rather than clipped.
+      const room = SIZE - 2 - pad;
+      let glyph = h * GLYPH;
+      ctx.font = font(glyph);
+      const measured = ctx.measureText(text).width;
+      if (measured > room) {
+        glyph *= room / measured;
+        ctx.font = font(glyph);
+      }
+      const w = Math.max(h * 0.8, ctx.measureText(text).width + pad);
       const x = SIZE - w;
       const y = SIZE - h;
 
@@ -66,4 +76,8 @@ export function useFaviconBadge(text: string): void {
       link.href = original;
     };
   }, [text]);
+}
+
+function font(px: number): string {
+  return `bold ${String(Math.floor(px))}px Arial, Helvetica, sans-serif`;
 }
