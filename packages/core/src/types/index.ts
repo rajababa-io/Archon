@@ -249,16 +249,25 @@ export interface IPlatformAdapter {
    * adapters that don't care; orchestrator skips the call when both `cost`
    * and `tokens` are absent.
    */
-  sendResultFooter?(
-    conversationId: string,
-    info: {
-      cost?: number;
-      tokens?: TokenUsage;
-      contextTokens?: number;
-      stopReason?: string;
-      model?: string;
-    }
-  ): Promise<void>;
+  sendResultFooter?(conversationId: string, info: TurnResultInfo): Promise<void>;
+}
+
+/**
+ * What a finished direct-chat turn reports about itself, for `sendResultFooter`.
+ *
+ * One declaration because the orchestrator builds it in two modes and hands it
+ * to every adapter; inline copies of the shape drifted the moment a field was
+ * added to one of them.
+ */
+export interface TurnResultInfo {
+  cost?: number;
+  tokens?: TokenUsage;
+  contextTokens?: number;
+  stopReason?: string;
+  /** The model that answered — reported by the provider, else the one it was handed. */
+  model?: string;
+  /** The reasoning effort the provider handed its SDK, after clamping. */
+  effort?: string;
 }
 
 /**

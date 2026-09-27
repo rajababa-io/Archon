@@ -58,17 +58,14 @@ export interface ContextReading {
   fraction: number | null;
   /** The model that answered, as the provider named it. */
   model: string | null;
-  /** What this chat has cost so far, when turns reported it. */
-  costUsd: number | null;
 }
 
 /**
- * The newest turn that reported a reading, plus the running cost of all of them.
+ * The newest turn that reported a reading.
  *
  * Occupancy is the NEWEST value, never a sum: it describes the prefix replayed
  * on the last request, and it FALLS when the provider compacts — which is the only
- * visible sign compaction happened. Cost is the opposite and is summed,
- * because every turn was paid for separately.
+ * visible sign compaction happened.
  */
 export function contextReading(
   messages: readonly {
@@ -82,8 +79,6 @@ export function contextReading(
   }[]
 ): ContextReading | null {
   let newest: { tokens: number; window: number | null; model: string | null } | null = null;
-  let cost = 0;
-  let sawCost = false;
 
   for (const m of messages) {
     if (m.usage === null) continue;
@@ -98,10 +93,6 @@ export function contextReading(
         model: m.usage.model ?? null,
       };
     }
-    if (m.usage.costUsd !== null) {
-      cost += m.usage.costUsd;
-      sawCost = true;
-    }
   }
   if (newest === null) return null;
 
@@ -110,8 +101,62 @@ export function contextReading(
     window: newest.window,
     fraction: newest.window === null ? null : newest.tokens / newest.window,
     model: newest.model,
+  };
+}
+
+/** What the chat's turns ran on and what they cost, as the status line shows it. */
+export interface TurnFacts {
+  /** The model the newest reporting turn ran on; null when it named none. */
+  model: string | null;
+  /** The effort that turn was handed; null when it was left to the provider's default. */
+  effort: string | null;
+  /** Every reported turn's cost, summed; null when no turn reported one. */
+  costUsd: number | null;
+}
+
+/**
+ * Model and effort from the NEWEST turn that reported usage, cost summed over all.
+ *
+ * Kept apart from `contextReading` because none of these needs an occupancy
+ * figure: a Codex turn reports token totals but no per-request context, and
+ * its model and effort are still facts worth showing.
+ *
+ * Model and effort come from the one newest turn and are never filled in from
+ * an older one. A turn that named no effort ran on the provider's default, and
+ * carrying the previous turn's rung forward would show a setting the chat no
+ * longer uses.
+ */
+export function turnFacts(
+  messages: readonly {
+    usage: { costUsd: number | null; model?: string; effort?: string } | null;
+  }[]
+): TurnFacts | null {
+  let newest: { model?: string; effort?: string } | null = null;
+  let cost = 0;
+  let sawCost = false;
+  for (const m of messages) {
+    if (m.usage === null) continue;
+    newest = m.usage;
+    if (m.usage.costUsd !== null) {
+      cost += m.usage.costUsd;
+      sawCost = true;
+    }
+  }
+  if (newest === null) return null;
+  return {
+    model: newest.model ?? null,
+    effort: newest.effort ?? null,
     costUsd: sawCost ? cost : null,
   };
+}
+
+/**
+ * `$4.12`, `<$0.01` — never `$0.00`. A turn that reported a cost cost
+ * something, and a zero on screen reads as "free" or "not reported".
+ */
+export function formatCost(usd: number): string {
+  if (usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
 }
 
 /**

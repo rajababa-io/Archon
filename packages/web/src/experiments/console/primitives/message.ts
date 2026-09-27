@@ -94,6 +94,8 @@ export interface TurnUsage {
   model?: string;
   /** That model's context window, resolved server-side. Absent when unknown. */
   window?: number;
+  /** The reasoning effort the provider was handed, after clamping. Absent when it was left to the SDK. */
+  effort?: string;
 }
 
 interface RawMessage {
@@ -120,6 +122,7 @@ interface ParsedMetadata {
     costUsd?: unknown;
     model?: unknown;
     window?: unknown;
+    effort?: unknown;
   };
   workflowDispatch?: {
     workflowName: string;
@@ -237,5 +240,6 @@ function toTurnUsage(raw: ParsedMetadata['usage']): TurnUsage | null {
     costUsd: typeof raw.costUsd === 'number' ? raw.costUsd : null,
     ...(typeof raw.model === 'string' ? { model: raw.model } : {}),
     ...(typeof raw.window === 'number' && raw.window > 0 ? { window: raw.window } : {}),
+    ...(typeof raw.effort === 'string' && raw.effort !== '' ? { effort: raw.effort } : {}),
   };
 }

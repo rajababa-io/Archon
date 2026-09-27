@@ -45,6 +45,7 @@ export {
   getUniqueCommitCount,
   getCurrentBranch,
   getCurrentBranchStrict,
+  readCheckoutStatus,
   localBranchExists,
   countCommitsAhead,
   checkout,
@@ -56,6 +57,7 @@ export {
   isRevCoveredBy,
   getLastCommitDate,
 } from './branch';
+export type { CheckoutStatus } from './branch';
 
 // Forge detection
 export { detectForge } from './forge';

@@ -92,6 +92,7 @@ import { InvalidConfigError, parseWorkflowRunConfig } from '@archon/core/config'
 import type { WorkflowRunConfigInput } from '@archon/workflows/schemas/run-config';
 import type { EffortLevel } from '@archon/workflows/schemas/effort';
 import { findRepoRoot, removeWorktree, toRepoPath, toWorktreePath } from '@archon/git';
+import { readConversationCheckout } from './conversation-checkout';
 import {
   createLogger,
   getWorkflowFolderSearchPaths,
@@ -348,6 +349,7 @@ import {
   listConversationsQuerySchema,
   conversationIdParamsSchema,
   conversationLockResponseSchema,
+  conversationCheckoutResponseSchema,
   conversationInterruptResponseSchema,
   conversationQueueResponseSchema,
   queuedMessageParamsSchema,
@@ -801,6 +803,30 @@ const getConversationLockRoute = createRoute({
     200: {
       content: { 'application/json': { schema: conversationLockResponseSchema } },
       description: 'Current lock state',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+/**
+ * Where this conversation's agent edits: branch, live checkout or worktree, and
+ * whether uncommitted work is sitting there.
+ *
+ * Its own route for the same reason as the lock: it is not persisted state.
+ * It is read from git on every request, because the agent commits and switches
+ * branch without the conversation row changing.
+ */
+const getConversationCheckoutRoute = createRoute({
+  method: 'get',
+  path: '/api/conversations/{id}/checkout',
+  tags: ['Conversations'],
+  summary: "The branch and folder a conversation's agent edits, and whether it is dirty",
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: conversationCheckoutResponseSchema } },
+      description: 'Current checkout state; unknown fields are null',
     },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
@@ -3391,6 +3417,23 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error, platformId }, 'get_conversation_lock_failed');
       return apiError(c, 500, 'Failed to read conversation lock state');
+    }
+  });
+
+  // GET /api/conversations/:id/checkout - Branch, folder and dirty state
+  registerOpenApiRoute(getConversationCheckoutRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      const codebase =
+        conv.codebase_id === null ? null : await codebaseDb.getCodebase(conv.codebase_id);
+      return c.json(await readConversationCheckout(conv, codebase));
+    } catch (error) {
+      getLog().error({ err: error, platformId }, 'get_conversation_checkout_failed');
+      return apiError(c, 500, 'Failed to read conversation checkout');
     }
   });
 

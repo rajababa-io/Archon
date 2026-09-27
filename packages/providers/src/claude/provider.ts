@@ -943,7 +943,8 @@ function buildToolCaptureHooks(toolResultQueue: ToolResultEntry[]): Options['hoo
  */
 async function* streamClaudeMessages(
   events: AsyncGenerator,
-  toolResultQueue: ToolResultEntry[]
+  toolResultQueue: ToolResultEntry[],
+  appliedEffort: Options['effort']
 ): AsyncGenerator<MessageChunk> {
   // Synthetic error message recorded while waiting for the terminal result to
   // confirm it (#1797). Detection is two-signal: the typed wrapper `error`
@@ -1270,6 +1271,7 @@ async function* streamClaudeMessages(
         ...(resultMsg.stop_reason != null ? { stopReason: resultMsg.stop_reason } : {}),
         ...(resultMsg.num_turns !== undefined ? { numTurns: resultMsg.num_turns } : {}),
         ...(resolvedModelId ? { resolvedModel: { id: resolvedModelId } } : {}),
+        ...(appliedEffort === undefined ? {} : { appliedEffort }),
       };
     }
   }
@@ -1577,7 +1579,7 @@ export class ClaudeProvider implements IAgentProvider {
         // retried/surfaced), so reaching the result stream means the prior
         // session was restored. Hence `true` whenever a resume was requested.
         yield* withResumedOutcome(
-          streamClaudeMessages(events, toolResultQueue),
+          streamClaudeMessages(events, toolResultQueue, options.effort),
           resumedOutcome(resumeSessionId, true)
         );
         return;

@@ -31,6 +31,7 @@ export {
   type WorkflowRequest,
   type IPlatformAdapter,
   type IWebPlatformAdapter,
+  type TurnResultInfo,
   isWebAdapter,
   type MessageMetadata,
   type User,

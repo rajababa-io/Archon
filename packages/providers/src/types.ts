@@ -287,6 +287,22 @@ export type MessageChunk =
       /** Concrete model reported by the provider; omitted when its SDK does not expose one. */
       resolvedModel?: ResolvedModel;
       /**
+       * The model id this provider handed its SDK for the turn — asked for, not
+       * reported back. Only for a provider whose SDK names no model in its
+       * result (Codex): there the turn completing on the requested model is
+       * the only evidence of which one answered. Omitted when none was set,
+       * because the SDK's own default is then invisible to Archon.
+       */
+      requestedModel?: string;
+      /**
+       * The reasoning effort this provider handed its SDK for the turn, in the
+       * SDK's vocabulary AFTER clamping — so a node that declared `ultra` reads
+       * `max` on Claude. Omitted when none was set: the SDK then applies its
+       * own default, which no SDK reports, and a guessed rung is worse than
+       * none.
+       */
+      appliedEffort?: string;
+      /**
        * Outcome of a session-resume attempt, so a failed resume is observable
        * instead of silently continuing with a fresh (cold) session:
        *   - `true`   a resume was requested and the prior session was restored
