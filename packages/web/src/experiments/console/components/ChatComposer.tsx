@@ -81,6 +81,12 @@ interface ChatComposerProps {
    * the key is consumed; false leaves Up to whatever else wants it.
    */
   onPullBack?: () => boolean;
+  /**
+   * Up in an empty box moves the keyboard into the ask card the agent is
+   * waiting on. Present only while one waits, which is also what puts the hint
+   * in the placeholder.
+   */
+  onReachAsk?: () => void;
   controlRef?: Ref<ComposerControl>;
   /** Project whose workflows the `/` menu offers. */
   projectId?: string;
@@ -116,6 +122,7 @@ export function ChatComposer({
   onStop,
   stopping = false,
   onPullBack,
+  onReachAsk,
   controlRef,
   projectId,
   chat,
@@ -297,7 +304,9 @@ export function ChatComposer({
 
   const openPlaceholder = working
     ? 'Agent is working — Enter queues a message for when it is done…'
-    : 'Message the agent…';
+    : onReachAsk !== undefined
+      ? 'Message the agent… or press ↑ to answer the question above'
+      : 'Message the agent…';
   const idlePlaceholder = disabled ? (disabledReason ?? 'Waiting…') : openPlaceholder;
   const placeholder = dragging ? 'Drop files to attach…' : idlePlaceholder;
 
@@ -322,6 +331,12 @@ export function ChatComposer({
     // otherwise Up keeps its ordinary meaning.
     if (e.key === 'ArrowUp' && value.length === 0 && onPullBack?.() === true) {
       e.preventDefault();
+      return;
+    }
+    // A waiting question outranks history: it is what the agent is blocked on.
+    if (e.key === 'ArrowUp' && value.length === 0 && onReachAsk !== undefined) {
+      e.preventDefault();
+      onReachAsk();
       return;
     }
     if (

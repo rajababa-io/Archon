@@ -37,6 +37,7 @@ import { useTurnControls } from '../hooks/useTurnControls';
 import { modalIsOpen } from '../lib/keymap';
 import { isNewChatKey } from '../lib/new-chat-key';
 import { sentHistory } from '../lib/composer-history';
+import { askAwaitsAnswer } from '../lib/ask-keys';
 import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
@@ -794,6 +795,17 @@ export function ChatPage(): ReactElement {
 
   // Cheap enough to derive per render; the composer re-renders with the page anyway.
   const sent = sentHistory(renderedMessages);
+  const askWaiting = !working && askAwaitsAnswer(renderedMessages);
+
+  /** Up in an empty message box: the newest answerable card takes the keyboard. */
+  const reachAsk = (): void => {
+    const cards = scrollRef.current?.querySelectorAll<HTMLElement>('[data-ask-live]');
+    cards?.[cards.length - 1]?.focus();
+  };
+  /** Escape in an ask card: back to the message box. */
+  const leaveAsk = useCallback((): void => {
+    turn.controlRef.current?.focus();
+  }, [turn.controlRef]);
 
   onSendRef.current = onSend;
 
@@ -873,7 +885,11 @@ export function ChatPage(): ReactElement {
                 />
               ) : (
                 <StreamContextProvider
-                  value={{ runStartedAt: null, assistant: activeConversation?.assistant ?? null }}
+                  value={{
+                    runStartedAt: null,
+                    assistant: activeConversation?.assistant ?? null,
+                    leaveAsk,
+                  }}
                 >
                   <ChatStream
                     messages={renderedMessages}
@@ -970,6 +986,7 @@ export function ChatPage(): ReactElement {
           onStop={activeConvId === null ? undefined : turn.stop}
           stopping={turn.stopping}
           onPullBack={turn.pullBackLast}
+          onReachAsk={askWaiting ? reachAsk : undefined}
           controlRef={turn.controlRef}
           draftKey={draftKey}
           history={sent}

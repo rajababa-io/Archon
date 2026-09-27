@@ -39,3 +39,26 @@ describe('AskCard attachments', () => {
     expect(html).toContain('Type your own');
   });
 });
+
+describe('AskCard keyboard', () => {
+  // The composer's Up finds the card by this marker, so a card that can no
+  // longer be answered must not carry it.
+  test('only an answerable card is marked as the one Up reaches', () => {
+    expect(renderToStaticMarkup(<AskCard spec={spec()} onAnswer={noop} />)).toContain(
+      'data-ask-live="true"'
+    );
+    expect(renderToStaticMarkup(<AskCard spec={spec()} />)).not.toContain('data-ask-live');
+  });
+
+  test('a one-question card says Enter sends', () => {
+    expect(renderToStaticMarkup(<AskCard spec={spec()} onAnswer={noop} />)).toContain('↵ to send');
+  });
+
+  // Nothing is highlighted until the keyboard is actually on the card; a
+  // mouse user never sees the highlight.
+  test('no row is highlighted before the card has focus', () => {
+    expect(renderToStaticMarkup(<AskCard spec={spec()} onAnswer={noop} />)).not.toContain(
+      'data-highlighted'
+    );
+  });
+});
