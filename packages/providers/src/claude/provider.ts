@@ -125,7 +125,8 @@ function normalizeClaudeUsage(usage?: {
 
 /**
  * Pick the concrete model that did the bulk of a turn's work from the SDK's
- * per-model usage record.
+ * per-model usage record. The FALLBACK only: the last request's own model is
+ * preferred, because on a resumed session this record is cumulative.
  *
  * More than one entry is reachable for a single turn: a subagent pinned to
  * another model via `agents:`, or a `fallbackModel` takeover. Key insertion
@@ -963,6 +964,13 @@ async function* streamClaudeMessages(
    * compared to a window.
    */
   let lastRequestUsage: TokenUsage | undefined;
+  // The model that served that same last request. The result's `modelUsage`
+  // cannot answer "which model answered": on a resumed session it is
+  // cumulative, so after a chat switches model (#132) the old model's
+  // history outweighs the new one and the turn is reported on a model it
+  // never used. The last request is also the one the context figure comes
+  // from, so the window and its model can never disagree.
+  let lastRequestModel: string | undefined;
   // Progress frames carry no visibility marker, so retain the start decision
   // for the lifetime of this query and suppress the complete hidden lifecycle.
   const hiddenTaskIds = new Set<string>();
@@ -1001,6 +1009,10 @@ async function* streamClaudeMessages(
       // property of ONE request — the final one — and only this loop sees it.
       const perRequest = normalizeClaudeUsage(message.message.usage);
       if (perRequest !== undefined) lastRequestUsage = perRequest;
+      const requestModel = message.message.model;
+      if (requestModel !== undefined && requestModel !== '<synthetic>') {
+        lastRequestModel = requestModel;
+      }
 
       // API-level failure surfaced as text (#1797): the SDK writes the error
       // prose into a synthesized assistant message instead of throwing. Both
@@ -1186,7 +1198,7 @@ async function* streamClaudeMessages(
       yield { type: 'rate_limit', rateLimitInfo: rateLimitMsg.rate_limit_info ?? {} };
     } else if (event.type === 'result') {
       const resultMsg = msg as SDKResultMessage;
-      const resolvedModelId = selectResolvedModelId(resultMsg.modelUsage);
+      const resolvedModelId = lastRequestModel ?? selectResolvedModelId(resultMsg.modelUsage);
       // The terminal result resolves any recorded synthetic error message.
       const syntheticError = pendingSdkError;
       pendingSdkError = undefined;

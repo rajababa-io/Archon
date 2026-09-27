@@ -332,6 +332,54 @@ describe('ClaudeProvider', () => {
       );
     });
 
+    // #132: on a resumed session `modelUsage` is cumulative, so after a chat
+    // switches model the old model's history can outweigh the one that
+    // actually answered. The last request's own model is the truth.
+    test("names the last request's model, not the heaviest in a cumulative record", async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'hi' }], model: 'claude-sonnet-5' },
+        };
+        yield {
+          type: 'result',
+          session_id: 'sid-switched',
+          modelUsage: {
+            'claude-opus-5-5': { inputTokens: 900, outputTokens: 5000, cacheReadInputTokens: 0 },
+            'claude-sonnet-5': { inputTokens: 100, outputTokens: 40, cacheReadInputTokens: 0 },
+          },
+        };
+      });
+
+      const chunks = [];
+      for await (const chunk of client.sendQuery('test', '/workspace')) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.at(-1)).toMatchObject({ resolvedModel: { id: 'claude-sonnet-5' } });
+    });
+
+    test("an SDK-synthesized message's '<synthetic>' model is never reported", async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'hi' }], model: 'claude-sonnet-5' },
+        };
+        yield {
+          type: 'assistant',
+          message: { content: [{ type: 'text', text: 'note' }], model: '<synthetic>' },
+        };
+        yield { type: 'result', session_id: 'sid-synthetic', modelUsage: {} };
+      });
+
+      const chunks = [];
+      for await (const chunk of client.sendQuery('test', '/workspace')) {
+        chunks.push(chunk);
+      }
+
+      expect(chunks.at(-1)).toMatchObject({ resolvedModel: { id: 'claude-sonnet-5' } });
+    });
+
     test('omits resolvedModel when modelUsage is an empty record', async () => {
       mockQuery.mockImplementation(async function* () {
         yield { type: 'result', session_id: 'sid-empty-usage', modelUsage: {} };
