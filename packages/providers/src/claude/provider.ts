@@ -88,8 +88,10 @@ export type ClaudeEffortsAreComplete = AssertNever<
  * Content block type for assistant messages
  */
 interface ContentBlock {
-  type: 'text' | 'tool_use';
+  type: 'text' | 'tool_use' | 'thinking';
   text?: string;
+  /** Present on `thinking` blocks. Empty when the model's thinking display is omitted. */
+  thinking?: string;
   name?: string;
   input?: Record<string, unknown>;
   id?: string;
@@ -1022,6 +1024,11 @@ async function* streamClaudeMessages(
       for (const block of content) {
         if (block.type === 'text' && block.text) {
           yield { type: 'assistant', content: block.text };
+        } else if (block.type === 'thinking' && block.thinking?.trim()) {
+          // Forwarded only when it carries text. A block whose thinking display
+          // is omitted arrives with an empty string, and an empty chunk would
+          // render as a thinking block with nothing in it.
+          yield { type: 'thinking', content: block.thinking };
         } else if (block.type === 'tool_use' && block.name) {
           yield {
             type: 'tool',

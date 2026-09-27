@@ -50,10 +50,12 @@ function makeAdapter(options?: { dashboardConnected?: boolean; seam?: string }):
   emitted: string[];
   dashboard: string[];
   appendToolResultCalls: unknown[][];
+  appendThinkingCalls: unknown[][];
 } {
   const emitted: string[] = [];
   const dashboard: string[] = [];
   const appendToolResultCalls: unknown[][] = [];
+  const appendThinkingCalls: unknown[][] = [];
 
   const mockTransport = {
     emit: mock(async (_id: string, event: string) => {
@@ -72,6 +74,9 @@ function makeAdapter(options?: { dashboardConnected?: boolean; seam?: string }):
       appendToolResultCalls.push([_id, name, output, duration]);
     }),
     appendToolCall: mock(() => {}),
+    appendThinking: mock((id: string, thinking: string) => {
+      appendThinkingCalls.push([id, thinking]);
+    }),
     appendText: mock(() => options?.seam ?? ''),
     flush: mock(async () => {
       dbCalls.push('flush');
@@ -91,7 +96,7 @@ function makeAdapter(options?: { dashboardConnected?: boolean; seam?: string }):
   } as unknown as WorkflowEventBridge;
 
   const adapter = new WebAdapter(mockTransport, mockPersistence, mockBridge);
-  return { adapter, emitted, dashboard, appendToolResultCalls };
+  return { adapter, emitted, dashboard, appendToolResultCalls, appendThinkingCalls };
 }
 
 // ---------------------------------------------------------------------------
@@ -149,6 +154,27 @@ describe('WebAdapter.sendStructuredEvent — tool_result output bounding', () =>
     expect(appendToolResultCalls.length).toBe(1);
     // Third argument to appendToolResult is the output — must be the full string
     expect(appendToolResultCalls[0]![2]).toBe(largeOutput);
+  });
+});
+
+describe('WebAdapter.sendStructuredEvent — thinking', () => {
+  test('streams the thinking and buffers it for the history', async () => {
+    const { adapter, emitted, appendThinkingCalls } = makeAdapter();
+
+    await adapter.sendStructuredEvent('conv-1', { type: 'thinking', content: 'Check first.' });
+
+    expect(emitted).toHaveLength(1);
+    expect(JSON.parse(emitted[0]!)).toMatchObject({ type: 'thinking', content: 'Check first.' });
+    expect(appendThinkingCalls).toEqual([['conv-1', 'Check first.']]);
+  });
+
+  test('empty thinking sends and stores nothing', async () => {
+    const { adapter, emitted, appendThinkingCalls } = makeAdapter();
+
+    await adapter.sendStructuredEvent('conv-1', { type: 'thinking', content: '' });
+
+    expect(emitted).toHaveLength(0);
+    expect(appendThinkingCalls).toHaveLength(0);
   });
 });
 

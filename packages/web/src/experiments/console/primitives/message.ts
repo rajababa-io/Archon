@@ -75,6 +75,12 @@ export interface Message {
    * messages only, and only on turns that completed.
    */
   usage: TurnUsage | null;
+  /**
+   * What the agent thought before this message's text and tools. Null when the
+   * provider sent none — which is also what a provider that does not stream its
+   * thinking looks like, so nothing is shown rather than an empty block.
+   */
+  thinking: string | null;
 }
 
 /**
@@ -139,6 +145,9 @@ interface ParsedMetadata {
   // Written by the server when an upload is saved. Same untrusted-shape caveat
   // as workflowResult: toMessage validates before producing domain values.
   files?: { name: string; mimeType: string; size: number }[];
+  // Written by the web adapter when the provider streams thinking. Untrusted
+  // like the rest: toMessage keeps it only if it is a non-blank string.
+  thinking?: unknown;
 }
 
 function parseMetadata(raw: string): ParsedMetadata {
@@ -221,6 +230,8 @@ export function toMessage(raw: RawMessage): Message {
     workflowResult,
     files,
     usage: toTurnUsage(meta.usage),
+    thinking:
+      typeof meta.thinking === 'string' && meta.thinking.trim().length > 0 ? meta.thinking : null,
   };
 }
 

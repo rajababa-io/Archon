@@ -2948,6 +2948,13 @@ async function handleStreamMode(
       if (!commandDetected && platform.sendStructuredEvent) {
         await platform.sendStructuredEvent(conversationId, msg);
       }
+    } else if (msg.type === 'thinking' && msg.content) {
+      // Structured only: thinking is not part of the reply, so it never goes
+      // through sendMessage, and a platform without structured events has
+      // nowhere honest to put it.
+      if (!commandDetected && platform.sendStructuredEvent) {
+        await platform.sendStructuredEvent(conversationId, msg);
+      }
     } else if (msg.type === 'result') {
       if (msg.isError && msg.errorSubtype === 'error_during_execution') {
         getLog().warn(

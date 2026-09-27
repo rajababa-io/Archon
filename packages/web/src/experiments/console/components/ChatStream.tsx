@@ -30,7 +30,7 @@ export function ChatStream({ messages, onAnswer }: ChatStreamProps): ReactElemen
   const visible = messages.filter(
     m =>
       m.category === 'workflow_result' ||
-      (!isSystemCategory(m.category) && m.content.trim().length > 0)
+      (!isSystemCategory(m.category) && (m.content.trim().length > 0 || m.thinking !== null))
   );
 
   // Grouped AFTER filtering: hidden chatter between two agent messages must not

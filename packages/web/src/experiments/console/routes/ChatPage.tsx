@@ -8,6 +8,7 @@ import { readOpenChatRequest } from '../lib/open-chat';
 import { ConversationRail, type ChatScope } from '../components/ConversationRail';
 import { ChatStatusStrip } from '../components/ChatStatusStrip';
 import { StatusDetails } from '../components/StatusDetails';
+import { TurnChecklist } from '../components/TurnChecklist';
 import { ChatRunsPanel } from '../components/ChatRunsPanel';
 import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
@@ -43,6 +44,7 @@ import {
   type LiveEvent,
 } from '../primitives/live-text';
 import { resolveConversationDbId } from '../primitives/conversation';
+import { isChecklistCall, turnChecklist, type ChecklistCall } from '../primitives/checklist';
 
 // While a turn is active, refetch messages on this cadence so streamed replies
 // still surface if a per-conversation SSE event is dropped (cross-origin
@@ -349,8 +351,20 @@ export function ChatPage(): ReactElement {
   // reply is invisible until a flush — the reload-to-see-it bug. See
   // `primitives/live-text.ts` for why persisting sooner is not the fix.
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
+  // Checklist tool calls streamed this turn, for the same reason: tool calls
+  // are written when the turn ends, and the checklist is only worth showing
+  // while it runs. See `primitives/checklist.ts`.
+  const [liveChecklist, setLiveChecklist] = useState<ChecklistCall[]>([]);
   const onLive = useCallback((event: LiveEvent): void => {
     setLiveSegments(prev => reduceLive(prev, event));
+    if (
+      event.kind === 'tool' &&
+      event.name !== undefined &&
+      isChecklistCall({ name: event.name })
+    ) {
+      const call: ChecklistCall = { name: event.name, input: event.input ?? {} };
+      setLiveChecklist(prev => [...prev, call]);
+    }
   }, []);
 
   useConversationSSE(activeConvId, onLive);
@@ -358,7 +372,18 @@ export function ChatPage(): ReactElement {
   // Switching chats must not carry one conversation's preview into another.
   useEffect(() => {
     setLiveSegments([]);
+    setLiveChecklist([]);
   }, [activeConvId]);
+
+  // A turn the server starts on its own — a queued message — begins with the
+  // lock going up and no send from this page, so that edge is what retires the
+  // last turn's streamed checklist calls. Applied again under the new turn,
+  // every `TaskCreate` among them would be a duplicate item.
+  const wasLockedRef = useRef(locked);
+  useEffect(() => {
+    if (locked && !wasLockedRef.current) setLiveChecklist([]);
+    wasLockedRef.current = locked;
+  }, [locked]);
 
   // A send that nothing ever confirmed stops speaking for itself. Without this
   // a request the server dropped would hold the composer shut until the page
@@ -642,6 +667,7 @@ export function ChatPage(): ReactElement {
     // they always want to see land, so sending re-pins the tail.
     scrollToBottom();
     setLiveSegments([]); // a new turn — the previous reply is history now
+    setLiveChecklist([]);
     setSending(true); // optimistic: disable the composer immediately
     setWorkingSince(Date.now()); // this turn has a known start, not an inferred one
     // Show the message (and its attachments) before the request leaves.
@@ -724,6 +750,7 @@ export function ChatPage(): ReactElement {
               dispatch: null,
               workflowResult: null,
               usage: null,
+              thinking: null,
             },
           ];
     // Deliberately measured against `messageList`, not `withEcho`: the slice is
@@ -745,6 +772,7 @@ export function ChatPage(): ReactElement {
           dispatch: null,
           workflowResult: null,
           usage: null,
+          thinking: seg.thinking ?? null,
         })
       ),
     ];
@@ -778,6 +806,14 @@ export function ChatPage(): ReactElement {
     }
     return out;
   }, [messageList]);
+
+  // Read from the rendered list so the user's own echo already counts as the
+  // turn boundary — the checklist of the turn before disappears on send, not
+  // on the refetch after it.
+  const checklist = useMemo(
+    () => turnChecklist(renderedMessages, liveChecklist),
+    [renderedMessages, liveChecklist]
+  );
 
   return (
     <section className="flex h-full min-h-0 flex-row">
@@ -858,6 +894,7 @@ export function ChatPage(): ReactElement {
                       }
                     />
                   ) : null}
+                  {checklist !== null ? <TurnChecklist items={checklist} /> : null}
                   <QueuedMessages
                     messages={turn.queued}
                     busyIds={turn.busyIds}
