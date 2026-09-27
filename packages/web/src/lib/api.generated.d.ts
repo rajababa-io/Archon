@@ -5786,6 +5786,7 @@ export interface components {
       is_wsl: boolean;
       wsl_distro?: string;
       activePlatforms?: string[];
+      ciWaitingConversationIds?: string[];
       drain?: {
         /** @enum {string} */
         state: 'draining' | 'drained';

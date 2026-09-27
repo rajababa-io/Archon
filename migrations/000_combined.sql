@@ -20,6 +20,7 @@
 --   6. remote_agent_workflow_events
 --   6b. remote_agent_workflow_node_sessions
 --   7. remote_agent_messages
+--   7b. remote_agent_ci_watches
 --   8. remote_agent_user_github_tokens
 --   9. remote_agent_user_provider_keys
 --   10. remote_agent_user_ai_prefs
@@ -270,6 +271,27 @@ CREATE TABLE IF NOT EXISTS remote_agent_messages (
   content TEXT NOT NULL DEFAULT '',
   metadata JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- ============================================================================
+-- Table 7b: CI Watches (migration 035)
+-- ============================================================================
+--
+-- A chat's standing request to hear when CI finishes on one commit. A row
+-- because the request has to outlive the turn that made it; keyed by head SHA
+-- because "CI finished" is a question about every check on that commit, not
+-- about the one `check_run` event that happened to arrive. open -> fired is a
+-- compare-and-set, so a webhook and the reconcile sweep cannot both fire it.
+
+CREATE TABLE IF NOT EXISTS remote_agent_ci_watches (
+  id UUID PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES remote_agent_conversations(id) ON DELETE CASCADE,
+  repo TEXT NOT NULL,
+  head_sha TEXT NOT NULL,
+  pull_request INTEGER,
+  status VARCHAR(10) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'fired', 'cancelled')),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  settled_at TIMESTAMP WITH TIME ZONE
 );
 
 -- ============================================================================
@@ -943,3 +965,9 @@ CREATE INDEX IF NOT EXISTS idx_workflow_node_sessions_workflow
 -- Messages
 CREATE INDEX IF NOT EXISTS idx_messages_conversation_id
   ON remote_agent_messages(conversation_id, created_at ASC);
+
+-- CI watches: one open watch per chat per commit, and the webhook's lookup by commit.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ci_watches_open_unique
+  ON remote_agent_ci_watches(conversation_id, repo, head_sha) WHERE status = 'open';
+CREATE INDEX IF NOT EXISTS idx_ci_watches_head
+  ON remote_agent_ci_watches(repo, head_sha) WHERE status = 'open';

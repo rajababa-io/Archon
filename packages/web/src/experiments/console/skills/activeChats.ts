@@ -107,6 +107,7 @@ export function parseDeploy(raw: unknown): DeployStatus | undefined {
 
 interface HealthLive {
   concurrency?: { activeConversationIds?: unknown; activeTools?: unknown };
+  ciWaitingConversationIds?: unknown;
   deploy?: unknown;
 }
 
@@ -120,6 +121,11 @@ export interface ActiveChats {
   ids: readonly string[];
   /** Keyed by platform conversation id. Absent for a chat between tools. */
   tools: Readonly<Record<string, ActiveTool>>;
+  /**
+   * Platform ids of chats with an open CI watch — waiting on something the
+   * server is watching for them, rather than on nothing.
+   */
+  ciWaiting: readonly string[];
   /**
    * What a deploy replacing this server is doing, when the server could tell.
    * Absent on a build whose health route predates the deploy block, and absent
@@ -149,10 +155,17 @@ function parseTools(raw: unknown): Record<string, ActiveTool> {
   return out;
 }
 
+function parseIds(raw: unknown): string[] {
+  return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
+}
+
 export async function getActiveChats(): Promise<ActiveChats> {
   const res = await requestJson<HealthLive>('/api/health');
-  const raw = res.concurrency?.activeConversationIds;
-  const ids = Array.isArray(raw) ? raw.filter((x): x is string => typeof x === 'string') : [];
   const deploy = parseDeploy(res.deploy);
-  return { ids, tools: parseTools(res.concurrency?.activeTools), ...(deploy ? { deploy } : {}) };
+  return {
+    ids: parseIds(res.concurrency?.activeConversationIds),
+    tools: parseTools(res.concurrency?.activeTools),
+    ciWaiting: parseIds(res.ciWaitingConversationIds),
+    ...(deploy ? { deploy } : {}),
+  };
 }

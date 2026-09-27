@@ -139,6 +139,9 @@
       "src/db/conversations.order.integration.test.ts"
     ],
     [
+      "src/services/ci-watch.integration.test.ts"
+    ],
+    [
       "src/db/isolation-environments.metadata.integration.test.ts"
     ],
     [
@@ -266,6 +269,7 @@
       "src/orchestrator/handoff-tool.test.ts",
       "src/orchestrator/handoff.test.ts",
       "src/orchestrator/ready-to-close-tool.test.ts",
+      "src/orchestrator/watch-ci-tool.test.ts",
       "src/orchestrator/update-project-brief-tool.test.ts"
     ]
   ]

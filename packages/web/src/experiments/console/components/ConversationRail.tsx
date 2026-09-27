@@ -112,6 +112,8 @@ interface ConversationRailProps {
    * working is the server's conversation lock, awaiting belongs to a run.
    */
   awaitingIds?: ReadonlySet<string>;
+  /** Chats the server is watching CI for, from the same health read as `liveIds`. */
+  ciWaitingIds?: ReadonlySet<string>;
   /** Which lifecycle scope the list is showing; the rail does not fetch. */
   scope: ChatScope;
   onScopeChange: (scope: ChatScope) => void;
@@ -165,6 +167,7 @@ export function ConversationRail({
   projectId,
   liveIds,
   awaitingIds,
+  ciWaitingIds,
 }: ConversationRailProps): ReactElement {
   /* No filter box: a permanent text field for one project's chats was chrome.
      Finding a chat by name is the ⌘K palette's job, across every project. */
@@ -534,6 +537,7 @@ export function ConversationRail({
             unread,
             done,
             ready,
+            waiting: ciWaitingIds ?? EMPTY_SET,
           });
           const shift =
             dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
