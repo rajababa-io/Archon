@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { buildSlashEntries, enterCompletes, matchSlashEntries } from './slash-menu';
+import { buildSlashEntries, enterCompletes, matchSlashEntries, providerNotice } from './slash-menu';
 
 const entries = buildSlashEntries({
   commands: [
@@ -13,6 +13,7 @@ const entries = buildSlashEntries({
     { name: 'archon-plan', summary: 'Plan a change' },
     { name: 'archon-assist', summary: null },
   ],
+  provider: null,
 });
 
 const labels = (draft: string): string[] => matchSlashEntries(entries, draft).map(e => e.label);
@@ -93,5 +94,80 @@ describe('enterCompletes', () => {
     expect(enterCompletes(find('/workflow run archon-plan'), '/workflow run archon-plan ')).toBe(
       false
     );
+  });
+});
+
+describe('provider commands', () => {
+  const listing = {
+    commands: [{ command: '/status', args: '', description: 'Show session info' }],
+    workflows: [{ name: 'archon-plan', summary: 'Plan a change' }],
+    provider: {
+      id: 'claude',
+      displayName: 'Claude',
+      commands: [
+        {
+          command: '/compact',
+          args: '[instructions]',
+          description: 'Free up context',
+          kind: 'command' as const,
+          origin: 'provider' as const,
+        },
+        {
+          command: '/validate',
+          args: '',
+          description: 'Run the suite',
+          kind: 'command' as const,
+          origin: 'project' as const,
+        },
+        {
+          command: '/claude:status',
+          args: '',
+          description: 'Five-part brief',
+          kind: 'skill' as const,
+          origin: 'user' as const,
+        },
+        {
+          command: '$imagegen',
+          args: '',
+          description: 'Make an image',
+          kind: 'skill' as const,
+          origin: 'provider' as const,
+        },
+      ],
+      withheld: [],
+      error: null,
+    },
+  };
+  const all = buildSlashEntries(listing);
+
+  test('sit between Archon and workflows, grouped by where they come from', () => {
+    expect(all.map(e => `${e.group}|${e.label}`)).toEqual([
+      'Archon|/status',
+      'Your skills and commands|/claude:status',
+      'Project|/validate',
+      'Claude skills|$imagegen',
+      'Claude|/compact',
+      'Workflows|/workflow run archon-plan',
+    ]);
+    expect(all.map(e => e.tag)).toEqual([null, 'skill', 'project', 'claude', 'claude', 'workflow']);
+  });
+
+  test('a skill completes ready for free text; a mention-style skill keeps its sigil', () => {
+    const imagegen = all.find(e => e.label === '$imagegen');
+    expect(imagegen?.insert).toBe('$imagegen ');
+    expect(all.find(e => e.label === '/validate')?.insert).toBe('/validate');
+  });
+
+  test('typing after / finds a $-skill and the renamed clash', () => {
+    const found = (draft: string): string[] => matchSlashEntries(all, draft).map(e => e.label);
+    expect(found('/imagegen')).toEqual(['$imagegen']);
+    expect(found('/status')).toEqual(['/status', '/claude:status']);
+  });
+
+  test('a provider that could not be asked says so', () => {
+    expect(providerNotice(listing)).toBeNull();
+    expect(
+      providerNotice({ ...listing, provider: { ...listing.provider, commands: [], error: 'boom' } })
+    ).toBe('Claude commands unavailable: boom');
   });
 });

@@ -270,7 +270,8 @@
       "src/orchestrator/handoff.test.ts",
       "src/orchestrator/ready-to-close-tool.test.ts",
       "src/orchestrator/watch-ci-tool.test.ts",
-      "src/orchestrator/update-project-brief-tool.test.ts"
+      "src/orchestrator/update-project-brief-tool.test.ts",
+      "src/handlers/provider-commands.test.ts"
     ]
   ]
 }

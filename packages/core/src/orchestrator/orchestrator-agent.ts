@@ -21,13 +21,22 @@ import type {
   WorkflowRequest,
   TurnResultInfo,
 } from '../types';
-import type { SendQueryOptions } from '@archon/providers/types';
+import type {
+  IAgentProvider,
+  ProviderCommandInvocation,
+  SendQueryOptions,
+} from '@archon/providers/types';
 import { ConversationNotFoundError, isWebAdapter } from '../types';
 import * as db from '../db/conversations';
 import * as codebaseDb from '../db/codebases';
 import * as sessionDb from '../db/sessions';
 import * as commandHandler from '../handlers/command-handler';
 import { findSlashCommand } from '../handlers/command-registry';
+import {
+  listProviderCommands,
+  matchProviderCommand,
+  type ChatProviderCommandListing,
+} from '../handlers/provider-commands';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
@@ -2065,6 +2074,136 @@ async function discoverAllWorkflows(conversation: Conversation): Promise<Discove
   return { workflows, errors: allErrors, syncResult, syncError, config, codebase, remote };
 }
 
+/**
+ * The directory a chat turn runs in: the conversation's own override, else its
+ * project's checkout, else the Archon workspaces root for an unscoped chat.
+ */
+async function resolveChatCwd(
+  conversation: Conversation,
+  scopedCodebase: Codebase | null | undefined
+): Promise<string> {
+  const checkout = conversationCheckout(conversation, scopedCodebase ?? undefined);
+  if (checkout !== null) return checkout;
+  if (conversation.codebase_id !== null) {
+    getLog().warn(
+      { codebaseId: conversation.codebase_id },
+      'orchestrator.scoped_codebase_not_found'
+    );
+  }
+  return ensureArchonWorkspacesPath();
+}
+
+/**
+ * The provider a chat's next message goes to, and that provider's commands for
+ * the chat's directory — the `/` menu's provider section. Resolved exactly as
+ * a turn resolves them; the listing is cached (see `listProviderCommands`).
+ */
+export async function listChatProviderCommands(
+  conversation: Conversation,
+  userId: string | undefined
+): Promise<{ providerKey: string } & ChatProviderCommandListing> {
+  const codebase = conversation.codebase_id
+    ? await codebaseDb.getCodebase(conversation.codebase_id)
+    : null;
+  const cwd = await resolveChatCwd(conversation, codebase);
+  // Same config and resolution as `resolveNextChatModel`, so a chat pinned to
+  // another provider lists that provider's commands.
+  const config = await loadConfig(codebase ? cwd : undefined);
+  const { chatRequest } = await resolveChatTurnModel(
+    conversation,
+    config,
+    userId ?? conversation.user_id ?? undefined
+  );
+  const providerKey = chatRequest.provider;
+  const listing = await listProviderCommands(providerKey, getAgentProvider(providerKey), cwd, {
+    assistantConfig: { ...(config.assistants[providerKey] ?? {}) },
+    ...(config.envVars && Object.keys(config.envVars).length > 0 ? { env: config.envVars } : {}),
+  });
+  return { providerKey, ...listing };
+}
+
+/**
+ * Whether this turn's message is one of the provider's own commands, and if so
+ * the invocation to send. Only a message starting with a command sigil is
+ * checked, against the provider's own (cached) listing — an unmatched message,
+ * including one that starts with `/` by accident, stays ordinary text.
+ *
+ * What a command turn carries, decided here rather than lost on the way:
+ * - attached files are appended to the command's arguments, so a skill can
+ *   read them;
+ * - Archon's per-turn context blocks (thread, issue, recent workflow results,
+ *   a paused gate) are NOT sent, because the command must reach the provider
+ *   verbatim. Each is rebuilt and sent with every ordinary turn, and the
+ *   session already holds the ones sent before, so nothing is lost — except
+ *   that a paused gate is not answered by a command, which the chat is told.
+ * A listing failure sends the message as ordinary text and says so.
+ */
+async function resolveProviderCommandTurn(
+  platform: IPlatformAdapter,
+  conversationId: string,
+  providerKey: string,
+  aiClient: IAgentProvider,
+  cwd: string,
+  trimmedMessage: string,
+  requestOptions: SendQueryOptions,
+  context: {
+    attachedFiles: AttachedFile[] | undefined;
+    withheldContext: string[];
+    /** Set when a gate is paused in this chat: the run it belongs to. */
+    pausedGateWorkflow: string | undefined;
+  }
+): Promise<ProviderCommandInvocation | undefined> {
+  if (!/^[/$]/.test(trimmedMessage) || aiClient.listCommands === undefined) return undefined;
+  let listing: ChatProviderCommandListing;
+  try {
+    listing = await listProviderCommands(providerKey, aiClient, cwd, {
+      ...(requestOptions.assistantConfig
+        ? { assistantConfig: requestOptions.assistantConfig }
+        : {}),
+      ...(requestOptions.env ? { env: requestOptions.env } : {}),
+    });
+  } catch (err) {
+    getLog().warn(
+      { err: err as Error, providerKey, conversationId },
+      'orchestrator.provider_commands_unavailable'
+    );
+    await notice(
+      platform,
+      conversationId,
+      `Could not read ${providerKey}'s command list (${(err as Error).message}), so this was sent as an ordinary message.`
+    );
+    return undefined;
+  }
+  const matched = matchProviderCommand(trimmedMessage, listing.commands);
+  if (matched === undefined) return undefined;
+
+  const files = context.attachedFiles ?? [];
+  const args =
+    files.length > 0
+      ? [matched.invocation.args, `Attached files:\n${files.map(f => `- ${f.path}`).join('\n')}`]
+          .filter(part => part.length > 0)
+          .join('\n\n')
+      : matched.invocation.args;
+  getLog().info(
+    {
+      conversationId,
+      providerKey,
+      command: matched.command.invocation,
+      withheldContext: context.withheldContext,
+      attachedFiles: files.length,
+    },
+    'orchestrator.provider_command_turn'
+  );
+  if (context.pausedGateWorkflow !== undefined) {
+    await notice(
+      platform,
+      conversationId,
+      `Sent \`${matched.command.invocation}\` to ${providerKey} as a command. The approval gate on ${context.pausedGateWorkflow} stays paused — a command does not answer it.`
+    );
+  }
+  return { name: matched.invocation.name, args };
+}
+
 /** Build the user-facing prompt with message and optional contexts */
 function buildFullPrompt(
   message: string,
@@ -2484,19 +2623,7 @@ export async function handleMessage(
       conversation.codebase_id !== null
         ? codebases.find(c => c.id === conversation.codebase_id)
         : undefined;
-    let cwd: string;
-    const checkout = conversationCheckout(conversation, scopedCodebase);
-    if (checkout !== null) {
-      cwd = checkout;
-    } else {
-      if (conversation.codebase_id !== null) {
-        getLog().warn(
-          { codebaseId: conversation.codebase_id },
-          'orchestrator.scoped_codebase_not_found'
-        );
-      }
-      cwd = await ensureArchonWorkspacesPath();
-    }
+    const cwd = await resolveChatCwd(conversation, scopedCodebase);
 
     // 4. Update activity and get/create session
     await db.touchConversation(conversation.id);
@@ -2747,6 +2874,33 @@ export async function handleMessage(
 
     // 5. Send to AI provider
     const aiClient = getAgentProvider(providerKey);
+
+    // A message naming one of the provider's own commands goes to the provider
+    // as that command — `/compact`, a skill — rather than wrapped as prose,
+    // which the provider would only ever read as a request to talk about it.
+    const providerCommand = await resolveProviderCommandTurn(
+      platform,
+      conversationId,
+      providerKey,
+      aiClient,
+      cwd,
+      trimmedMessage,
+      requestOptions,
+      {
+        attachedFiles,
+        withheldContext: [
+          ...(threadContext ? ['thread'] : []),
+          ...(issueContext ? ['issue'] : []),
+          ...(workflowContext ? ['workflow-results'] : []),
+          ...(pausedGateContext ? ['paused-gate'] : []),
+        ],
+        pausedGateWorkflow: pausedGateContext
+          ? (pausedGateRun?.workflow_name ?? 'a run')
+          : undefined,
+      }
+    );
+    if (providerCommand !== undefined) requestOptions.command = providerCommand;
+    const turnPrompt = providerCommand !== undefined ? trimmedMessage : fullPrompt;
     getLog().debug(
       { assistantType: conversation.ai_assistant_type, resolvedAssistantType: providerKey },
       'sending_to_ai'
@@ -2940,7 +3094,7 @@ export async function handleMessage(
           codebases,
           workflowsWithSource,
           aiClient,
-          fullPrompt,
+          turnPrompt,
           cwd,
           session,
           isolationHints,
@@ -2957,7 +3111,7 @@ export async function handleMessage(
           codebases,
           workflowsWithSource,
           aiClient,
-          fullPrompt,
+          turnPrompt,
           cwd,
           session,
           isolationHints,

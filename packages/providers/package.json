@@ -167,6 +167,15 @@
     ],
     [
       "src/claude/container-env.test.ts"
+    ],
+    [
+      "src/claude/commands.test.ts"
+    ],
+    [
+      "src/codex/commands.test.ts"
+    ],
+    [
+      "src/codex/app-server.test.ts"
     ]
   ]
 }

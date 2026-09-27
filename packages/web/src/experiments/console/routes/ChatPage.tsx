@@ -955,6 +955,11 @@ export function ChatPage(): ReactElement {
           draftKey={draftKey}
           history={sent}
           projectId={projectId}
+          chat={
+            activeConversation !== undefined
+              ? { conversationId: activeConversation.id, provider: activeConversation.assistant }
+              : undefined
+          }
         />
       </div>
       {activeConvId !== null ? (

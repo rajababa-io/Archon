@@ -9,6 +9,7 @@ describe('SlashMenu', () => {
   const matches = buildSlashEntries({
     commands: [{ command: '/workflow run', args: '<name> [message]', description: 'Run one' }],
     workflows: [{ name: 'archon-plan', summary: 'Plan a change' }],
+    provider: null,
   });
 
   test('shows each entry with its arguments and one-line description', () => {
@@ -28,5 +29,26 @@ describe('SlashMenu', () => {
     );
     expect(html).toContain('id="m-option-1" role="option" aria-selected="true"');
     expect(html).toContain('id="m-option-0" role="option" aria-selected="false"');
+  });
+
+  test('headings only the unfiltered list, and shows a notice above it', () => {
+    const plain = renderToStaticMarkup(
+      <SlashMenu id="m" matches={matches} active={0} onHover={noop} onChoose={noop} />
+    );
+    const grouped = renderToStaticMarkup(
+      <SlashMenu
+        id="m"
+        matches={matches}
+        grouped
+        notice="Claude commands unavailable: boom"
+        active={0}
+        onHover={noop}
+        onChoose={noop}
+      />
+    );
+    expect(plain).not.toContain('>Archon</li>');
+    expect(grouped).toContain('>Archon</li>');
+    expect(grouped).toContain('>Workflows</li>');
+    expect(grouped).toContain('Claude commands unavailable: boom');
   });
 });

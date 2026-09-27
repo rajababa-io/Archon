@@ -18,6 +18,8 @@ import type {
   TokenUsage,
   ProviderCapabilities,
   CodexProviderDefaults,
+  ListCommandsOptions,
+  ProviderCommandListing,
 } from '../types';
 import { clampEffort } from '@archon/paths/effort';
 import { CODEX_EFFORTS, parseCodexConfig } from './config';
@@ -30,6 +32,14 @@ import {
   normalizeJsonSchemaForOpenAiStrict,
 } from '../shared/structured-output';
 import { withResumedOutcome, resumedOutcome } from '../shared/resumed';
+import {
+  CodexAppServer,
+  codexCliCommand,
+  runCodexAppServerTurn,
+  spawnCodexAppServer,
+  type SpawnAppServer,
+} from './app-server';
+import { codexSkillPrompt, isCodexAction, toCodexCommandListing } from './commands';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -904,8 +914,38 @@ function classifyAndEnrichCodexError(
 export class CodexProvider implements IAgentProvider {
   private readonly retryBaseDelayMs: number;
 
-  constructor(options?: { retryBaseDelayMs?: number }) {
+  private readonly spawnAppServer: ((cli: readonly string[]) => SpawnAppServer) | undefined;
+
+  constructor(options?: {
+    retryBaseDelayMs?: number;
+    /** Test seam: replaces the real `codex app-server` process. */
+    spawnAppServer?: (cli: readonly string[]) => SpawnAppServer;
+  }) {
     this.retryBaseDelayMs = options?.retryBaseDelayMs ?? RETRY_BASE_DELAY_MS;
+    this.spawnAppServer = options?.spawnAppServer;
+  }
+
+  private async openAppServer(
+    assistantConfig: Record<string, unknown> | undefined,
+    requestEnv: Record<string, string> | undefined
+  ): Promise<CodexAppServer> {
+    const codexConfig = parseCodexConfig(assistantConfig ?? {});
+    const cli = codexCliCommand(await resolveCodexBinaryPath(codexConfig.codexBinaryPath));
+    const spawn = (this.spawnAppServer ?? spawnCodexAppServer)(cli);
+    return CodexAppServer.open(spawn, buildCodexEnv(requestEnv ?? {}));
+  }
+
+  /**
+   * Codex's skills in `cwd` (from app-server `skills/list`, which reads the
+   * disk and calls no model) plus the Codex actions this provider can run.
+   */
+  async listCommands(cwd: string, options?: ListCommandsOptions): Promise<ProviderCommandListing> {
+    const server = await this.openAppServer(options?.assistantConfig, options?.env);
+    try {
+      return toCodexCommandListing(await server.listSkills(cwd));
+    } finally {
+      server.close();
+    }
   }
 
   private async createCodexClient(
@@ -946,6 +986,31 @@ export class CodexProvider implements IAgentProvider {
     requestOptions?: SendQueryOptions
   ): AsyncGenerator<MessageChunk> {
     const assistantConfig = requestOptions?.assistantConfig ?? {};
+    const command = requestOptions?.command;
+    if (command !== undefined && isCodexAction(command.name)) {
+      // Compact and review exist only on app-server, not on the `codex exec`
+      // path the SDK drives, so these turns take a separate process.
+      const server = await this.openAppServer(assistantConfig, requestOptions?.env);
+      try {
+        yield* withResumedOutcome(
+          runCodexAppServerTurn(
+            server,
+            command.name,
+            command.args,
+            resumeSessionId,
+            { cwd, model: requestOptions?.model ?? parseCodexConfig(assistantConfig).model },
+            requestOptions?.abortSignal
+          ),
+          resumedOutcome(resumeSessionId, true)
+        );
+      } finally {
+        server.close();
+      }
+      return;
+    }
+    // A skill runs as an ordinary turn whose text mentions it as `$name`.
+    const turnPrompt =
+      command !== undefined ? codexSkillPrompt(command.name, command.args) : prompt;
     const codexConfig = parseCodexConfig(assistantConfig);
     const providerWarnings: ProviderWarning[] = [];
     let declaredMcpConfigOverrides: CodexConfigOverrides | undefined;
@@ -1039,7 +1104,7 @@ export class CodexProvider implements IAgentProvider {
     // Computed once before the retry loop so cold retry attempts, which start
     // fresh threads, also carry the system instructions.
     const { turnOptions, hasOutputFormat } = buildTurnOptions(requestOptions);
-    const effectivePrompt = buildEffectivePrompt(prompt, requestOptions);
+    const effectivePrompt = buildEffectivePrompt(turnPrompt, requestOptions);
     let lastError: Error | undefined;
     let skillCatalogCompatibilityFallbackUsed = false;
 

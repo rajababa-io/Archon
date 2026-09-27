@@ -63,6 +63,7 @@ import {
   generateAndSetTitle,
   resolveTitleRequest,
   resolveNextChatModel,
+  listChatProviderCommands,
   isPerUserGitHubEnabled,
   loadDeviceFlowConfig,
   startDeviceFlow,
@@ -90,7 +91,7 @@ import {
   setUserDefault,
   DRAIN_REFUSAL_NOTICE,
 } from '@archon/core';
-import type { UserTiersPatch, UserAliasesPatch, AliasesPatch } from '@archon/core';
+import type { UserTiersPatch, UserAliasesPatch, AliasesPatch, Conversation } from '@archon/core';
 import { InvalidConfigError, parseWorkflowRunConfig } from '@archon/core/config';
 import type { WorkflowRunConfigInput } from '@archon/workflows/schemas/run-config';
 import type { EffortLevel } from '@archon/workflows/schemas/effort';
@@ -356,6 +357,7 @@ import {
 import {
   slashCommandListQuerySchema,
   slashCommandListResponseSchema,
+  slashProviderCommandsSchema,
 } from './schemas/command.schemas';
 import { SLASH_COMMANDS, type SlashCommandSpec } from '@archon/core/handlers/command-registry';
 import {
@@ -665,7 +667,7 @@ const getSlashCommandsRoute = createRoute({
       content: { 'application/json': { schema: slashCommandListResponseSchema } },
       description: 'OK',
     },
-    404: jsonError('Project not found'),
+    404: jsonError('Project or conversation not found'),
     500: jsonError('Server error'),
   },
 });
@@ -4931,12 +4933,64 @@ export function registerApiRoutes(
   // Workflow endpoints
   // =========================================================================
 
+  /**
+   * The chat provider's own commands for the `/` menu. A provider that cannot
+   * be asked still yields a section — naming the provider and the error — so
+   * the menu can say why its commands are missing rather than look complete.
+   */
+  function providerDisplayName(providerKey: string): string {
+    return getProviderInfoList().find(p => p.id === providerKey)?.displayName ?? providerKey;
+  }
+
+  async function listProviderSection(
+    conversation: Conversation,
+    c: Context
+  ): Promise<z.infer<typeof slashProviderCommandsSchema>> {
+    const userId = await resolveWebUserId(c);
+    let providerKey = conversation.ai_assistant_type;
+    try {
+      const listing = await listChatProviderCommands(conversation, userId ?? undefined);
+      providerKey = listing.providerKey;
+      return {
+        id: providerKey,
+        displayName: providerDisplayName(providerKey),
+        commands: listing.commands.map(command => ({
+          command: command.invocation,
+          args: command.args,
+          description: command.description,
+          kind: command.kind,
+          origin: command.origin,
+        })),
+        withheld: listing.withheld,
+        error: null,
+      };
+    } catch (error) {
+      getLog().warn({ err: error, providerKey }, 'commands.provider_list_failed');
+      return {
+        id: providerKey,
+        displayName: providerDisplayName(providerKey),
+        commands: [],
+        withheld: [],
+        error: (error as Error).message,
+      };
+    }
+  }
+
   // GET /api/slash-commands - Slash commands + discovered workflows for the composer's `/` menu.
   // Every entry derives from the command registry the chat dispatch narrows to,
   // so the menu cannot miss a command the chat answers.
   registerOpenApiRoute(getSlashCommandsRoute, async c => {
     const codebaseId = c.req.query('codebaseId');
+    const conversationId = c.req.query('conversationId');
     try {
+      const conversation =
+        conversationId !== undefined
+          ? await conversationDb.findConversationByPlatformId(conversationId)
+          : null;
+      if (conversationId !== undefined && conversation === null) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+
       let workingDir: string | null = null;
       if (codebaseId !== undefined) {
         const codebase = await codebaseDb.getCodebase(codebaseId);
@@ -4953,13 +5007,17 @@ export function registerApiRoutes(
         })),
       ]);
 
-      const { workflows } = await discoverWorkflowsWithConfig(workingDir, loadConfig);
+      const [{ workflows }, provider] = await Promise.all([
+        discoverWorkflowsWithConfig(workingDir, loadConfig),
+        conversation !== null ? listProviderSection(conversation, c) : Promise.resolve(null),
+      ]);
       return c.json({
         commands,
         workflows: workflows.map(({ workflow }) => ({
           name: workflow.name,
           summary: firstLine(workflow.description),
         })),
+        provider,
       });
     } catch (error) {
       getLog().error({ err: error, codebaseId }, 'commands.list_failed');

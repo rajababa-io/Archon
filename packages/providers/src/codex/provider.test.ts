@@ -2818,3 +2818,47 @@ describe('classifyCodexError (#2509 R7)', () => {
     expect(classifyCodexError('server overloaded')).toBe('rate_limit');
   });
 });
+
+describe('provider commands (#149)', () => {
+  beforeEach(() => {
+    resetCodexSingleton();
+    mockRunStreamed.mockClear();
+  });
+
+  test('a skill command runs as an ordinary turn that mentions it as $name', async () => {
+    const client = new CodexProvider({ retryBaseDelayMs: 1 });
+    for await (const _ of client.sendQuery('ignored', '/workspace', undefined, {
+      command: { name: 'imagegen', args: 'a red fox' },
+    })) {
+      // drain
+    }
+    expect(mockRunStreamed.mock.calls[0]?.[0]).toBe('$imagegen a red fox');
+  });
+
+  test('compact goes to app-server, never to codex exec', async () => {
+    const spawned: string[][] = [];
+    const client = new CodexProvider({
+      retryBaseDelayMs: 1,
+      spawnAppServer: cli => () => {
+        spawned.push([...cli]);
+        return {
+          stdin: { write: (): void => undefined, end: (): void => undefined },
+          // Exits at once: the provider must surface that, not hang.
+          stdout: (async function* () {})(),
+          kill: (): void => undefined,
+          exited: Promise.resolve(1),
+        };
+      },
+    });
+    const run = async (): Promise<void> => {
+      for await (const _ of client.sendQuery('ignored', '/workspace', 'thread-1', {
+        command: { name: 'compact', args: '' },
+      })) {
+        // drain
+      }
+    };
+    await expect(run()).rejects.toThrow('codex app-server exited');
+    expect(spawned).toHaveLength(1);
+    expect(mockRunStreamed).not.toHaveBeenCalled();
+  });
+});
