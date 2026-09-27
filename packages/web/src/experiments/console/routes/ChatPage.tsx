@@ -10,6 +10,7 @@ import { ChatStatusStrip } from '../components/ChatStatusStrip';
 import { StatusDetails } from '../components/StatusDetails';
 import { TurnChecklist } from '../components/TurnChecklist';
 import { ChatRunsPanel } from '../components/ChatRunsPanel';
+import { ChangesPanel } from '../components/ChangesPanel';
 import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
 import { useConversationSSE } from '../lib/sse';
@@ -956,6 +957,9 @@ export function ChatPage(): ReactElement {
           projectId={projectId}
         />
       </div>
+      {activeConvId !== null ? (
+        <ChangesPanel conversationId={activeConvId} working={working} />
+      ) : null}
     </section>
   );
 }

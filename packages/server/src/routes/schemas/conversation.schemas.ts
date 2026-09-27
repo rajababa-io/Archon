@@ -277,3 +277,57 @@ export const dispatchResponseSchema = z
     queuedId: z.string().optional(),
   })
   .openapi('DispatchResponse');
+
+/** One uncommitted change in a chat's checkout. */
+export const changedFileSchema = z
+  .object({
+    path: z.string(),
+    oldPath: z.string().nullable(),
+    status: z.enum(['added', 'modified', 'deleted', 'renamed', 'untracked', 'other']),
+    // null for a binary or oversized file, whose lines git does not count.
+    additions: z.number().int().nullable(),
+    deletions: z.number().int().nullable(),
+  })
+  .openapi('ChangedFile');
+
+/**
+ * GET /api/conversations/:id/changes response.
+ *
+ * The uncommitted changes in the directory this chat's agent runs in — the
+ * working tree and index against HEAD, plus untracked files. Three states,
+ * because "no changes" and "nothing to look at" are different answers:
+ *
+ * `unscoped` — the chat has no project, so its agent has no one checkout.
+ * `not-a-checkout` — the chat's directory is missing or is not a git repository.
+ * `ok` — the listing; `omitted` counts changed files past the listing's cap.
+ */
+export const conversationChangesResponseSchema = z
+  .discriminatedUnion('state', [
+    z.object({ state: z.literal('unscoped') }),
+    z.object({ state: z.literal('not-a-checkout'), path: z.string() }),
+    z.object({
+      state: z.literal('ok'),
+      root: z.string(),
+      branch: z.string().nullable(),
+      head: z.string().nullable(),
+      files: z.array(changedFileSchema),
+      omitted: z.number().int(),
+    }),
+  ])
+  .openapi('ConversationChangesResponse');
+
+/** GET /api/conversations/:id/changes/diff query. */
+export const conversationChangeDiffQuerySchema = z.object({ path: z.string().min(1) });
+
+/**
+ * GET /api/conversations/:id/changes/diff response — one changed file's diff.
+ * `truncated` means `patch` is not the whole diff; a binary file has no patch.
+ */
+export const conversationChangeDiffResponseSchema = z
+  .object({
+    path: z.string(),
+    patch: z.string(),
+    binary: z.boolean(),
+    truncated: z.boolean(),
+  })
+  .openapi('ConversationChangeDiffResponse');

@@ -91,7 +91,15 @@ import type { UserTiersPatch, UserAliasesPatch, AliasesPatch } from '@archon/cor
 import { InvalidConfigError, parseWorkflowRunConfig } from '@archon/core/config';
 import type { WorkflowRunConfigInput } from '@archon/workflows/schemas/run-config';
 import type { EffortLevel } from '@archon/workflows/schemas/effort';
-import { findRepoRoot, removeWorktree, toRepoPath, toWorktreePath } from '@archon/git';
+import {
+  findRepoRoot,
+  removeWorktree,
+  toRepoPath,
+  toWorktreePath,
+  readWorkingChanges,
+  readWorkingFileDiff,
+  NotAGitCheckoutError,
+} from '@archon/git';
 import { readConversationCheckout } from './conversation-checkout';
 import {
   createLogger,
@@ -138,6 +146,7 @@ import { listCiWaitingPlatformConversationIds, type CiWatch } from '@archon/core
 import type { CiWatchDelivery } from '@archon/core/services/ci-watch';
 import type { DashboardWorkflowRun } from '@archon/core/schemas/workflow-run';
 import { findCommandFiles } from '@archon/core/utils/commands';
+import { conversationCheckout } from '@archon/core/utils/conversation-checkout';
 import { type DeployStatus, getDeployStatus } from '../services/deploy-status';
 import { resumeWorkflowRunFromServer } from '../services/workflow-resume-service';
 
@@ -354,6 +363,9 @@ import {
   conversationCheckoutResponseSchema,
   conversationInterruptResponseSchema,
   conversationQueueResponseSchema,
+  conversationChangesResponseSchema,
+  conversationChangeDiffQuerySchema,
+  conversationChangeDiffResponseSchema,
   queuedMessageParamsSchema,
   withdrawQueuedResponseSchema,
   conversationSchema,
@@ -872,6 +884,38 @@ const getConversationQueueRoute = createRoute({
     200: {
       content: { 'application/json': { schema: conversationQueueResponseSchema } },
       description: 'Queued messages, oldest first',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const getConversationChangesRoute = createRoute({
+  method: 'get',
+  path: '/api/conversations/{id}/changes',
+  tags: ['Conversations'],
+  summary: "Uncommitted changes in the checkout this chat's agent runs in",
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: conversationChangesResponseSchema } },
+      description: 'Changed files with line counts',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const getConversationChangeDiffRoute = createRoute({
+  method: 'get',
+  path: '/api/conversations/{id}/changes/diff',
+  tags: ['Conversations'],
+  summary: "One changed file's diff in this chat's checkout",
+  request: { params: conversationIdParamsSchema, query: conversationChangeDiffQuerySchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: conversationChangeDiffResponseSchema } },
+      description: 'Unified diff',
     },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
@@ -3977,6 +4021,72 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error, platformId }, 'get_conversation_queue_failed');
       return apiError(c, 500, 'Failed to read the queue');
+    }
+  });
+
+  /**
+   * The checkout a chat's agent runs in, by the orchestrator's own rule
+   * (`conversationCheckout`), never a path the request names. Null for a chat
+   * with no project, or whose project row is gone.
+   */
+  const chatCheckout = async (conv: {
+    codebase_id: string | null;
+    cwd: string | null;
+  }): Promise<string | null> => {
+    if (conv.codebase_id === null) return null;
+    const codebase = await codebaseDb.getCodebase(conv.codebase_id);
+    return conversationCheckout(conv, codebase ?? undefined);
+  };
+
+  // GET /api/conversations/:id/changes - Uncommitted changes, read-only
+  registerOpenApiRoute(getConversationChangesRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const checkout = await chatCheckout(conv);
+      if (checkout === null) return c.json({ state: 'unscoped' as const });
+      try {
+        const changes = await readWorkingChanges(checkout);
+        return c.json({ state: 'ok' as const, ...changes });
+      } catch (error) {
+        if (error instanceof NotAGitCheckoutError) {
+          return c.json({ state: 'not-a-checkout' as const, path: checkout });
+        }
+        throw error;
+      }
+    } catch (error) {
+      getLog().error({ err: error, platformId }, 'conversation_changes.list_failed');
+      return apiError(c, 500, 'Failed to read changes');
+    }
+  });
+
+  // GET /api/conversations/:id/changes/diff?path= - One changed file's diff
+  registerOpenApiRoute(getConversationChangeDiffRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    const path = c.req.query('path') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const checkout = await chatCheckout(conv);
+      if (checkout === null) return apiError(c, 404, 'This chat has no project checkout');
+      let file;
+      try {
+        // The path must be one git itself lists as changed — the only files
+        // this route will ever read — so a request cannot name its way to an
+        // arbitrary file, and needs no traversal checks of its own.
+        file = (await readWorkingChanges(checkout)).files.find(f => f.path === path);
+      } catch (error) {
+        if (error instanceof NotAGitCheckoutError) {
+          return apiError(c, 404, 'This chat has no git checkout');
+        }
+        throw error;
+      }
+      if (file === undefined) return apiError(c, 404, 'No uncommitted change at that path');
+      return c.json(await readWorkingFileDiff(checkout, file));
+    } catch (error) {
+      getLog().error({ err: error, platformId }, 'conversation_changes.diff_failed');
+      return apiError(c, 500, 'Failed to read diff');
     }
   });
 

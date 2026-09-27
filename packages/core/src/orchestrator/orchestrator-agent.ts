@@ -31,6 +31,7 @@ import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
 import { quoteCommandArg } from '../utils/command-args';
+import { conversationCheckout } from '../utils/conversation-checkout';
 import { safeDeactivateSession } from '../state/session-transitions';
 import { getProviderCapabilities } from '@archon/providers';
 import { getAgentProvider } from '../services/provider-admission';
@@ -2337,8 +2338,9 @@ export async function handleMessage(
         ? codebases.find(c => c.id === conversation.codebase_id)
         : undefined;
     let cwd: string;
-    if (scopedCodebase !== undefined) {
-      cwd = conversation.cwd ?? scopedCodebase.default_cwd;
+    const checkout = conversationCheckout(conversation, scopedCodebase);
+    if (checkout !== null) {
+      cwd = checkout;
     } else {
       if (conversation.codebase_id !== null) {
         getLog().warn(

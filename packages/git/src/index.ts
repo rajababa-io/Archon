@@ -59,6 +59,16 @@ export {
 } from './branch';
 export type { CheckoutStatus } from './branch';
 
+// Uncommitted changes, read-only
+export {
+  readWorkingChanges,
+  readWorkingFileDiff,
+  NotAGitCheckoutError,
+  MAX_CHANGED_FILES,
+  MAX_DIFF_LINES,
+} from './changes';
+export type { ChangeStatus, ChangedFile, WorkingChanges, FileDiff } from './changes';
+
 // Forge detection
 export { detectForge } from './forge';
 export type { ForgeType, ForgeInfo } from './forge';

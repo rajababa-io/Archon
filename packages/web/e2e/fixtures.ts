@@ -158,3 +158,39 @@ export const OTHER_MESSAGES: RawMessage[] = [
 ];
 
 export const CONVERSATION_COUNTS = { open: CHATS.length, done: 0, all: CHATS.length };
+
+/** A path the Changes panel lists and whose diff it shows. */
+export const CHANGED_FILE = 'src/greeting.ts';
+/** A line only the diff contains, so seeing it proves the diff rendered. */
+export const CHANGED_LINE = "export const greeting = 'hello, console';";
+
+/** The uncommitted changes in the chat's checkout, as the server lists them. */
+export const CHANGES: components['schemas']['ConversationChangesResponse'] = {
+  state: 'ok',
+  root: '/home/appuser/console-e2e',
+  branch: 'feature/greeting',
+  head: '0123456789abcdef0123456789abcdef01234567',
+  files: [
+    { path: CHANGED_FILE, oldPath: null, status: 'modified', additions: 2, deletions: 1 },
+    { path: 'README.md', oldPath: null, status: 'untracked', additions: 3, deletions: 0 },
+  ],
+  omitted: 0,
+};
+
+export const CHANGE_DIFF: components['schemas']['ConversationChangeDiffResponse'] = {
+  path: CHANGED_FILE,
+  patch: [
+    `diff --git a/${CHANGED_FILE} b/${CHANGED_FILE}`,
+    'index 1111111..2222222 100644',
+    `--- a/${CHANGED_FILE}`,
+    `+++ b/${CHANGED_FILE}`,
+    '@@ -1,2 +1,3 @@',
+    "-export const greeting = 'hello';",
+    `+${CHANGED_LINE}`,
+    '+export const farewell = "bye";',
+    ' export default greeting;',
+    '',
+  ].join('\n'),
+  binary: false,
+  truncated: false,
+};

@@ -25,7 +25,8 @@
       "src/refresh-worktree-index.test.ts"
     ],
     [
-      "src/merge-signals.test.ts"
+      "src/merge-signals.test.ts",
+      "src/changes.test.ts"
     ]
   ]
 }

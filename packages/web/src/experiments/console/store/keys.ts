@@ -46,6 +46,15 @@ export const K = {
    * opening then rereads it, showing the last list until the new one lands.
    */
   allConversations: 'conversations:*all' as const,
+  /**
+   * The chat checkout's uncommitted changes, and one file's diff under the
+   * same prefix — so invalidating `changes(id)` at a turn's end refreshes the
+   * list and whichever diff is open together. The path is encoded: it may
+   * contain `:`.
+   */
+  changes: (conversationId: string): string => `changes:${conversationId}`,
+  changeDiff: (conversationId: string, path: string): string =>
+    `changes:${conversationId}:${encodeURIComponent(path)}`,
   countsGlobal: 'counts:global' as const,
   pendingRuns: 'pendingRuns' as const,
   envVars: (projectId: string): string => `envVars:${projectId}`,
