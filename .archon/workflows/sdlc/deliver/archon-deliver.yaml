@@ -191,6 +191,17 @@ nodes:
       max_iterations: 5
       fresh_context: true
       nodes:
+        # The record `pr` read back is the target every node below trusts, and a
+        # human can merge or close that pull request while this loop is still
+        # correcting it. Checked here, before the round spends, because nothing
+        # later can recover: the fix would push to a branch no open PR carries and
+        # the recheck would disagree with the record about what it reviewed.
+        - id: pr-open
+          script: pr-open
+          runtime: bun
+          with:
+            pr: "$pr.output"
+
         # Evidence provisioning, never a gate: this node cannot fail the round
         # and never waits. A read that fails, times out, or finds no checks
         # reports that fact and the round proceeds on the review findings
@@ -223,7 +234,7 @@ nodes:
 
         - id: fix
           include: archon-implement
-          depends_on: [ci-evidence]
+          depends_on: [pr-open, ci-evidence]
           with:
             work: >-
               Fix every open Critical and Important finding recorded in
@@ -460,8 +471,17 @@ nodes:
       until_bash: test $ci-round-result.output.action = "none"
       max_iterations: 1
       nodes:
+        # The same round-boundary check as corrections: the PR may have been
+        # merged or closed during the CI wait.
+        - id: ci-pr-open
+          script: pr-open
+          runtime: bun
+          with:
+            pr: "$pr.output"
+
         - id: ci-fix
           include: archon-implement
+          depends_on: [ci-pr-open]
           with:
             work: >-
               CI concluded non-green after the review converged. The failing

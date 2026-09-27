@@ -52,6 +52,7 @@ ci-verdict: '{"state":"red","detail":"e2e-smoke (fail)"}'
 # honest-decline state, and the real guard must pass it via the inherited
 # cause plus summary — the same proof correction-honest-decline pins
 # for the corrections loop.
+ci-pr-open: "pr-open: https://github.com/example/repo/pull/1 is still open."
 ci-fix__implement:
   done: true
   green: false

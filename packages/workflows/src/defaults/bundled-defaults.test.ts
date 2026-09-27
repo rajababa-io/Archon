@@ -393,8 +393,18 @@ describe('bundled-defaults', () => {
         },
       });
 
+      // A round starts only on a pull request that is still open (#96): the fix
+      // waits on that live read as well as on the evidence.
+      const prOpen = corrections.loop_group.nodes.find(node => node.id === 'pr-open');
+      expect(prOpen).toMatchObject({ script: 'pr-open', with: { pr: '$pr.output' } });
       const fix = corrections.loop_group.nodes.find(node => node.id === 'fix');
-      expect(fix?.depends_on).toEqual(['ci-evidence']);
+      expect(fix?.depends_on).toEqual(['pr-open', 'ci-evidence']);
+
+      const ciCorrections = parsed.workflow.nodes.find(node => node.id === 'ci-corrections');
+      if (ciCorrections?.kind !== 'loop_group')
+        throw new Error('ci-corrections is not a loop group');
+      const ciFix = ciCorrections.loop_group.nodes.find(node => node.id === 'ci-fix');
+      expect(ciFix?.depends_on).toEqual(['ci-pr-open']);
     });
 
     it('flip-ready names only what it needs, and never loses a gate to a longer chain', () => {

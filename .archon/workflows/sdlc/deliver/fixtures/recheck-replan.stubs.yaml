@@ -36,6 +36,7 @@ review__publish:
   action: correct
   findings_summary: "stub: one in-scope correction"
   report: { type: archon_artifact, run_id: "fixture-run", path: "review/report.md" }
+pr-open: "pr-open: https://github.com/example/repo/pull/1 is still open."
 ci-note: "No CI evidence is available for this round (no checks reported, or the read failed). Proceed on the review findings alone."
 fix__implement:
   done: true

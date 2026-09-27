@@ -336,7 +336,7 @@ else {
 }
 
 export function runDeliverScript(
-  script: 'check-ci' | 'ci-note' | 'flip-ready',
+  script: 'check-ci' | 'ci-note' | 'flip-ready' | 'pr-open',
   options: ScriptOptions = {}
 ): ScriptRun {
   return runPackScript(`deliver/scripts/${script}`, options);

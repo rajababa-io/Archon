@@ -43,6 +43,7 @@ validate__validate:
   summary: "stub: full gate green"
 ci-probe: '{"state":"red","detail":"hosted runner lost network (fail)"}'
 ci-verdict: '{"state":"red","detail":"hosted runner lost network (fail)"}'
+ci-pr-open: "pr-open: https://github.com/example/repo/pull/1 is still open."
 ci-fix__implement:
   done: true
   green: false
