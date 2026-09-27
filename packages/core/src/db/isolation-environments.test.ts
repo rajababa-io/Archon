@@ -9,6 +9,9 @@ mock.module('./connection', () => ({
   pool: {
     query: mockQuery,
   },
+  getDatabase: () => ({
+    withTransaction: <T>(fn: (query: typeof mockQuery) => Promise<T>): Promise<T> => fn(mockQuery),
+  }),
   getDialect: () => mockPostgresDialect,
   getDatabaseType: (): 'postgresql' => 'postgresql',
 }));
@@ -308,14 +311,20 @@ describe('isolation-environments', () => {
   });
 
   describe('updateStatus', () => {
-    test('updates status to destroyed', async () => {
+    test('updates status to destroyed and detaches its conversations', async () => {
       mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 2));
 
       await updateStatus('env-123', 'destroyed');
 
       expect(mockQuery).toHaveBeenCalledWith(
         'UPDATE remote_agent_isolation_environments SET status = $1 WHERE id = $2',
         ['destroyed', 'env-123']
+      );
+      // Row-level behavior is proven in isolation-environments.detach.integration.test.ts.
+      expect(mockQuery).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE remote_agent_conversations'),
+        ['env-123']
       );
     });
 
@@ -328,6 +337,7 @@ describe('isolation-environments', () => {
         'UPDATE remote_agent_isolation_environments SET status = $1 WHERE id = $2',
         ['active', 'env-123']
       );
+      expect(mockQuery).toHaveBeenCalledTimes(1);
     });
   });
 

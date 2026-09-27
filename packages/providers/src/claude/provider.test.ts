@@ -3468,4 +3468,33 @@ describe('provider commands (#149)', () => {
     ]);
     expect(listing.withheld.map(w => w.name)).toEqual(['color']);
   });
+
+  test('a listing whose launch fails rejects that call and leaves no unhandled rejection (#183)', async () => {
+    // A launch failure makes the stream throw first, before `supportedCommands()`
+    // is awaited. Its rejection used to go unobserved, and the server exits on
+    // any unhandled rejection — one chat's broken workspace took the process down.
+    const launchError = new Error('Claude Code native binary exists but failed to launch');
+    mockQuery.mockImplementation(((_params: Parameters<typeof sdkQuery>[0]) => {
+      // eslint-disable-next-line require-yield -- the launch fails before any message
+      const events = (async function* () {
+        throw launchError;
+      })();
+      return Object.assign(events, {
+        supportedCommands: () => Promise.reject(launchError),
+      });
+    }) as unknown as MockQuery);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      await expect(new ClaudeProvider().listCommands('/workspace')).rejects.toBe(launchError);
+      // Unhandled rejections are reported after the microtask queue drains.
+      await new Promise(resolve => setTimeout(resolve, 10));
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+    expect(unhandled).toEqual([]);
+  });
 });

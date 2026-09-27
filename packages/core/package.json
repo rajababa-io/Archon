@@ -148,7 +148,13 @@
       "src/db/isolation-environments.live-run.integration.test.ts"
     ],
     [
+      "src/db/isolation-environments.detach.integration.test.ts"
+    ],
+    [
       "src/db/isolation-environments.live-run.postgres.integration.test.ts"
+    ],
+    [
+      "src/db/isolation-environments.detach.postgres.integration.test.ts"
     ],
     [
       "src/db/resource-slots.postgres.integration.test.ts"
