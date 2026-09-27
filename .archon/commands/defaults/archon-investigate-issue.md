@@ -486,8 +486,11 @@ bun run lint
 
 Format the artifact for GitHub and post:
 
+This step can re-run after an interruption, so check first: if `gh issue view {number} --json comments --jq '.comments[].body' | grep -qF '<!-- archon:investigation run=$WORKFLOW_ID -->'` succeeds, this run already posted the comment — do not post it again. Keep that marker as the comment's first line.
+
 ```bash
 gh issue comment {number} --body "$(cat <<'EOF'
+<!-- archon:investigation run=$WORKFLOW_ID -->
 ## 🔍 Investigation: {Title}
 
 **Type**: `{TYPE}`

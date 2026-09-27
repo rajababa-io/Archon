@@ -278,7 +278,10 @@ nodes:
               upstream. Do not change the PR's draft state or edit the canonical
               review comment; the following review owns that public verdict.
               Record the exact push target and a read-back of the remote ref in
-              implementation.md; never record credentials.
+              implementation.md; never record credentials. This round can re-run
+              after an interruption: check `git log` and the remote branch first,
+              and build on any correction an earlier attempt already committed or
+              pushed rather than redoing it.
 
         # The same gate, same script: a correction can hit inherited or environment
         # red exactly as the first implementation can, and a
@@ -508,7 +511,10 @@ nodes:
               environment, with the summary naming the proof — never chased and
               never "fixed" by weakening a test. Do not change the PR's draft
               state or edit the canonical review comment; the following review
-              owns that public verdict.
+              owns that public verdict. This pass can re-run after an
+              interruption: check `git log` and the remote branch first, and
+              build on any fix an earlier attempt already committed or pushed
+              rather than redoing it.
 
               Accepted work order, for scope only — do not reopen it:
               $INPUTS.work

@@ -405,6 +405,29 @@ nodes:
         done
       }
 
+      # This node can re-run after an interruption (a retry, a resume, a deploy
+      # that parked the run), so act only on what an earlier attempt did not
+      # already do. A PR that is no longer open was already merged or closed;
+      # a review or comment carrying this run's marker was already posted.
+      LIVE=$(gh pr view "$PR_NUM" --json state,reviews,comments) || {
+        echo "ERROR: could not read the current state of PR #$PR_NUM — not acting blind." >&2
+        exit 1
+      }
+      PR_STATE=$(jq -r '.state' <<<"$LIVE")
+      if [ "$PR_STATE" != "OPEN" ]; then
+        echo "PR #$PR_NUM is already $PR_STATE — nothing left to do."
+        exit 0
+      fi
+      MARKER="<!-- archon:marketplace-review run=$WORKFLOW_ID -->"
+      REVIEWED=$(jq --arg m "$MARKER" '[(.reviews // [])[], (.comments // [])[] | select((.body // "") | startswith($m))] | length' <<<"$LIVE")
+      post_once() {
+        if [ "$REVIEWED" -gt 0 ]; then
+          echo "Review for this run already posted on PR #$PR_NUM — not posting again."
+          return 0
+        fi
+        "$@"
+      }
+
       # gh pr merge --delete-branch deletes the HEAD branch. For a fork PR the
       # head branch lives on the contributor's fork, which the base-repo token
       # cannot delete — attempting it fails the merge step even though the merge
@@ -417,7 +440,8 @@ nodes:
       case "$DECISION" in
         auto_merge)
           echo "Decision: AUTO_MERGE — approving and merging PR #$PR_NUM (fork: $IS_FORK)"
-          APPROVE_BODY="**Marketplace Auto-Review: Approved & Merging**
+          APPROVE_BODY="$MARKER
+      **Marketplace Auto-Review: Approved & Merging**
 
       $REASON
 
@@ -426,23 +450,25 @@ nodes:
           # has "Allow GitHub Actions to create and approve pull requests"
           # enabled in Settings → Actions → General. The comment below always
           # lands so the PR author still gets notified.
-          retry gh pr review "$PR_NUM" --approve --body "$APPROVE_BODY" \
-            || retry gh pr comment "$PR_NUM" --body "$APPROVE_BODY"
+          post_once retry gh pr review "$PR_NUM" --approve --body "$APPROVE_BODY" \
+            || post_once retry gh pr comment "$PR_NUM" --body "$APPROVE_BODY"
           retry gh pr merge "$PR_NUM" "${merge_flags[@]}"
           ;;
         auto_approve)
           echo "Decision: AUTO_APPROVE — approving PR #$PR_NUM (manual merge required)"
-          APPROVE_BODY="**Marketplace Auto-Review: Approved**
+          APPROVE_BODY="$MARKER
+      **Marketplace Auto-Review: Approved**
 
       $REASON
 
       *Reviewed by Archon marketplace-pr-review-and-merge workflow. A maintainer will merge.*"
-          retry gh pr review "$PR_NUM" --approve --body "$APPROVE_BODY" \
-            || retry gh pr comment "$PR_NUM" --body "$APPROVE_BODY"
+          post_once retry gh pr review "$PR_NUM" --approve --body "$APPROVE_BODY" \
+            || post_once retry gh pr comment "$PR_NUM" --body "$APPROVE_BODY"
           ;;
         request_changes)
           echo "Decision: REQUEST_CHANGES — requesting changes on PR #$PR_NUM"
-          retry gh pr review "$PR_NUM" --request-changes --body "**Marketplace Auto-Review: Changes Requested**
+          post_once retry gh pr review "$PR_NUM" --request-changes --body "$MARKER
+      **Marketplace Auto-Review: Changes Requested**
 
       $REASON
 
@@ -450,7 +476,8 @@ nodes:
           ;;
         reject)
           echo "Decision: REJECT — closing PR #$PR_NUM as out of scope or unsafe"
-          retry gh pr review "$PR_NUM" --request-changes --body "**Marketplace Auto-Review: Rejected**
+          post_once retry gh pr review "$PR_NUM" --request-changes --body "$MARKER
+      **Marketplace Auto-Review: Rejected**
 
       $REASON
 

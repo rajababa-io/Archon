@@ -41,7 +41,7 @@ You do not look up whether this branch already has a pull request. The publishin
 
 ## 4. Push
 
-Push the recorded branch with upstream tracking (`git push -u "$PUSH_REMOTE" "$HEAD_BRANCH"`). For an existing fork pull request whose author allowed maintainer edits, push to the fork instead, by explicit URL and ref (that is the contributor's repository, a different case from the publish target above, and it is unchanged): `git push "https://github.com/<headRepositoryOwner>/<headRepository>.git" "HEAD:refs/heads/<headRefName>"`. If the push is rejected or the remote diverged, stop and report — never rebase or force-push here.
+Push the recorded branch with upstream tracking (`git push -u "$PUSH_REMOTE" "$HEAD_BRANCH"`). For an existing fork pull request whose author allowed maintainer edits, push to the fork instead, by explicit URL and ref (that is the contributor's repository, a different case from the publish target above, and it is unchanged): `git push "https://github.com/<headRepositoryOwner>/<headRepository>.git" "HEAD:refs/heads/<headRefName>"`. If the push is rejected or the remote diverged, stop and report — never rebase or force-push here. A remote branch already at your `HEAD` is a finished push — an interrupted earlier attempt of this step got that far — not an error; re-pushing it changes nothing.
 
 ## 5. Record the intent
 

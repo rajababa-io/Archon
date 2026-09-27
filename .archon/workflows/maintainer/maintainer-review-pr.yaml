@@ -183,7 +183,20 @@ nodes:
         echo "ERROR: review-comment.md missing — synthesize did not write it" >&2
         exit 1
       fi
-      gh pr comment "$PR_NUM" --body-file "$ARTIFACTS_DIR/review/review-comment.md"
+      # This node can re-run after an interruption: the posted body starts with
+      # this run's marker, so a comment already carrying it is not posted twice.
+      MARKER="<!-- archon:maintainer-review run=$WORKFLOW_ID -->"
+      COMMENTS=$(gh pr view "$PR_NUM" --json comments) || {
+        echo "ERROR: could not read PR #$PR_NUM comments — not posting blind" >&2
+        exit 1
+      }
+      POSTED=$(jq --arg m "$MARKER" '[.comments[] | select(.body | startswith($m))] | length' <<<"$COMMENTS")
+      if [ "$POSTED" -gt 0 ]; then
+        echo "Review comment for this run already on PR #$PR_NUM — not posting again"
+        exit 0
+      fi
+      { echo "$MARKER"; cat "$ARTIFACTS_DIR/review/review-comment.md"; } > "$ARTIFACTS_DIR/review/review-comment.posted.md"
+      gh pr comment "$PR_NUM" --body-file "$ARTIFACTS_DIR/review/review-comment.posted.md"
       echo "Posted review comment to PR #$PR_NUM"
     depends_on: [synthesize-review]
     timeout: 30000

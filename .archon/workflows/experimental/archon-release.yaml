@@ -536,7 +536,13 @@ nodes:
       git add -A
       git status --short
 
-      git commit -m "Release $bump-version.output.newVersion"
+      # A re-run after the commit landed finds nothing staged; skip the commit
+      # and let the push carry it. Re-pushing the same ref is a no-op.
+      if git diff --cached --quiet; then
+        echo "Nothing staged — release commit already made"
+      else
+        git commit -m "Release $bump-version.output.newVersion"
+      fi
       git push origin dev
     timeout: 60000
     depends_on: [write-files, bump-version]
@@ -617,14 +623,24 @@ nodes:
 
       git fetch origin main --quiet
 
-      # Tag the merge commit on main, push the tag.
-      git tag "v$ver" origin/main
-      git push origin "v$ver"
+      # Tag the merge commit on main, push the tag. This node can re-run after
+      # an interruption: keep a tag or release an earlier attempt already made.
+      git fetch origin tag "v$ver" --quiet 2>/dev/null || true
+      if git rev-parse -q --verify "refs/tags/v$ver" >/dev/null; then
+        echo "Tag v$ver already exists — not re-tagging"
+      else
+        git tag "v$ver" origin/main
+      fi
+      git push origin "v$ver"   # re-pushing the same tag is a no-op
 
       # Strip the leading "## [x.y.z] - YYYY-MM-DD" header line for the release body.
       notes=$(printf '%s\n' "$body" | sed '1{/^## /d;}; 2{/^$/d;}')
 
-      gh release create "v$ver" --title "v$ver" --notes "$notes"
+      if gh release view "v$ver" >/dev/null 2>&1; then
+        echo "Release v$ver already exists — not re-creating"
+      else
+        gh release create "v$ver" --title "v$ver" --notes "$notes"
+      fi
 
       echo "Tagged and released v$ver"
     timeout: 90000
@@ -650,6 +666,8 @@ nodes:
       # commit. Open PRs' merge-bases stay at their original commits, their
       # diffs stay small, no history is rewritten. The merge commit shows
       # up in dev's `git log`, which is the cost of preserving open-PR sanity.
+      # Re-run safe: a second pull finds main already merged, and re-pushing
+      # the same ref is a no-op.
       git checkout dev
       git pull origin main --no-edit
       git push origin dev
@@ -839,14 +857,27 @@ nodes:
       # would block too), so stash everything → checkout → pop carries the
       # change across. Then commit only the formula (any other restored dirt
       # stays uncommitted) and push on main.
-      git stash push -m "release-commit-formula-pending"
+      #
+      # This node can re-run after an interruption. A re-run can find a clean
+      # tree (the formula commit already landed): stash only when there is
+      # something to stash, or `git stash pop` would pop an unrelated entry.
+      # And commit only when the formula is actually staged.
+      stashed=false
+      if ! git diff --quiet || ! git diff --cached --quiet; then
+        git stash push -m "release-commit-formula-pending"
+        stashed=true
+      fi
       git fetch origin --quiet
       git checkout main
       git pull origin main --ff-only --quiet
-      git stash pop
+      if [ "$stashed" = true ]; then git stash pop; fi
       git add homebrew/archon.rb
-      git commit -m "chore(homebrew): update formula to v$ver"
-      git push origin main
+      if git diff --cached --quiet; then
+        echo "Formula for v$ver already committed on main"
+      else
+        git commit -m "chore(homebrew): update formula to v$ver"
+      fi
+      git push origin main   # re-pushing the same ref is a no-op
 
       # Sync dev with main so the formula update is on both branches.
       # Use a regular merge (not reset --hard) for the same reason as
