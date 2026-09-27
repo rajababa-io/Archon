@@ -110,7 +110,7 @@ export function registerInternalDrainRoutes(
     lockManager.cancelDrain();
     getLog().warn('internal.drain_cancelled');
     // Un-park before answering, so the deploy's log can say the box is back as it
-    // was. A replay failure must never fail the cancel: the box is accepting work
+    // was. Each parked chat holds its new messages behind its replay meanwhile. A replay failure must never fail the cancel: the box is accepting work
     // again either way, and the next continuation tick retries the replay.
     try {
       await replayParked();

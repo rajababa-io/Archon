@@ -109,6 +109,8 @@ export type ParkLockManager = Pick<
   'getDrainId' | 'getStats' | 'getParkedConversationIds' | 'takeForPark' | 'interrupt'
 >;
 
+export type ReplayLockManager = Pick<ConversationLockManager, 'isDraining' | 'releaseReplayHolds'>;
+
 export interface ParkOptions {
   turnStopWaitMs?: number;
   runFinishWindowMs?: number;
@@ -321,6 +323,24 @@ function replayTurn(row: ParkedChatRow): ReplayTurn {
 }
 
 /**
+ * Asks the table, not the pass, what is still owed: a conversation refused this
+ * pass, or parked after it listed its rows, keeps holding its new messages.
+ */
+async function releaseReplayed(lockManager: ReplayLockManager): Promise<void> {
+  const owedIds = new Set(
+    (await parkedWorkDb.listUnresumedParkedChats()).map(row => row.conversationId)
+  );
+  const stillOwed = new Set<string>();
+  for (const id of owedIds) {
+    const conversation = await conversationDb.getConversationById(id);
+    if (conversation?.platform_conversation_id) {
+      stillOwed.add(conversation.platform_conversation_id);
+    }
+  }
+  lockManager.releaseReplayHolds(stillOwed);
+}
+
+/**
  * Hand every parked chat item back to its conversation, in order, at most once.
  *
  * Each row is claimed before it is dispatched, so a crash between the two loses
@@ -328,23 +348,24 @@ function replayTurn(row: ParkedChatRow): ReplayTurn {
  * Rows of one conversation are dispatched in `seq` order; the lock manager queues
  * each behind the one before. A dispatch refused because drain came back gives
  * its claim back and stops that conversation, so the rest replay later, still in
- * order.
+ * order. A pass that reaches the end lets new messages into every conversation
+ * with nothing left to replay; until then they queue behind the replay.
  *
  * Parked workflow runs need nothing here: the continuation scanner resumes them
  * once the server stops draining.
  */
 export async function replayParked(
-  isDraining: () => boolean,
+  lockManager: ReplayLockManager,
   dispatch: ParkedTurnDispatcher
 ): Promise<void> {
-  if (replayInProgress || isDraining()) return;
+  if (replayInProgress || lockManager.isDraining()) return;
   replayInProgress = true;
   try {
     const rows = await parkedWorkDb.listUnresumedParkedChats();
     const stoppedConversations = new Set<string>();
     for (const row of rows) {
       if (stoppedConversations.has(row.conversationId)) continue;
-      if (isDraining()) return;
+      if (lockManager.isDraining()) return;
       if (!(await parkedWorkDb.claimParkedRow(row.id))) continue;
       getLog().info(
         { parkedId: row.id, conversationId: row.conversationId, kind: row.kind, seq: row.seq },
@@ -370,6 +391,7 @@ export async function replayParked(
         stoppedConversations.add(row.conversationId);
       }
     }
+    await releaseReplayed(lockManager);
   } finally {
     replayInProgress = false;
   }

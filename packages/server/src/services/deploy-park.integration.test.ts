@@ -146,7 +146,7 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     // THE SWAP. A new process: fresh lock manager, same database.
     const newServer = new ConversationLockManager(10);
     const first = recordingDispatcher();
-    await replayParked(() => newServer.isDraining(), first.dispatch);
+    await replayParked(newServer, first.dispatch);
 
     const byChat = (id: string): string[] =>
       first.calls.filter(call => call.conversationId === id).map(describeText);
@@ -168,7 +168,7 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
 
     // A second boot replays nothing: every marker was cleared exactly once.
     const second = recordingDispatcher();
-    await replayParked(() => false, second.dispatch);
+    await replayParked(new ConversationLockManager(10), second.dispatch);
     expect(second.calls).toEqual([]);
 
     // The parked run is due for the continuation scanner.
@@ -190,7 +190,7 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     expect(await parkedWorkDb.claimParkedRow(ids[0] ?? '')).toBe(true);
 
     const replay = recordingDispatcher();
-    await replayParked(() => false, replay.dispatch);
+    await replayParked(new ConversationLockManager(10), replay.dispatch);
 
     expect(replay.calls.map(describeText)).toEqual(['queued:one', 'queued:two']);
   });
@@ -204,12 +204,12 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     ]);
 
     const refused = recordingDispatcher(() => 'refused_draining');
-    await replayParked(() => false, refused.dispatch);
+    await replayParked(new ConversationLockManager(10), refused.dispatch);
     // Refused once, then that conversation stops: 'two' is never tried ahead of 'one'.
     expect(refused.calls.map(describeText)).toEqual(['queued:one']);
 
     const later = recordingDispatcher();
-    await replayParked(() => false, later.dispatch);
+    await replayParked(new ConversationLockManager(10), later.dispatch);
     expect(later.calls.map(describeText)).toEqual(['queued:one', 'queued:two']);
   });
 
@@ -220,12 +220,55 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     ]);
 
     const draining = recordingDispatcher();
-    await replayParked(() => true, draining.dispatch);
+    const drainingServer = new ConversationLockManager(10);
+    drainingServer.beginDrain(600);
+    await replayParked(drainingServer, draining.dispatch);
     expect(draining.calls).toEqual([]);
 
     const after = recordingDispatcher();
-    await replayParked(() => false, after.dispatch);
+    await replayParked(new ConversationLockManager(10), after.dispatch);
     expect(after.calls.map(describeText)).toEqual(['queued:wait']);
+  });
+
+  test('a message sent after un-parking runs after the parked backlog; other chats start at once', async () => {
+    const server = new ConversationLockManager(10);
+    const chat = await webChat('chat-unparked');
+    const log: string[] = [];
+    const turn = (label: string) => async (): Promise<void> => {
+      log.push(label);
+    };
+    const parked = scriptedLongTurn(server, 'chat-unparked');
+    await server.acquireLock('chat-unparked', turn('queued-before-drain'), {
+      text: 'queued',
+      parkable: { text: 'queued', attachedFiles: [] },
+    });
+
+    server.beginDrain(600);
+    await parkForDeploy(server, { runFinishWindowMs: 0 });
+    await parked.ended;
+
+    // The deploy failed before its swap. Between the cancel and the replay:
+    server.cancelDrain();
+    const early = await server.acquireLock('chat-unparked', turn('sent-after-cancel'));
+    expect(early.status).toBe('queued-conversation');
+    const unrelated = await server.acquireLock('chat-unrelated', turn('unrelated'));
+    expect(unrelated.status).toBe('started');
+
+    // Delivery the way the web dispatcher does it: through the same lock, as a replay.
+    const dispatch: Parameters<typeof replayParked>[1] = async (conversationId, replayed) => {
+      expect(conversationId).toBe(chat);
+      const label = replayed.kind === 'resume' ? 'resume' : `replayed:${replayed.turn.text}`;
+      await server.acquireLock('chat-unparked', turn(label), undefined, 'replay');
+      return 'dispatched';
+    };
+    await replayParked(server, dispatch);
+    for (let tick = 0; tick < 100 && log.length < 4; tick++) await Promise.resolve();
+
+    expect(log.filter(label => label !== 'unrelated')).toEqual([
+      'resume',
+      'replayed:queued',
+      'sent-after-cancel',
+    ]);
   });
 
   test('parking outside a drain is refused, so nothing is parked only to be replayed at once', async () => {
