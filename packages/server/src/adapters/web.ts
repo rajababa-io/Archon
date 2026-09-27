@@ -164,6 +164,18 @@ export class WebAdapter implements IWebPlatformAdapter {
    *
    * Never throws. A missing reading is a missing gauge, not a failed turn.
    */
+  /**
+   * Write what the turn has said so far, so a row added now lands after it.
+   * Never throws: a late write reorders history, a failed turn loses it.
+   */
+  async flushAssistant(conversationId: string): Promise<void> {
+    try {
+      await this.persistence.flush(conversationId);
+    } catch (error) {
+      getLog().warn({ conversationId, err: error }, 'assistant_flush_failed');
+    }
+  }
+
   async sendResultFooter(conversationId: string, info: TurnResultInfo): Promise<void> {
     if (!info.tokens) return;
     try {

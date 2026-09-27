@@ -3,6 +3,8 @@ export type {
   IAgentProvider,
   AgentRequestOptions,
   SendQueryOptions,
+  MidTurnInbox,
+  MidTurnMessage,
   NodeConfig,
   ProviderDefaults,
   ProviderDefaultsMap,

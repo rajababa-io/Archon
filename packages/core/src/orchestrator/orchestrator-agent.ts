@@ -2274,6 +2274,7 @@ export async function handleMessage(
     attachedFiles,
     userId,
     abortSignal,
+    midTurnInput,
     machineOrigin,
   } = context ?? {};
   // Anchor "is this a slash command" at the true start of the message —
@@ -2802,6 +2803,9 @@ export async function handleMessage(
     };
     if (chatRequest.preset) {
       applyPresetToRequestOptions(providerKey, chatRequest.preset, requestOptions);
+    }
+    if (midTurnInput !== undefined && getProviderCapabilities(providerKey).midTurnInput === true) {
+      requestOptions.midTurnInput = midTurnInput.open();
     }
 
     const chatMcpConfig = resolveChatMcpConfig(cwd);

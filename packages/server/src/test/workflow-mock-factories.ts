@@ -135,7 +135,11 @@ export function makeMockLockManager(
     // work anyway — a test built on that pair would prove nothing.
     acquireLock: mock(async (_id: string, fn: (turn: TurnContext) => Promise<void>) => {
       if (members.isDraining?.()) return { status: 'refused-draining' };
-      await fn({ signal: new AbortController().signal });
+      // An inbox no provider opens: these turns take no mid-turn input.
+      await fn({
+        signal: new AbortController().signal,
+        inbox: { open: () => ({ next: async () => null, landed: () => undefined }) },
+      });
       return { status: 'started' };
     }),
     ...members,

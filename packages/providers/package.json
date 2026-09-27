@@ -88,6 +88,9 @@
       "src/claude/config.test.ts"
     ],
     [
+      "src/claude/mid-turn-input.test.ts"
+    ],
+    [
       "src/community/pi/model-ref.test.ts"
     ],
     [

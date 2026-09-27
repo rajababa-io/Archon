@@ -130,6 +130,8 @@ export const queuedMessageSchema = z
     text: z.string(),
     files: z.array(z.object({ name: z.string(), mimeType: z.string(), size: z.number() })),
     queuedAt: z.string(),
+    /** Sent into the running turn and not yet read; it cannot be taken back. */
+    steering: z.boolean(),
   })
   .openapi('QueuedMessage');
 
@@ -142,6 +144,11 @@ export const conversationQueueResponseSchema = z
   .object({
     conversationId: z.string(),
     messages: z.array(queuedMessageSchema),
+    /**
+     * A queued message can be sent into the running turn now — a turn is running
+     * and its provider takes mid-turn input. False offers no "send now".
+     */
+    steerable: z.boolean(),
   })
   .openapi('ConversationQueueResponse');
 
@@ -162,6 +169,15 @@ export const withdrawQueuedResponseSchema = z
     z.object({ status: z.literal('not-queued') }),
   ])
   .openapi('WithdrawQueuedResponse');
+
+/**
+ * POST /api/conversations/:id/queue/:queuedId/steer response. `sent` means
+ * handed to the running turn, not yet read: the message stays queued until the
+ * agent reads it, and runs as the next turn if the turn ends first.
+ */
+export const steerQueuedResponseSchema = z
+  .object({ status: z.enum(['sent', 'not-queued', 'not-accepting', 'has-files']) })
+  .openapi('SteerQueuedResponse');
 
 /** POST /api/conversations request body. Uses strict() to reject unknown fields (e.g. conversationId). */
 export const createConversationBodySchema = z

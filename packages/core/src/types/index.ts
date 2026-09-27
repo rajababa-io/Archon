@@ -8,6 +8,7 @@ import type { WorkflowRunConfigInput } from '@archon/workflows/schemas/run-confi
 
 // MessageChunk + TokenUsage are used by IPlatformAdapter below.
 import type { MessageChunk, TokenUsage } from '@archon/providers/types';
+import type { MidTurnInput } from '../utils/conversation-lock';
 
 // Re-export schema-derived types so existing imports from '@archon/core/types' keep working.
 export type {
@@ -63,6 +64,12 @@ export interface HandleMessageContext {
    * lifecycle and keeps its own cancel.
    */
   readonly abortSignal?: AbortSignal;
+  /**
+   * The running turn's inbox for messages sent to it mid-turn — the conversation
+   * lock manager's. Opened only when the chat turn's provider declares
+   * `midTurnInput`; a turn that never opens it leaves every message queued.
+   */
+  readonly midTurnInput?: MidTurnInput;
   /**
    * Declared workflow inputs supplied by the caller (#2554), keyed by input name.
    *

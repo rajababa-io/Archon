@@ -819,6 +819,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
 
   // Register Web UI API routes
   const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms);
+  // A turn that starts taking mid-turn input, or a steered message it read,
+  // changes what the chat's queue shows — "send now" appears, a message leaves.
+  lockManager.setQueueListener(apiRoutes.emitQueueChanged);
+
   // Hands back chats a deploy parked (./services/deploy-park). Runs whenever this
   // server is not draining: at boot, when a deploy cancels its drain, and on every
   // continuation tick. It replays only rows the park step wrote, so it never guesses

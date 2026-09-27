@@ -4,6 +4,7 @@ import {
   DeployParkAbort,
   DRAIN_REFUSAL_NOTICE,
   notifyDrainRefusal,
+  type TurnContext,
 } from './conversation-lock';
 
 /**
@@ -611,6 +612,130 @@ describe('ConversationLockManager', () => {
       await manager.acquireLock('conv-a', running.handler);
       const queued = await manager.acquireLock('conv-a', gate(log, 'anon').handler);
       expect(manager.withdraw('conv-a', queued.queuedId ?? '')).toEqual({ status: 'not-queued' });
+    });
+  });
+
+  describe('steer — send a queued message into the running turn', () => {
+    /**
+     * A running turn whose provider reads mid-turn input: it opens the inbox
+     * and pulls from it, the way the Claude provider does.
+     */
+    async function runningSteerableTurn(manager: ConversationLockManager): Promise<{
+      pulled: { id: string; text: string }[];
+      landed: (id: string) => void;
+      finish: () => void;
+    }> {
+      const pulled: { id: string; text: string }[] = [];
+      let inbox!: ReturnType<TurnContext['inbox']['open']>;
+      let finish!: () => void;
+      await manager.acquireLock('conv-a', async turn => {
+        inbox = turn.inbox.open();
+        const done = new Promise<void>(resolve => {
+          finish = resolve;
+        });
+        const pull = async (): Promise<void> => {
+          for (;;) {
+            const next = await inbox.next();
+            if (next === null) return;
+            pulled.push(next);
+          }
+        };
+        void pull();
+        await done;
+      });
+      return { pulled, landed: id => inbox.landed(id), finish };
+    }
+
+    test('refuses when the running turn never opened its inbox', async () => {
+      const manager = new ConversationLockManager();
+      const log: string[] = [];
+      await manager.acquireLock('conv-a', gate(log, 'running').handler);
+      const queued = await manager.acquireLock('conv-a', gate(log, 'q').handler, { text: 'q' });
+      expect(manager.acceptsSteer('conv-a')).toBe(false);
+      expect(manager.steer('conv-a', queued.queuedId ?? '')).toEqual({ status: 'not-accepting' });
+    });
+
+    test('a landed message leaves the queue for the transcript and never runs as its own turn', async () => {
+      const manager = new ConversationLockManager();
+      const announced: string[] = [];
+      manager.setQueueListener(id => announced.push(id));
+      const turn = await runningSteerableTurn(manager);
+      expect(manager.acceptsSteer('conv-a')).toBe(true);
+
+      const ran: string[] = [];
+      const landings: string[] = [];
+      const queued = await manager.acquireLock(
+        'conv-a',
+        async () => {
+          ran.push('steered');
+        },
+        {
+          text: 'also check the tests',
+          onLanded: async () => {
+            landings.push('written');
+          },
+        }
+      );
+      const id = queued.queuedId ?? '';
+      expect(manager.steer('conv-a', id)).toEqual({ status: 'sent' });
+      await drainUntil(() => turn.pulled.length === 1, 'provider pulled the message');
+      expect(turn.pulled).toEqual([{ id, text: 'also check the tests' }]);
+      // Handed over, not read: still queued, marked, and no longer withdrawable.
+      expect(manager.listQueued('conv-a')[0]?.steering).toBe(true);
+      expect(manager.withdraw('conv-a', id)).toEqual({ status: 'not-queued' });
+
+      turn.landed(id);
+      await drainUntil(() => announced.length === 2, 'landing announced after it was written');
+      expect(landings).toEqual(['written']);
+      expect(manager.listQueued('conv-a')).toEqual([]);
+
+      turn.finish();
+      await drainUntilIdle(manager);
+      expect(ran).toEqual([]);
+    });
+
+    test('a message the turn never read runs next, as an ordinary queued message', async () => {
+      const manager = new ConversationLockManager();
+      const turn = await runningSteerableTurn(manager);
+      const ran: string[] = [];
+      let landed = false;
+      const queued = await manager.acquireLock(
+        'conv-a',
+        async () => {
+          ran.push('delivered as its own turn');
+        },
+        {
+          text: 'not that file',
+          onLanded: async () => {
+            landed = true;
+          },
+        }
+      );
+      expect(manager.steer('conv-a', queued.queuedId ?? '')).toEqual({ status: 'sent' });
+      turn.finish();
+      await drainUntil(() => ran.length === 1, 'the unread message ran next');
+      expect(landed).toBe(false);
+      await drainUntilIdle(manager);
+    });
+
+    test('a message with attachments waits for its own turn', async () => {
+      const manager = new ConversationLockManager();
+      const turn = await runningSteerableTurn(manager);
+      const log: string[] = [];
+      const queued = await manager.acquireLock('conv-a', gate(log, 'q').handler, {
+        text: 'see this',
+        files: [{ name: 'a.png', mimeType: 'image/png', size: 1 }],
+      });
+      expect(manager.steer('conv-a', queued.queuedId ?? '')).toEqual({ status: 'has-files' });
+      turn.finish();
+    });
+
+    test('an unknown id is not queued', async () => {
+      const manager = new ConversationLockManager();
+      const turn = await runningSteerableTurn(manager);
+      expect(manager.steer('conv-a', 'nope')).toEqual({ status: 'not-queued' });
+      turn.finish();
+      await drainUntilIdle(manager);
     });
   });
 });
