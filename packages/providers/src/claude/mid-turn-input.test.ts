@@ -67,7 +67,7 @@ describe('createMidTurnPrompt', () => {
     prompt.end();
   });
 
-  test('the result ends the input, so the CLI exits instead of waiting for another turn', async () => {
+  test('without session states, the result ends the input, so the CLI exits instead of waiting', async () => {
     const inbox = fakeInbox();
     const prompt = createMidTurnPrompt('go', inbox);
     const it = prompt.input[Symbol.asyncIterator]();
@@ -75,6 +75,80 @@ describe('createMidTurnPrompt', () => {
     const pending = it.next();
     prompt.observe({ type: 'result' });
     expect((await pending).done).toBe(true);
+  });
+
+  test('with session states, the input ends at the first idle with no background work', async () => {
+    const prompt = createMidTurnPrompt('go', fakeInbox());
+    const it = prompt.input[Symbol.asyncIterator]();
+    await it.next();
+    let done = false;
+    const pending = it.next().then(r => {
+      done = r.done === true;
+    });
+    prompt.observe({ type: 'system', subtype: 'session_state_changed', state: 'running' });
+    prompt.observe({ type: 'result' });
+    await Bun.sleep(0);
+    expect(done).toBe(false);
+    prompt.observe({ type: 'system', subtype: 'session_state_changed', state: 'idle' });
+    await pending;
+    expect(done).toBe(true);
+  });
+
+  // #222: a background task wakes the CLI for a turn of its own after the first
+  // result. An in-process tool called in that turn is answered over this input,
+  // so it must still be open then.
+  test('background work holds the input open past the result until idle with nothing left', async () => {
+    const prompt = createMidTurnPrompt('go');
+    const it = prompt.input[Symbol.asyncIterator]();
+    await it.next();
+    let done = false;
+    const pending = it.next().then(r => {
+      done = r.done === true;
+    });
+    const state = (s: string): void => {
+      prompt.observe({ type: 'system', subtype: 'session_state_changed', state: s });
+    };
+    const tasks = (t: { ambient?: boolean }[]): void => {
+      prompt.observe({ type: 'system', subtype: 'background_tasks_changed', tasks: t });
+    };
+
+    state('running');
+    tasks([{}, { ambient: true }]);
+    prompt.observe({ type: 'result' });
+    state('idle');
+    await Bun.sleep(0);
+    expect(done).toBe(false);
+
+    // The task finishes; the level drops before the turn it queues runs.
+    tasks([{ ambient: true }]);
+    await Bun.sleep(0);
+    expect(done).toBe(false);
+    state('running');
+    prompt.observe({ type: 'result' });
+    state('idle');
+    await pending;
+    expect(done).toBe(true);
+  });
+
+  test('messages are taken only until the first result, though the input stays open', async () => {
+    const inbox = fakeInbox();
+    const prompt = createMidTurnPrompt('go', inbox);
+    const it = prompt.input[Symbol.asyncIterator]();
+    await it.next();
+    prompt.observe({ type: 'system', subtype: 'session_state_changed', state: 'running' });
+    prompt.observe({ type: 'system', subtype: 'background_tasks_changed', tasks: [{}] });
+    prompt.observe({ type: 'result' });
+    let done = false;
+    const pending = it.next().then(r => {
+      done = r.done === true;
+    });
+    inbox.send({ id: 'after', text: 'a new turn, not this one' });
+    await Bun.sleep(0);
+    expect(done).toBe(false);
+    prompt.end();
+    await pending;
+    expect(done).toBe(true);
+    expect(inbox.landedIds).toEqual([]);
   });
 
   test('a message handed over after the turn ended is never written', async () => {

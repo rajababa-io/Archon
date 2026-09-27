@@ -52,7 +52,7 @@ import { parseClaudeConfig } from './config';
 import { CLAUDE_CAPABILITIES } from './capabilities';
 import { buildContainerSpawn } from './container-spawn';
 import { resolveClaudeBinaryPath, pathKind } from './binary-resolver';
-import { createMidTurnPrompt, tapEvents } from './mid-turn-input';
+import { createMidTurnPrompt, SESSION_STATE_EVENTS_ENV, tapEvents } from './mid-turn-input';
 import { buildArchonMcpServer, ARCHON_TOOL_SERVER } from './native-tools';
 import {
   CLAUDE_LOCAL_PROBE_COMMAND,
@@ -1596,14 +1596,12 @@ export class ClaudeProvider implements IAgentProvider {
       // 2b. Register in-process native tools (e.g. manage_run) as an archon MCP
       //     server, mirroring the file-based mcp branch. Merge so a nodeConfig
       //     mcp config and native tools can coexist.
-      if (requestOptions?.nativeTools && requestOptions.nativeTools.length > 0) {
-        const server = buildArchonMcpServer(requestOptions.nativeTools);
+      const nativeTools = requestOptions?.nativeTools ?? [];
+      if (nativeTools.length > 0) {
+        const server = buildArchonMcpServer(nativeTools);
         options.mcpServers = { ...(options.mcpServers ?? {}), [ARCHON_TOOL_SERVER]: server };
         options.allowedTools = [...(options.allowedTools ?? []), `mcp__${ARCHON_TOOL_SERVER}__*`];
-        getLog().info(
-          { count: requestOptions.nativeTools.length },
-          'claude.native_tools_registered'
-        );
+        getLog().info({ count: nativeTools.length }, 'claude.native_tools_registered');
       }
 
       // 3. Set session resume
@@ -1617,18 +1615,20 @@ export class ClaudeProvider implements IAgentProvider {
         getLog().debug({ cwd, attempt }, 'starting_new_session');
       }
 
-      // A chat turn that can be handed messages while it runs streams its
-      // prompt; every other query keeps the plain string. Fresh per attempt: a
-      // message taken by a failed attempt never landed, so its sender still
-      // holds it.
+      // A turn that can be handed messages while it runs, or that offers
+      // in-process tools, streams its prompt so the CLI's input outlives the
+      // first result (see createMidTurnPrompt); every other query keeps the
+      // plain string. Fresh per attempt: a message taken by a failed attempt
+      // never landed, so its sender still holds it.
       // A provider command goes as the bare slash command the CLI runs, not as the prompt.
       const promptText = requestOptions?.command
         ? claudeCommandPrompt(requestOptions.command.name, requestOptions.command.args)
         : prompt;
       const midTurn =
-        requestOptions?.midTurnInput === undefined
+        requestOptions?.midTurnInput === undefined && nativeTools.length === 0
           ? undefined
-          : createMidTurnPrompt(promptText, requestOptions.midTurnInput);
+          : createMidTurnPrompt(promptText, requestOptions?.midTurnInput);
+      if (midTurn !== undefined) options.env = { ...options.env, ...SESSION_STATE_EVENTS_ENV };
 
       try {
         // 4. Run query with first-event timeout protection

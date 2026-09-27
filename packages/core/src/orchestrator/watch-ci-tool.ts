@@ -35,6 +35,11 @@ const INPUT_SCHEMA = defineNativeToolInputSchema({
   required: ['repo', 'sha'],
 });
 
+// The only two results that mean a watch is open. The description quotes them
+// so the agent can tell a saved watch from a call that never reached here.
+const OPENED = 'watch_ci: watching';
+const ALREADY_OPEN = 'watch_ci: this chat was already watching';
+
 const REPO_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SHA_PATTERN = /^[0-9a-fA-F]{40}$/;
 const PR_PATTERN = /^[1-9][0-9]*$/;
@@ -72,8 +77,7 @@ function parseRequest(input: Record<string, unknown>): WatchCiRequest | string {
 export function buildWatchCiTool(ctx: WatchCiContext): NativeTool {
   return {
     name: 'watch_ci',
-    description:
-      'Wait for CI on one commit without staying in this turn. When every GitHub check on that commit has finished, this chat receives one automated message saying which passed and which failed, and a new turn starts to act on it. Use it instead of a monitor, background shell, sleep, or scheduled wake-up — those die when the turn ends. After calling it, end your turn and tell the user you will report back. Watching the same commit twice is one watch.',
+    description: `Wait for CI on one commit without staying in this turn. When every GitHub check on that commit has finished, this chat receives one automated message saying which passed and which failed, and a new turn starts to act on it. Use it instead of a monitor, background shell, sleep, or scheduled wake-up — those die when the turn ends. After calling it, end your turn and tell the user you will report back. Watching the same commit twice is one watch. Only a result that begins "${OPENED}" or "${ALREADY_OPEN}" means a watch is open; any other result, including an interrupted call, means nothing was saved — call it again, and if it keeps failing, tell the user CI is not being watched.`,
     inputSchema: INPUT_SCHEMA,
     handler: async (input): Promise<string> => {
       const request = parseRequest(input);
@@ -86,8 +90,8 @@ export function buildWatchCiTool(ctx: WatchCiContext): NativeTool {
         );
         const target = `${request.repo}@${request.headSha.slice(0, 7)}`;
         return created
-          ? `watch_ci: watching ${target}. This chat gets one message when every check has finished. End your turn now; do not poll.`
-          : `watch_ci: this chat was already watching ${target}. Nothing changed.`;
+          ? `${OPENED} ${target}. This chat gets one message when every check has finished. End your turn now; do not poll.`
+          : `${ALREADY_OPEN} ${target}. Nothing changed.`;
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : String(e);
         log.error({ err: e, conversationId: ctx.conversationId }, 'watch_ci.failed');
