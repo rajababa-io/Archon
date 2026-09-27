@@ -1,5 +1,5 @@
 import { Check, Columns3, ExternalLink, RefreshCw } from 'lucide-react';
-import { useMemo, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useState, type ReactElement } from 'react';
 import { EmptyState } from '../components/EmptyState';
 import {
   COLUMN_EMPTY,
@@ -22,6 +22,7 @@ import { IssueDialog } from '../components/IssueDialog';
 import { useNow } from '../lib/clock';
 import { relativeTime } from '../lib/format';
 import { issueReasonText } from '../lib/issue-reason';
+import { readHiddenColumns, writeHiddenColumns } from '../lib/issue-columns';
 import { RowMenu } from '../components/RowMenu';
 
 function Card({
@@ -100,7 +101,11 @@ function Card({
  */
 export function IssuesPage(): ReactElement {
   const { projectId = '' } = useParams<{ projectId: string }>();
-  const [hidden, setHidden] = useState<ReadonlySet<IssueColumn>>(() => new Set());
+  // One choice for every project's board, remembered across reloads.
+  const [hidden, setHidden] = useState<ReadonlySet<IssueColumn>>(readHiddenColumns);
+  useEffect(() => {
+    writeHiddenColumns(hidden);
+  }, [hidden]);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [columnsEl, setColumnsEl] = useState<HTMLElement | null>(null);
   const now = useNow();
