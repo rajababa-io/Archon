@@ -722,6 +722,58 @@ export interface ProviderAdmissionEvent {
   capacity: number;
 }
 
+/**
+ * A command the provider itself answers — a built-in, a skill, a user or
+ * project command — as the provider reported it. The chat composer's `/` menu
+ * lists these, and a chat message naming one is sent to the provider as that
+ * command rather than wrapped as prose.
+ */
+export interface ProviderCommand {
+  /** Name without its sigil, as the provider spells it: `compact`, `imagegen`, `plugin:skill`. */
+  name: string;
+  /** How the provider spells an invocation: `/name`, or `$name` for a mention-style skill. */
+  sigil: '/' | '$';
+  /** Argument synopsis as the provider reports it. Empty when none. */
+  args: string;
+  description: string;
+  kind: 'skill' | 'command';
+  /**
+   * Where the command is defined: the provider's own (`provider`), the
+   * user's configuration, the project's, or anywhere else (a plugin, an MCP
+   * server). `other` is also the answer when the provider does not say.
+   */
+  origin: 'provider' | 'user' | 'project' | 'other';
+}
+
+/** Everything a provider reported, split into what a chat can run and what it cannot. */
+export interface ProviderCommandListing {
+  commands: ProviderCommand[];
+  /**
+   * Commands the provider reported that a chat must not offer, each with the
+   * provider's own reason — e.g. Claude marks some commands terminal-only.
+   * Kept rather than dropped so a conformance check can tell "withheld on
+   * purpose" from "lost".
+   */
+  withheld: { name: string; reason: string }[];
+}
+
+/** What listing needs to see the same commands a chat turn in `cwd` would. */
+export interface ListCommandsOptions {
+  /** Per-provider defaults from .archon/config.yaml assistants section. */
+  assistantConfig?: Record<string, unknown>;
+  /** Managed env for the provider subprocess, as a chat turn would pass it. */
+  env?: Record<string, string>;
+  abortSignal?: AbortSignal;
+}
+
+/** A chat turn that is one provider command, sent as that command. */
+export interface ProviderCommandInvocation {
+  /** A `name` from this provider's `listCommands()`. */
+  name: string;
+  /** Free-text arguments after the name. Empty when none. */
+  args: string;
+}
+
 export interface SendQueryOptions extends AgentRequestOptions {
   /** Set by Archon core admission; callers do not supply it. */
   admission?: ProviderAttemptAdmission;
@@ -741,6 +793,12 @@ export interface SendQueryOptions extends AgentRequestOptions {
    * value can never reach a provider that cannot honor it.
    */
   execContext?: ExecutionContext;
+  /**
+   * This turn is a provider command, not a prompt: the provider sends it the
+   * way it runs its own commands and ignores `prompt`. Set only for a name the
+   * same provider's `listCommands()` returned.
+   */
+  command?: ProviderCommandInvocation;
 }
 
 /**
@@ -992,4 +1050,12 @@ export interface IAgentProvider {
    * Used by the dag-executor to warn when nodes specify unsupported features.
    */
   getCapabilities(): ProviderCapabilities;
+
+  /**
+   * The commands this provider answers in `cwd`, for the chat `/` menu and for
+   * recognising a chat message that is one. Optional: a provider without it
+   * offers no commands, and every message to it is a prompt. Must not start a
+   * billed model turn.
+   */
+  listCommands?(cwd: string, options?: ListCommandsOptions): Promise<ProviderCommandListing>;
 }

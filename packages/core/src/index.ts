@@ -103,6 +103,7 @@ export {
   resolveTitleRequest,
   resolveNextChatModel,
   type ChatModelRequest,
+  listChatProviderCommands,
 } from './orchestrator/orchestrator-agent';
 export type { TitleRequest } from './orchestrator/orchestrator-agent';
 export {

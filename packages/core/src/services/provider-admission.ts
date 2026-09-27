@@ -171,5 +171,7 @@ export function getAgentProvider(id: string, pollMs = DEFAULT_POLL_MS): IAgentPr
     getCapabilities: () => provider.getCapabilities(),
     sendQuery: (prompt, cwd, resumeSessionId, options) =>
       admittedQuery(id, provider, pollMs, prompt, cwd, resumeSessionId, options),
+    // Listing starts no model turn, so it takes no admission slot.
+    ...(provider.listCommands ? { listCommands: provider.listCommands.bind(provider) } : {}),
   };
 }

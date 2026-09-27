@@ -38,8 +38,29 @@ const mockLoadRepoConfig = mock(
   async (_repoPath: string) => ({}) as { recommendedWorkflows?: string[] }
 );
 
+interface ProviderCommandFixture {
+  name: string;
+  invocation: string;
+  sigil: '/' | '$';
+  args: string;
+  description: string;
+  kind: 'skill' | 'command';
+  origin: 'provider' | 'user' | 'project' | 'other';
+}
+const mockListChatProviderCommands = mock(
+  async (
+    _conversation: unknown,
+    _userId: string | undefined
+  ): Promise<{
+    providerKey: string;
+    commands: ProviderCommandFixture[];
+    withheld: { name: string; reason: string }[];
+  }> => ({ providerKey: 'claude', commands: [], withheld: [] })
+);
+
 mock.module('@archon/core', () => ({
   handleMessage: mock(async () => {}),
+  listChatProviderCommands: mockListChatProviderCommands,
   getDatabaseType: () => 'sqlite',
   loadConfig: mock(async () => ({})),
   loadRepoConfig: mockLoadRepoConfig,
@@ -115,7 +136,13 @@ mock.module('@archon/workflows/defaults', () => ({
 // the filesystem paths used by the routes point to non-existent directories, so access/readFile/unlink
 // calls naturally fail with ENOENT without needing to mock fs/promises (which would leak globally).
 
-mock.module('@archon/core/db/conversations', () => ({}));
+mock.module('@archon/core/db/conversations', () => ({
+  findConversationByPlatformId: mock(async (id: string) =>
+    id === 'web-1'
+      ? { id: 'db-1', platform_conversation_id: 'web-1', ai_assistant_type: 'claude' }
+      : null
+  ),
+}));
 mock.module('@archon/core/db/isolation-environments', () => ({}));
 mock.module('@archon/core/db/workflows', () => ({}));
 mock.module('@archon/core/db/workflow-events', () => ({}));
@@ -1679,5 +1706,82 @@ describe('GET /api/slash-commands', () => {
   test('an unknown project is a 404, not an empty list', async () => {
     const response = await list('?codebaseId=missing');
     expect(response.status).toBe(404);
+  });
+
+  test('without a conversation there is no provider section', async () => {
+    const body = (await (await list()).json()) as { provider: unknown };
+    expect(body.provider).toBeNull();
+  });
+
+  test('an unknown conversation is a 404', async () => {
+    expect((await list('?conversationId=nope')).status).toBe(404);
+  });
+
+  // The conformance half of #149 at the API: every command the provider
+  // listing offers reaches the menu under its chat spelling, and what the
+  // provider withheld is passed on with its reason rather than dropped.
+  test("lists every one of the chat provider's commands", async () => {
+    const commands: ProviderCommandFixture[] = [
+      {
+        name: 'compact',
+        invocation: '/compact',
+        sigil: '/',
+        args: '<instructions>',
+        description: 'Free up context',
+        kind: 'command',
+        origin: 'provider',
+      },
+      {
+        name: 'status',
+        invocation: '/claude:status',
+        sigil: '/',
+        args: '',
+        description: 'Brief',
+        kind: 'skill',
+        origin: 'user',
+      },
+      {
+        name: 'imagegen',
+        invocation: '$imagegen',
+        sigil: '$',
+        args: '',
+        description: 'Images',
+        kind: 'skill',
+        origin: 'provider',
+      },
+    ];
+    mockListChatProviderCommands.mockResolvedValueOnce({
+      providerKey: 'claude',
+      commands,
+      withheld: [{ name: 'color', reason: 'terminal-only' }],
+    });
+    const body = (await (await list('?conversationId=web-1')).json()) as {
+      provider: {
+        id: string;
+        commands: { command: string; kind: string; origin: string }[];
+        withheld: { name: string }[];
+        error: string | null;
+      };
+    };
+    expect(body.provider.id).toBe('claude');
+    expect(body.provider.error).toBeNull();
+    expect(body.provider.commands.map(c => c.command).sort()).toEqual(
+      commands.map(c => c.invocation).sort()
+    );
+    expect(body.provider.withheld.map(w => w.name)).toEqual(['color']);
+  });
+
+  test('a provider that cannot be asked yields its section with the error', async () => {
+    mockListChatProviderCommands.mockRejectedValueOnce(new Error('claude binary missing'));
+    const response = await list('?conversationId=web-1');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      provider: { id: string; commands: unknown[]; error: string | null };
+    };
+    expect(body.provider).toMatchObject({
+      id: 'claude',
+      commands: [],
+      error: 'claude binary missing',
+    });
   });
 });

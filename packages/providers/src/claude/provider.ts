@@ -44,12 +44,20 @@ import type {
   TokenUsage,
   ProviderCapabilities,
   NodeConfig,
+  ListCommandsOptions,
+  ProviderCommandListing,
 } from '../types';
 import { parseClaudeConfig } from './config';
 import { CLAUDE_CAPABILITIES } from './capabilities';
 import { buildContainerSpawn } from './container-spawn';
 import { resolveClaudeBinaryPath, pathKind } from './binary-resolver';
 import { buildArchonMcpServer, ARCHON_TOOL_SERVER } from './native-tools';
+import {
+  CLAUDE_LOCAL_PROBE_COMMAND,
+  claudeCommandPrompt,
+  toClaudeCommandListing,
+  type ClaudeInitCommandFields,
+} from './commands';
 import { createLogger } from '@archon/paths';
 import { loadMcpConfig } from '../mcp/config';
 import { withResumedOutcome, resumedOutcome } from '../shared/resumed';
@@ -1584,8 +1592,14 @@ export class ClaudeProvider implements IAgentProvider {
       }
 
       try {
-        // 4. Run query with first-event timeout protection
-        const rawEvents = query({ prompt, options });
+        // 4. Run query with first-event timeout protection. A provider command
+        //    goes as the bare slash command the CLI runs, not as the prompt.
+        const rawEvents = query({
+          prompt: requestOptions?.command
+            ? claudeCommandPrompt(requestOptions.command.name, requestOptions.command.args)
+            : prompt,
+          options,
+        });
         const timeoutMs = getFirstEventTimeoutMs();
         const diagnostics = buildFirstEventHangDiagnostics(
           options.env as Record<string, string>,
@@ -1638,6 +1652,70 @@ export class ClaudeProvider implements IAgentProvider {
     }
 
     throw lastError ?? new Error('Claude Code query failed after retries');
+  }
+
+  /**
+   * Claude's commands for a chat in `cwd`: one short CLI session that runs a
+   * local-only command, so nothing is billed and nothing is saved. It loads the
+   * same setting sources a chat turn loads, so it sees the same skills and
+   * commands.
+   */
+  async listCommands(cwd: string, options?: ListCommandsOptions): Promise<ProviderCommandListing> {
+    const assistantDefaults = parseClaudeConfig(options?.assistantConfig ?? {});
+    const cliPath = await resolveClaudeBinaryPath(assistantDefaults.claudeBinaryPath);
+    const requestOptions: SendQueryOptions = {
+      ...(options?.env ? { env: options.env } : {}),
+      ...(options?.abortSignal ? { abortSignal: options.abortSignal } : {}),
+    };
+    const settingSources = assistantDefaults.settingSources ?? (['project', 'user'] as const);
+    const controller = new AbortController();
+    const onAbort = (): void => {
+      controller.abort();
+    };
+    options?.abortSignal?.addEventListener('abort', onAbort, { once: true });
+    const stderrLines: string[] = [];
+    const sdkOptions = buildBaseClaudeOptions(
+      cwd,
+      requestOptions,
+      assistantDefaults,
+      controller,
+      stderrLines,
+      [],
+      buildRequestSubprocessEnv(requestOptions),
+      cliPath,
+      [...settingSources]
+    );
+    sdkOptions.persistSession = false;
+
+    try {
+      const q = query({ prompt: CLAUDE_LOCAL_PROBE_COMMAND, options: sdkOptions });
+      const supported = q.supportedCommands();
+      let init: ClaudeInitCommandFields | undefined;
+      for await (const message of q) {
+        if (message.type === 'system' && message.subtype === 'init') {
+          init = message;
+        } else if (message.type === 'result' && message.total_cost_usd > 0) {
+          // The probe is only free while the CLI answers it locally. Say so
+          // loudly if that stops being true rather than bill every listing.
+          getLog().warn(
+            { costUsd: message.total_cost_usd, probe: CLAUDE_LOCAL_PROBE_COMMAND },
+            'claude.command_probe_billed'
+          );
+        }
+      }
+      if (init === undefined) {
+        getLog().warn({ cwd }, 'claude.command_probe_no_init');
+      }
+      return toClaudeCommandListing(await supported, init);
+    } catch (error) {
+      getLog().error(
+        { err: error as Error, cwd, stderrContext: stderrLines.join('\n') },
+        'claude.list_commands_failed'
+      );
+      throw error;
+    } finally {
+      options?.abortSignal?.removeEventListener('abort', onAbort);
+    }
   }
 
   getType(): string {

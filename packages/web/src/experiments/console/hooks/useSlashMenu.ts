@@ -6,12 +6,17 @@ import {
   buildSlashEntries,
   enterCompletes,
   matchSlashEntries,
+  providerNotice,
   type SlashMenuEntry,
 } from '../lib/slash-menu';
 
 export interface SlashMenuState {
   /** Entries to show, best first. Empty means the menu is closed. */
   matches: SlashMenuEntry[];
+  /** Nothing typed after the `/` yet: show the full list under section headings. */
+  grouped: boolean;
+  /** Why the provider's commands are missing, when they are. */
+  notice: string | null;
   active: number;
   setActive: (index: number) => void;
   complete: (entry: SlashMenuEntry) => void;
@@ -32,6 +37,8 @@ export interface SlashMenuState {
  */
 export function useSlashMenu(
   projectId: string | undefined,
+  /** The chat, and the provider it runs on — whose own commands the menu adds. */
+  chat: { conversationId: string; provider: string } | undefined,
   draft: string,
   onComplete: (text: string) => void
 ): SlashMenuState {
@@ -39,8 +46,15 @@ export function useSlashMenu(
   // not commands, and the listing runs workflow discovery on the server.
   const wanted = draft.startsWith('/');
   const { data } = useEntity<skill.SlashCommandListing | null>(
-    wanted ? K.slashCommands(projectId ?? 'none') : 'noop:slash-commands',
-    () => (wanted ? skill.listSlashCommands(projectId) : Promise.resolve(null))
+    wanted
+      ? K.slashCommands(
+          projectId ?? 'none',
+          chat?.conversationId ?? 'none',
+          chat?.provider ?? 'none'
+        )
+      : 'noop:slash-commands',
+    () =>
+      wanted ? skill.listSlashCommands(projectId, chat?.conversationId) : Promise.resolve(null)
   );
   const entries = useMemo(() => (data ? buildSlashEntries(data) : []), [data]);
 
@@ -90,6 +104,8 @@ export function useSlashMenu(
 
   return {
     matches,
+    grouped: draft.trim() === '/',
+    notice: matches.length > 0 ? providerNotice(data ?? null) : null,
     active,
     setActive,
     complete,

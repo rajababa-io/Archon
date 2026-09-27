@@ -2397,6 +2397,7 @@ export interface paths {
       parameters: {
         query?: {
           codebaseId?: string;
+          conversationId?: string;
         };
         header?: never;
         path?: never;
@@ -2413,7 +2414,7 @@ export interface paths {
             'application/json': components['schemas']['SlashCommandListResponse'];
           };
         };
-        /** @description Project not found */
+        /** @description Project or conversation not found */
         404: {
           headers: {
             [name: string]: unknown;
@@ -5054,6 +5055,7 @@ export interface components {
     SlashCommandListResponse: {
       commands: components['schemas']['SlashCommandEntry'][];
       workflows: components['schemas']['SlashWorkflowEntry'][];
+      provider: components['schemas']['SlashProviderCommands'];
     };
     SlashCommandEntry: {
       command: string;
@@ -5063,6 +5065,25 @@ export interface components {
     SlashWorkflowEntry: {
       name: string;
       summary: string | null;
+    };
+    SlashProviderCommands: {
+      id: string;
+      displayName: string;
+      commands: components['schemas']['SlashProviderCommandEntry'][];
+      withheld: {
+        name: string;
+        reason: string;
+      }[];
+      error: string | null;
+    } | null;
+    SlashProviderCommandEntry: {
+      command: string;
+      args: string;
+      description: string;
+      /** @enum {string} */
+      kind: 'skill' | 'command';
+      /** @enum {string} */
+      origin: 'provider' | 'user' | 'project' | 'other';
     };
     WorkflowListResponse: {
       workflows: components['schemas']['WorkflowListEntry'][];

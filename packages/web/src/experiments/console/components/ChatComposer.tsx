@@ -84,6 +84,8 @@ interface ChatComposerProps {
   controlRef?: Ref<ComposerControl>;
   /** Project whose workflows the `/` menu offers. */
   projectId?: string;
+  /** The open chat and its provider, whose own commands the `/` menu adds. */
+  chat?: { conversationId: string; provider: string };
 }
 
 const MAX_HEIGHT = 200;
@@ -116,6 +118,7 @@ export function ChatComposer({
   onPullBack,
   controlRef,
   projectId,
+  chat,
 }: ChatComposerProps): ReactElement {
   /**
    * The in-flight text is LOCAL. It used to live on the page, so every
@@ -219,7 +222,7 @@ export function ChatComposer({
   }, [value]);
 
   const menuId = useId();
-  const slash = useSlashMenu(projectId, value, text => {
+  const slash = useSlashMenu(projectId, chat, value, text => {
     setValue(text);
     textareaRef.current?.focus();
   });
@@ -383,6 +386,8 @@ export function ChatComposer({
             <SlashMenu
               id={menuId}
               matches={slash.matches}
+              grouped={slash.grouped}
+              notice={slash.notice}
               active={slash.active}
               onHover={slash.setActive}
               onChoose={slash.complete}

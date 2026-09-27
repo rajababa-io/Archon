@@ -119,6 +119,9 @@ const mockSendQuery = mock<IAgentProvider['sendQuery']>(async function* () {
   yield { type: 'assistant', content: 'test response' };
   yield { type: 'result', sessionId: 'session-1' };
 });
+const mockListCommands = mock<NonNullable<IAgentProvider['listCommands']>>(() =>
+  Promise.resolve({ commands: [], withheld: [] })
+);
 const mockGetCodebaseEnvVars = mock(() => Promise.resolve({}));
 const mockLoadConfig = mock<typeof ConfigLoader.loadConfig>(() => Promise.resolve(makeConfig()));
 
@@ -387,6 +390,7 @@ mock.module('../services/provider-admission', () => ({
     sendQuery: mockSendQuery,
     getType: mock(() => 'claude'),
     getCapabilities: mock(() => ({})),
+    listCommands: mockListCommands,
   })),
 }));
 
@@ -646,6 +650,7 @@ import {
   resolveTitleRequest,
   continueResolvedGateRun,
 } from './orchestrator-agent';
+import { clearProviderCommandCache } from '../handlers/provider-commands';
 import { buildAiProfile } from '@archon/workflows/model-validation';
 import { TerminalStatusWriteError } from '@archon/workflows/terminal-status-write';
 
@@ -7752,5 +7757,93 @@ describe('thinking in a streamed turn', () => {
     const texts = platform.sendMessage.mock.calls.map(c => String(c[1]));
     expect(texts.some(t => t.includes('lockfile'))).toBe(false);
     expect(texts).toContain('Done.');
+  });
+});
+
+// ─── Provider commands (#149) ───────────────────────────────────────────────
+
+describe('handleMessage — provider commands', () => {
+  beforeEach(() => {
+    clearProviderCommandCache();
+    mockSendQuery.mockClear();
+    mockListCommands.mockReset();
+    mockListCommands.mockImplementation(() =>
+      Promise.resolve({
+        commands: [
+          {
+            name: 'compact',
+            sigil: '/',
+            args: '',
+            description: 'Free up context',
+            kind: 'command',
+            origin: 'provider',
+          },
+          {
+            name: 'status',
+            sigil: '/',
+            args: '',
+            description: 'Brief',
+            kind: 'skill',
+            origin: 'user',
+          },
+        ],
+        withheld: [],
+      })
+    );
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() => Promise.resolve(makeConversation()));
+    mockListCodebases.mockReset();
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+    mockDiscoverWorkflowsWithConfig.mockReset();
+    mockDiscoverWorkflowsWithConfig.mockImplementation(() =>
+      Promise.resolve({ workflows: [], errors: [] })
+    );
+    mockGetRecentWorkflowResultMessages.mockReset();
+    mockGetRecentWorkflowResultMessages.mockImplementation(() => Promise.resolve([]));
+  });
+
+  const sent = (): { prompt: string; command: unknown } => {
+    const call = mockSendQuery.mock.calls[0];
+    return {
+      prompt: call?.[0] ?? '',
+      command: (call?.[3] as { command?: unknown } | undefined)?.command,
+    };
+  };
+
+  test('a provider command reaches the provider as that command, unwrapped', async () => {
+    await handleMessage(makePlatform(), 'conv-1', '/compact keep the plan');
+    expect(sent().command).toEqual({ name: 'compact', args: 'keep the plan' });
+    expect(sent().prompt).toBe('/compact keep the plan');
+  });
+
+  test('the renamed spelling of a clashing command reaches the provider under its own name', async () => {
+    await handleMessage(makePlatform(), 'conv-1', '/claude:status');
+    expect(sent().command).toEqual({ name: 'status', args: '' });
+  });
+
+  test('a message that starts with / by accident is sent as ordinary text', async () => {
+    await handleMessage(makePlatform(), 'conv-1', '/etc/hosts has a stale entry');
+    expect(sent().command).toBeUndefined();
+    expect(sent().prompt).toContain('## User Message');
+  });
+
+  test('attached files ride along as the command arguments', async () => {
+    await handleMessage(makePlatform(), 'conv-1', '/claude:status', {
+      attachedFiles: [{ name: 'a.png', mimeType: 'image/png', size: 3, path: '/uploads/a.png' }],
+    });
+    expect(sent().command).toEqual({ name: 'status', args: 'Attached files:\n- /uploads/a.png' });
+  });
+
+  test('when the provider cannot list its commands, the message goes as text and the chat is told', async () => {
+    mockListCommands.mockImplementation(() => Promise.reject(new Error('cli missing')));
+    const platform = {
+      ...makePlatform(),
+      sendDurableNotice: mock<NonNullable<IPlatformAdapter['sendDurableNotice']>>(() =>
+        Promise.resolve()
+      ),
+    };
+    await handleMessage(platform, 'conv-1', '/compact');
+    expect(sent().command).toBeUndefined();
+    expect(platform.sendDurableNotice.mock.calls[0]?.[1]).toContain('cli missing');
   });
 });

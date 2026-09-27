@@ -3395,3 +3395,54 @@ describe('classifySubprocessError (#2715)', () => {
     expect(classifySubprocessError('server overloaded', '')).toBe('rate_limit');
   });
 });
+
+describe('provider commands (#149)', () => {
+  beforeEach(() => {
+    mockQuery.mockClear();
+  });
+
+  test('a command turn sends the bare slash command, not the prompt', async () => {
+    mockQuery.mockImplementation(async function* () {
+      yield { type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 };
+    });
+    const client = new ClaudeProvider({ retryBaseDelayMs: 1 });
+    for await (const _ of client.sendQuery('## User Message\n\n/compact', '/workspace', 'sess-1', {
+      command: { name: 'compact', args: 'keep the plan' },
+    })) {
+      // drain
+    }
+    expect(mockQuery.mock.calls[0]?.[0].prompt).toBe('/compact keep the plan');
+    expect(mockQuery.mock.calls[0]?.[0].options?.resume).toBe('sess-1');
+  });
+
+  test('listCommands asks a throwaway local session and merges both SDK sources', async () => {
+    mockQuery.mockImplementation(((_params: Parameters<typeof sdkQuery>[0]) => {
+      const events = (async function* () {
+        yield {
+          type: 'system',
+          subtype: 'init',
+          skills: ['visual'],
+          terminal_slash_commands: ['color'],
+        };
+        yield { type: 'result', subtype: 'success', is_error: false, total_cost_usd: 0 };
+      })();
+      return Object.assign(events, {
+        supportedCommands: async () => [
+          { name: 'compact', description: 'Free up context', argumentHint: '', builtin: true },
+          { name: 'color', description: 'Prompt colour', argumentHint: '', builtin: true },
+          { name: 'visual', description: 'Diagrams (user)', argumentHint: '' },
+        ],
+      });
+    }) as unknown as MockQuery);
+    const listing = await new ClaudeProvider().listCommands('/workspace');
+    const params = mockQuery.mock.calls[0]?.[0];
+    expect(params?.prompt).toBe('/context');
+    expect(params?.options?.persistSession).toBe(false);
+    expect(params?.options?.cwd).toBe('/workspace');
+    expect(listing.commands.map(c => `${c.name}:${c.origin}:${c.kind}`)).toEqual([
+      'compact:provider:command',
+      'visual:user:skill',
+    ]);
+    expect(listing.withheld.map(w => w.name)).toEqual(['color']);
+  });
+});

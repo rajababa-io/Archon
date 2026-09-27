@@ -2,8 +2,9 @@
  * The composer's `/` menu: which entries a draft offers, in what order.
  *
  * Entries come from `GET /api/slash-commands`, which derives them from the
- * server's command registry and workflow discovery — nothing here names a
- * command. This module only ranks what the server sent against what was typed.
+ * server's command registry, workflow discovery and the chat provider's own
+ * listing — nothing here names a command. This module only groups and ranks
+ * what the server sent against what was typed.
  */
 import type { SlashCommandListing } from '../skills/slashCommands';
 
@@ -12,29 +13,88 @@ export interface SlashMenuEntry {
   id: string;
   /** Text completing the entry puts in the composer. */
   insert: string;
-  /** Command as shown, without arguments, e.g. `/workflow run`. */
+  /** Command as shown, without arguments, e.g. `/workflow run`, `$imagegen`. */
   label: string;
   /** Argument synopsis, shown dimmed after the label. Empty when none. */
   args: string;
   description: string;
-  kind: 'command' | 'workflow';
+  kind: 'command' | 'workflow' | 'provider';
+  /** Section heading the entry sits under in the unfiltered menu. */
+  group: string;
+  /** Short source tag shown at the end of the row; null for Archon's own commands. */
+  tag: string | null;
 }
 
-/** Entries for one listing: commands in registry order, then workflows by name. */
+type ProviderSection = NonNullable<SlashCommandListing['provider']>;
+type ProviderEntry = ProviderSection['commands'][number];
+
+/**
+ * Sections for the provider's commands, in menu order. Headings and tags name
+ * the provider the server reported — nothing here knows which one it is.
+ */
+function providerGroup(
+  provider: ProviderSection,
+  command: ProviderEntry
+): { order: number; group: string; tag: string } {
+  switch (command.origin) {
+    case 'user':
+      return { order: 0, group: 'Your skills and commands', tag: command.kind };
+    case 'project':
+      return { order: 1, group: 'Project', tag: 'project' };
+    case 'provider':
+      return command.kind === 'skill'
+        ? { order: 2, group: `${provider.displayName} skills`, tag: provider.id }
+        : { order: 3, group: provider.displayName, tag: provider.id };
+    case 'other':
+      return { order: 4, group: 'Plugins and other sources', tag: 'other' };
+  }
+}
+
+/** A command that takes arguments completes with the space already typed. */
+function insertFor(command: string, args: string): string {
+  return args.length > 0 ? `${command} ` : command;
+}
+
+/**
+ * Entries for one listing: Archon's commands in registry order, then the chat
+ * provider's own commands grouped by where they come from, then workflows by
+ * name.
+ */
 export function buildSlashEntries(listing: SlashCommandListing): SlashMenuEntry[] {
   const commands = listing.commands.map(
     (c): SlashMenuEntry => ({
       id: `command:${c.command}`,
-      // A command that takes arguments completes with the space already typed,
-      // so the next keystroke is the argument and the menu narrows to what
+      // The next keystroke is the argument, and the menu narrows to what
       // follows — `/workflow run ` lists the workflows.
-      insert: c.args.length > 0 ? `${c.command} ` : c.command,
+      insert: insertFor(c.command, c.args),
       label: c.command,
       args: c.args,
       description: c.description,
       kind: 'command',
+      group: 'Archon',
+      tag: null,
     })
   );
+  const provider = listing.provider;
+  const providerEntries =
+    provider === null
+      ? []
+      : provider.commands
+          .map((c, index) => ({ c, index, ...providerGroup(provider, c) }))
+          .sort((a, b) => a.order - b.order || a.index - b.index)
+          .map(
+            ({ c, group, tag }): SlashMenuEntry => ({
+              id: `provider:${c.command}`,
+              // A skill takes free text even when it declares no arguments.
+              insert: c.kind === 'skill' ? `${c.command} ` : insertFor(c.command, c.args),
+              label: c.command,
+              args: c.args,
+              description: c.description,
+              kind: 'provider',
+              group,
+              tag,
+            })
+          );
   const workflows = [...listing.workflows]
     .sort((a, b) => a.name.localeCompare(b.name))
     .map(
@@ -45,9 +105,21 @@ export function buildSlashEntries(listing: SlashCommandListing): SlashMenuEntry[
         args: '[message]',
         description: w.summary ?? 'Workflow',
         kind: 'workflow',
+        group: 'Workflows',
+        tag: 'workflow',
       })
     );
-  return [...commands, ...workflows];
+  return [...commands, ...providerEntries, ...workflows];
+}
+
+/**
+ * Why the provider's commands are missing from the menu, or null when they
+ * are not. A listing the provider could not answer must not read as complete.
+ */
+export function providerNotice(listing: SlashCommandListing | null): string | null {
+  const provider = listing?.provider;
+  if (provider?.error == null) return null;
+  return `${provider.displayName} commands unavailable: ${provider.error}`;
 }
 
 /**
@@ -59,7 +131,8 @@ export function buildSlashEntries(listing: SlashCommandListing): SlashMenuEntry[
 function score(label: string, query: string): number | null {
   if (label === query) return 0;
   if (label.startsWith(query)) return 1;
-  const words = label.split(/[\s-]+/);
+  // `:` too, so `/status` finds a provider's clashing `/claude:status`.
+  const words = label.split(/[\s:-]+/);
   if (words.some(w => w.startsWith(query))) return 2;
   if (
     words

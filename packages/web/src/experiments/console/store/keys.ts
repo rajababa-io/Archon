@@ -16,7 +16,9 @@ export const K = {
   workflow: (cwd: string, name: string): string =>
     `workflow:${encodeURIComponent(cwd)}:${encodeURIComponent(name)}`,
   worktrees: (projectId: string): string => `worktrees:${projectId}`,
-  slashCommands: (projectId: string): string => `slashCommands:${projectId}`,
+  /** Keyed by the chat's provider too, so a chat on another provider lists its own commands. */
+  slashCommands: (projectId: string, conversationId: string, provider: string): string =>
+    `slashCommands:${projectId}:${conversationId}:${provider}`,
   runs: (scope: Scope): string => `runs:${scopeKey(scope)}`,
   // Under the `runs:` prefix on purpose — the dashboard SSE invalidates the
   // whole prefix, so a chat's list stays live with the project feed.

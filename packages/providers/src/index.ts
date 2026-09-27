@@ -19,6 +19,10 @@ export type {
   ProviderCredentialCatalog,
   ProviderAttemptAdmission,
   ProviderAdmissionEvent,
+  ProviderCommand,
+  ProviderCommandListing,
+  ProviderCommandInvocation,
+  ListCommandsOptions,
 } from './types';
 export { CREDENTIAL_KINDS } from './types';
 

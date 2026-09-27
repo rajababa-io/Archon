@@ -143,6 +143,14 @@ export const SLASH_COMMANDS = [
   },
 ] as const satisfies readonly SlashCommandSpec[];
 
+/**
+ * Commands the orchestrator answers inline, mid-turn, because they need state
+ * only a resolved chat turn has (`/retitle` needs the small tier and the
+ * sender's credentials). Not dispatched from the registry, but still Archon's
+ * names: a provider command with one of them gets a prefixed spelling.
+ */
+export const INLINE_COMMAND_NAMES = ['retitle'] as const;
+
 export type SlashCommandName = (typeof SLASH_COMMANDS)[number]['name'];
 export type HandlerCommandName = Extract<
   (typeof SLASH_COMMANDS)[number],
