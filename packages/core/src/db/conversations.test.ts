@@ -617,6 +617,20 @@ describe('conversations', () => {
         ConversationNotFoundError
       );
     });
+
+    test('closing a chat cancels its open CI watches; reopening does not touch them', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationCompleted('conv-1', true);
+      const cancel = String(mockQuery.mock.calls[1]?.[0]);
+      expect(cancel).toContain('UPDATE remote_agent_ci_watches');
+      expect(cancel).toContain("status = 'cancelled'");
+      expect(mockQuery.mock.calls[1]?.[1]).toEqual(['conv-1']);
+
+      mockQuery.mockClear();
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationCompleted('conv-1', false);
+      expect(mockQuery.mock.calls).toHaveLength(1);
+    });
   });
 
   describe('setConversationReady', () => {

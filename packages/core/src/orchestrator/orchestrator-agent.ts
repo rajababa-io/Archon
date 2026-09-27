@@ -36,6 +36,9 @@ import { getAgentProvider } from '../services/provider-admission';
 import { buildManageRunTool } from './manage-run-tool';
 import { buildProjectBriefTool } from './update-project-brief-tool';
 import { buildReadyToCloseTool } from './ready-to-close-tool';
+import { buildWatchCiTool } from './watch-ci-tool';
+import { openCiWatch } from '../db/ci-watches';
+import { isCiWatchActive } from '../services/ci-watch';
 import { basename } from 'node:path';
 import { buildHandoffTool, buildUndoHandoffTool } from './handoff-tool';
 import { lineageMetadata, readLineage } from './handoff';
@@ -1982,6 +1985,7 @@ export async function handleMessage(
     attachedFiles,
     userId,
     abortSignal,
+    machineOrigin,
   } = context ?? {};
   // Anchor "is this a slash command" at the true start of the message —
   // leading whitespace (e.g. from a platform that doesn't pre-trim after
@@ -2357,7 +2361,12 @@ export async function handleMessage(
     // Unconditional rather than read-then-write: clearing an already-clear flag
     // is the common case and costs one UPDATE, where checking first costs a
     // SELECT and can still race the turn it is trying to describe.
-    await db.setConversationReady(conversation.id, false);
+    //
+    // A machine-originated turn is not a human saying anything, so it leaves
+    // the claim alone: CI finishing is not evidence the work is unfinished.
+    if (machineOrigin === undefined) {
+      await db.setConversationReady(conversation.id, false);
+    }
     let session = await sessionDb.getActiveSession(conversation.id);
     if (!session) {
       session = await sessionDb.transitionSession(conversation.id, 'first-message', {
@@ -2760,6 +2769,20 @@ export async function handleMessage(
             await db.setConversationReady(conversation.id, ready);
           },
         }),
+        ...(platform.getPlatformType() === 'web' && isCiWatchActive()
+          ? [
+              buildWatchCiTool({
+                conversationId: conversation.id,
+                open: async (request): Promise<{ created: boolean }> => {
+                  const { created } = await openCiWatch({
+                    conversationId: conversation.id,
+                    ...request,
+                  });
+                  return { created };
+                },
+              }),
+            ]
+          : []),
         // Scoped to this conversation, not the project: a summary describes one
         // chat, and the tool must not be able to write to a different one.
       ];
