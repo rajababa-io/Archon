@@ -216,14 +216,20 @@ on_terminated() {
 trap on_terminated TERM
 
 note "starting deploy"
-SOURCE_DIR="$SOURCE_DIR" bash "$DEPLOY" &
+# Where deploy-local.sh leaves its one-line account of work it parked and the new
+# server resumed. Removed first, so a line left by an earlier deploy is never
+# credited to this one.
+PARK_REPORT="$VOLUME/deploy-park-report"
+rm -f "$PARK_REPORT"
+SOURCE_DIR="$SOURCE_DIR" PARK_REPORT_FILE="$PARK_REPORT" bash "$DEPLOY" &
 DEPLOY_PID=$!
 status=0
 wait "$DEPLOY_PID" || status=$?
 
 if [ "$status" -eq 0 ]; then
   note "DEPLOYED $WANT"
-  record "OK $WANT"
+  PARKED=$(head -1 "$PARK_REPORT" 2>/dev/null | tr -d '\r')
+  record "OK $WANT${PARKED:+ — $PARKED}"
 else
   # What the box is ACTUALLY running, asked rather than assumed. deploy-local.sh
   # can fail AFTER `up -d` has already swapped the container — its health wait

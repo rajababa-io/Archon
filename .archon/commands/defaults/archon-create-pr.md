@@ -155,6 +155,8 @@ Look for the project's PR template at `.github/pull_request_template.md`, `.gith
 
 ### 3.3 Create the PR
 
+This step can re-run after an interruption. First check `gh pr list --repo "$ORIGIN_REPO" --head "$(git branch --show-current)" --state open --json number,url`: if this branch already has an open PR, that PR is this step's own earlier result — skip `gh pr create` and go straight to capturing its identifiers below.
+
 ```bash
 # Write body to file to avoid shell escaping
 cat > $ARTIFACTS_DIR/pr-body.md <<'EOF'

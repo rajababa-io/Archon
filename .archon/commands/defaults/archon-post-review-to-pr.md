@@ -130,8 +130,11 @@ Format the review as a GitHub-friendly comment:
 
 ### 3.1 Post the Comment
 
+This step can re-run after an interruption, so check first: if `gh pr view {PR_NUMBER} --json comments --jq '.comments[].body' | grep -qF '<!-- archon:review-comment run=$WORKFLOW_ID -->'` succeeds, this run already posted the comment — do not post it again. Keep that marker as the comment's first line.
+
 ```bash
 gh pr comment {PR_NUMBER} --body "$(cat <<'EOF'
+<!-- archon:review-comment run=$WORKFLOW_ID -->
 {formatted comment body}
 EOF
 )"

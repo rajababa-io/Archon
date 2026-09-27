@@ -297,6 +297,10 @@ nodes:
 
       ## 7. ACT PASS — comment + track
       For each NEW dedup candidate #N with canonical #C:
+        - State is saved only at the end, so an interrupted run may have
+          posted without recording it. Check first: `gh issue view <N> --json comments`;
+          if a comment already contains "may overlap with #<C>", record its ID
+          below and do not post again. If the fetch fails, skip posting.
         - Post a comment on #N:
 
               @<reporter-of-N> this looks like it may overlap with #<C>.
@@ -329,6 +333,9 @@ nodes:
           on a bad timestamp, do NOT skip silently. Leave the entry in
           state for operator review.
         - Else if `now - postedAt >= 3 days`:
+            - Re-run check first: if #N is already CLOSED, drop the entry;
+              if a comment already contains "Auto-closing: no reply", skip
+              the closing comment and go straight to the close.
             - Post closing comment on #N:
                   "Auto-closing: no reply within 3 days of the duplicate
                    check. Please reopen if this is still relevant."
@@ -562,6 +569,9 @@ nodes:
               your case? If there is no reply within 3 days this issue will
               be auto-closed.
 
+        - Re-run check (state is saved only at the end): if `gh issue view <O> --json comments`
+          shows a comment already containing "may have been resolved by #<C>",
+          record its ID below and do not post again. If the fetch fails, skip posting.
         - Post: `gh issue comment <O> --body "..."`
           Capture comment ID.
         - Record in state:
@@ -584,6 +594,9 @@ nodes:
         - VALIDATE `postedAt` parses as ISO-8601 first. If not: log and
           skip this entry; never close on a bad timestamp.
         - Else if `now - postedAt >= 3 days`:
+            - Re-run check first: if #O is already CLOSED, drop the entry;
+              if a comment already contains "Auto-closing: no reply", skip
+              the closing comment and go straight to the close.
             - Post closing comment:
                   "Auto-closing: no reply within 3 days of the closed-match
                    check. Please reopen if your case is NOT resolved by
@@ -1631,7 +1644,11 @@ nodes:
           Print `[DRY] would POST to Slack (<bytes> chars):` followed by
           the full payload text. Do NOT curl.
 
-      Otherwise:
+      Otherwise — unless `$ARTIFACTS_DIR/slack-posted` exists, which means
+      an interrupted earlier attempt of this node already posted (print
+      "Slack post skipped: already posted this run." and stop). Slack gives
+      no way to read the channel back, so write that file IMMEDIATELY after
+      an `ok` response:
           curl -sS -X POST -H 'Content-Type: application/json' \
             --data "@$ARTIFACTS_DIR/slack-payload.json" \
             -w "\nHTTP_STATUS:%{http_code}\n" \

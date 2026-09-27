@@ -329,6 +329,8 @@ These were **intentionally excluded** from scope:
 
 ### 4.2 Post to GitHub
 
+This step can re-run after an interruption, so check first: if `gh pr view {pr-number} --json comments --jq '.comments[].body' | grep -qF '<!-- archon:workflow-summary run=$WORKFLOW_ID -->'` succeeds, this run already posted the summary — do not post it again. Make that marker the first line of `{formatted-summary}`.
+
 ```bash
 gh pr comment {pr-number} --body "{formatted-summary}"
 ```

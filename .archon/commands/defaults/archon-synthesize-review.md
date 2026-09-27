@@ -262,8 +262,11 @@ If not addressing in this PR, create issues for:
 
 Create a GitHub-friendly version of the review:
 
+This step can re-run after an interruption, so check first: if `gh pr view {number} --json comments --jq '.comments[].body' | grep -qF '<!-- archon:review-synthesis run=$WORKFLOW_ID -->'` succeeds, this run already posted the comment — do not post it again. Keep that marker as the comment's first line.
+
 ```bash
 gh pr comment {number} --body "$(cat <<'EOF'
+<!-- archon:review-synthesis run=$WORKFLOW_ID -->
 # 🔍 Comprehensive PR Review
 
 **PR**: #{number}

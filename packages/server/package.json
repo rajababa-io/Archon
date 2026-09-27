@@ -142,6 +142,9 @@
     ],
     [
       "src/routes/internal-drain.test.ts"
+    ],
+    [
+      "src/services/deploy-park.integration.test.ts"
     ]
   ]
 }

@@ -5640,6 +5640,19 @@ export interface components {
         }
       | {
           /** @enum {string} */
+          owner: 'node';
+          nodeId: string;
+          /** @enum {string} */
+          kind: 'park';
+          /** Format: date-time */
+          waitingSince: string;
+          /** Format: date-time */
+          resumeAt: string;
+          /** Format: uuid */
+          drainId: string;
+        }
+      | {
+          /** @enum {string} */
           owner: 'loop_group';
           nodeId: string;
           bodyWaitId: string;

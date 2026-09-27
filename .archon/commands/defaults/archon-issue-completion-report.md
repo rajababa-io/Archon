@@ -223,10 +223,13 @@ Write to `$ARTIFACTS_DIR/completion-report.md`:
 
 Post to the original GitHub issue:
 
+This step can re-run after an interruption, so check first: if `gh issue view $ISSUE_NUMBER --json comments --jq '.comments[].body' | grep -qF '<!-- archon:issue-completion-report run=$WORKFLOW_ID -->'` succeeds, this run already posted the comment — do not post it again. Keep that marker as the comment's first line.
+
 ```bash
 ISSUE_NUMBER=$(echo "$ARGUMENTS" | grep -oE '[0-9]+')
 
 gh issue comment $ISSUE_NUMBER --body "$(cat <<'EOF'
+<!-- archon:issue-completion-report run=$WORKFLOW_ID -->
 ## ✅ Issue Resolution Report
 
 **PR**: #{pr-number} ({pr-url})

@@ -125,6 +125,7 @@ export function makeMockLockManager(
     }),
     cancelDrain: mock(() => {}),
     getDrainStatus: mock(() => undefined),
+    getParkedConversationIds: mock(() => []),
     isDraining: mock(() => false),
     ...overrides,
   };

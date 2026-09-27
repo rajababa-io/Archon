@@ -540,6 +540,8 @@ nodes:
         3. **Create a draft PR** — resolve the origin repo first (in a fork clone, gh otherwise targets the upstream parent):
            `ORIGIN_REPO=$(git remote get-url origin | sed -E 's#^.*[:/]([^/]+/[^/]+)$#\1#; s#\.git$##')`
            then `gh pr create --repo "$ORIGIN_REPO" --draft --base $BASE_BRANCH --title "feat: {PRD feature name}"` with the filled-in template as the body. Use a HEREDOC for the body.
+           Check first: if `gh pr list --repo "$ORIGIN_REPO" --head "$(git branch --show-current)" --state open` already shows a PR
+           (an interrupted earlier iteration opened it), reuse it and skip creation.
 
         4. **Output completion signal:**
            ```

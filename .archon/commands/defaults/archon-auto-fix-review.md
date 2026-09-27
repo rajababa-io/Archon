@@ -265,8 +265,11 @@ Write to `$ARTIFACTS_DIR/review/fix-report.md`:
 
 Post the fix report as a PR comment:
 
+This step can re-run after an interruption, so check first: if `gh pr view $PR_NUMBER --json comments --jq '.comments[].body' | grep -qF '<!-- archon:auto-fix-report run=$WORKFLOW_ID -->'` succeeds, this run already posted the comment — do not post it again. Keep that marker as the comment's first line.
+
 ```bash
 gh pr comment $PR_NUMBER --body "$(cat <<'EOF'
+<!-- archon:auto-fix-report run=$WORKFLOW_ID -->
 ## ⚡ Auto-Fix Report
 
 **Status**: {COMPLETE | PARTIAL}

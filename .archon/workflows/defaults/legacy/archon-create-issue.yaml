@@ -573,7 +573,9 @@ nodes:
          ```
          Only use labels that exist. Skip any suggested label that doesn't match.
 
-      5. Create the issue:
+      5. Create the issue — unless an interrupted earlier attempt already did: if
+         `gh issue list --state open --author @me --search "$(cat "$ARTIFACTS_DIR/.issue-title") in:title" --json number,title,url`
+         shows an issue with exactly this title, reuse its URL and skip creation:
          ```bash
          gh issue create \
            --title "$(cat "$ARTIFACTS_DIR/.issue-title")" \

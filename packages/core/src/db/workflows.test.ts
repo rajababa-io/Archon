@@ -808,7 +808,7 @@ describe('workflows database', () => {
       const [query, params] = mockQuery.mock.calls[0] as [string, unknown[]];
       expect(query).toContain("status = 'paused'");
       expect(query).toContain("status = 'failed'");
-      expect(query).toContain("IN ('time', 'event')");
+      expect(query).toContain("IN ('time', 'event', 'park')");
       expect(query).toContain("metadata->>'continuation_retry_at' IS NULL");
       expect(query).toContain("ORDER BY COALESCE(metadata->>'continuation_retry_at'");
       expect(params).toEqual(['2026-08-25T10:00:00.000Z', 25]);

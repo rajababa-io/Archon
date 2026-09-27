@@ -205,9 +205,12 @@ export {
 // Conversation lock
 export {
   ConversationLockManager,
+  DeployParkAbort,
   DRAIN_REFUSAL_NOTICE,
   type DrainStatus,
   type LockAcquisitionResult,
+  type ParkableTurn,
+  type ParkTakeResult,
   type QueuedMessageInfo,
   type QueueDescription,
   type TurnContext,

@@ -183,11 +183,14 @@ _E2E testing was skipped — this PR's changes are not UI-visible. Validation ba
 
 If the verdict is clear, post a condensed summary to the PR as a comment:
 
+This step can re-run after an interruption, so check first: if `gh pr view "$(cat $ARTIFACTS_DIR/.pr-number)" --json comments --jq '.comments[].body' | grep -qF '<!-- archon:validate-pr-report run=$WORKFLOW_ID -->'` succeeds, this run already posted the comment — do not post it again. Keep that marker as the comment's first line.
+
 ```bash
 PR_NUMBER=$(cat $ARTIFACTS_DIR/.pr-number | tr -d '\n')
 
 # Create a concise PR comment
 gh pr comment "$PR_NUMBER" --body "$(cat <<'COMMENT'
+<!-- archon:validate-pr-report run=$WORKFLOW_ID -->
 ## Archon PR Validation Report
 
 **Verdict**: {APPROVE / REQUEST_CHANGES}

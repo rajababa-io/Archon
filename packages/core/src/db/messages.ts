@@ -96,6 +96,21 @@ export async function getFirstUserMessage(conversationId: string): Promise<Messa
 }
 
 /**
+ * The newest user message, or null when the conversation has none. Same ordering
+ * as `listMessages`, so "latest" means one thing.
+ */
+export async function getLastUserMessage(conversationId: string): Promise<MessageRow | null> {
+  const result = await pool.query<MessageRow>(
+    `SELECT * FROM remote_agent_messages
+     WHERE conversation_id = $1 AND role = 'user'
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [conversationId]
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
  * Get recent messages with workflowResult metadata for a conversation.
  * Used to inject workflow context into the orchestrator prompt.
  * Non-throwing — returns empty array on error.

@@ -103,6 +103,7 @@ import {
   workflowResumeConversationId,
   workflowResumeTargetForConversation,
 } from './services/workflow-resume-service';
+import { replayParked } from './services/deploy-park';
 import {
   handleMessage,
   pool,
@@ -818,6 +819,16 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
 
   // Register Web UI API routes
   const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms);
+  // Hands back chats a deploy parked (./services/deploy-park). Runs whenever this
+  // server is not draining: at boot, when a deploy cancels its drain, and on every
+  // continuation tick. It replays only rows the park step wrote, so it never guesses
+  // about work it did not park.
+  const replayParkedWork = (): Promise<void> =>
+    replayParked(() => lockManager.isDraining(), apiRoutes.dispatchParkedTurn).catch(
+      (err: unknown) => {
+        getLog().error({ err }, 'deploy_park.replay_failed');
+      }
+    );
 
   // GitHub webhook endpoint. CI watches ride it: GitHub is the only forge a
   // watch can name, so with no GitHub adapter there is nothing to watch with.
@@ -885,7 +896,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // so the default install gains no new surface. See ./routes/internal-drain.
   const drainToken = process.env.ARCHON_DRAIN_TOKEN?.trim();
   if (drainToken) {
-    registerInternalDrainRoutes(app, lockManager, drainToken);
+    registerInternalDrainRoutes(app, lockManager, drainToken, replayParkedWork);
   }
 
   // Gitea webhook endpoint
@@ -1058,6 +1069,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
     );
   }
 
+  // Before the listener opens, so a parked chat's turns are admitted ahead of
+  // anything typed into it after the restart.
+  await replayParkedWork();
+
   const server = Bun.serve({
     fetch: app.fetch,
     hostname,
@@ -1138,7 +1153,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
       }
       return workflowResumeTargetForConversation(conversation, workflowPlatforms);
     },
-    requestResourceStartDrain,
+    () => {
+      requestResourceStartDrain?.();
+      void replayParkedWork();
+    },
     () => lockManager.isDraining()
   );
   if (resourceStartHostId)

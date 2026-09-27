@@ -4413,7 +4413,9 @@ export async function workflowGetCommand(
         ? `  Wait:   action required — ${waitMeta.message} (resume with: archon workflow resume ${run.id})`
         : waitMeta.kind === 'event'
           ? `  Wait:   event '${waitMeta.event ?? '?'}' until ${waitMeta.resumeAt}`
-          : `  Wait:   until ${waitMeta.resumeAt}`
+          : waitMeta.kind === 'park'
+            ? `  Wait:   paused for a restart at ${waitMeta.nodeId} — the server resumes it`
+            : `  Wait:   until ${waitMeta.resumeAt}`
     );
   }
   const scheduledResume = run.metadata.scheduled_resume;

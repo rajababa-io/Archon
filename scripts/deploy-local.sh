@@ -35,6 +35,13 @@
 # token configured it tells the server to stop admitting work and waits for what
 # it already holds to finish; without one it falls back to polling for an instant
 # when the whole box happens to be idle, which on a busy box may never come.
+#
+# Finishing is not always possible either: agent turns run for tens of minutes,
+# several at once, and a box that never finishes never deploys. So after a grace
+# window the drain PARKS what is still running — interrupts chat turns and saves
+# the messages queued behind them, pauses the workflow runs the server executes —
+# and the new server resumes that work when it boots. DRAIN_PARK=0 turns this off
+# and waits, exactly as before.
 set -euo pipefail
 
 SOURCE_DIR="${SOURCE_DIR:-/home/appuser/archon-upstream}"
@@ -59,6 +66,15 @@ DEPLOY_BUDGET_SECONDS="${DEPLOY_BUDGET_SECONDS:-1800}"
 # health check, and step 7. Held back from the wait rather than hoped for.
 SWAP_RESERVE_SECONDS="${SWAP_RESERVE_SECONDS:-420}"
 STARTED_AT=$(date -u +%s)
+# How long step 5 lets the box finish on its own before it parks what is left.
+# Parking only happens on the drain path, and only when this is shorter than the
+# wait itself.
+DRAIN_PARK="${DRAIN_PARK:-1}"
+DRAIN_GRACE_SECONDS="${DRAIN_GRACE_SECONDS:-600}"
+# After the swap: how long to wait for the new server to report the parked work
+# resumed, and where to leave the one-line report (deploy-on-request.sh reads it).
+PARK_REPORT_WAIT="${PARK_REPORT_WAIT:-60}"
+PARK_REPORT_FILE="${PARK_REPORT_FILE:-}"
 
 # Derived from HEALTH_URL rather than defaulted beside it, so an operator who
 # repoints one cannot leave the other addressing a different server. An override
@@ -107,11 +123,13 @@ in_container() {
 # argv is world-readable in /proc on the box this runs on and several
 # unprivileged sessions share it. Nothing this function prints contains the
 # token.
+#
+#   drain_call METHOD [BODY] [PATH-UNDER-/internal/drain] [BODY-OUT-FILE] [MAX-SECONDS]
 drain_call() {
-  local method="$1" body="${2:-}"
-  local args=(-sS --max-time 20 -o /dev/null -w '%{http_code}' --config - -X "$method")
+  local method="$1" body="${2:-}" path="${3:-}" out="${4:-/dev/null}" max_time="${5:-20}"
+  local args=(-sS --max-time "$max_time" -o "$out" -w '%{http_code}' --config - -X "$method")
   [ -n "$body" ] && args+=(-H 'Content-Type: application/json' --data "$body")
-  printf 'header = "Authorization: Bearer %s"\n' "$drain_token" | curl "${args[@]}" "$DRAIN_URL"
+  printf 'header = "Authorization: Bearer %s"\n' "$drain_token" | curl "${args[@]}" "$DRAIN_URL$path"
 }
 
 # Whether this script has told the server to stop accepting work. The single most
@@ -134,6 +152,11 @@ cancel_drain() {
     *) printf '\033[31mcould not cancel drain (HTTP %s) — the box will refuse new work until the budget lapses\033[0m\n' "${code:-no answer}" ;;
   esac
 }
+# Set once step 5 has parked work, so the report after the swap knows what to ask
+# the new server about. The cancel above is also the UN-park: the old server
+# hands parked work straight back when its drain is cancelled.
+PARK_DRAIN_ID=""
+
 # The signal handler also stops the WAITER, by its recorded PID and never by a
 # name match. See the background-child note in step 5 for why there is a PID to
 # record at all.
@@ -316,6 +339,14 @@ else
     esac
     echo "drain armed for ${drain_budget}s — the server is refusing new work and finishing what it has"
     echo "waiting up to ${gap_timeout}s, holding ${SWAP_RESERVE_SECONDS}s back for the swap"
+    # Parking needs the grace to end before the wait does; otherwise there is no
+    # time left after it to park in, and this is the plain wait.
+    first_wait=$gap_timeout
+    if [ "$DRAIN_PARK" != "0" ] && [ "$DRAIN_GRACE_SECONDS" -lt "$gap_timeout" ]; then
+      first_wait=$DRAIN_GRACE_SECONDS
+      echo "after ${DRAIN_GRACE_SECONDS}s, whatever is still running is parked and resumed by the new server"
+    fi
+    wait_started=$(date -u +%s)
     # The `draining:` lines below name what is still holding this up. When one of
     # them is a chat, read it literally — including when that chat is the one that
     # asked for the deploy. Drain refuses NEW work and waits out what is already in
@@ -334,11 +365,45 @@ else
     # `|| drain_status=$?` and not a bare `wait`: under `set -e` a non-zero exit
     # would end the script before the case below could say which non-zero it was,
     # and each of these needs different words.
-    drain_status=0
-    in_container "cd '$SOURCE_DIR' && HEALTH_URL='$HEALTH_URL' DRAIN_WAIT_TIMEOUT='$gap_timeout' DRAIN_WAIT_INTERVAL='${DRAIN_WAIT_INTERVAL:-}' bun scripts/drain-wait.ts" &
-    DRAIN_WAIT_PID=$!
-    wait "$DRAIN_WAIT_PID" || drain_status=$?
-    DRAIN_WAIT_PID=""
+    wait_for_drain() {
+      drain_status=0
+      in_container "cd '$SOURCE_DIR' && HEALTH_URL='$HEALTH_URL' DRAIN_WAIT_TIMEOUT='$1' DRAIN_WAIT_INTERVAL='${DRAIN_WAIT_INTERVAL:-}' bun scripts/drain-wait.ts" &
+      DRAIN_WAIT_PID=$!
+      wait "$DRAIN_WAIT_PID" || drain_status=$?
+      DRAIN_WAIT_PID=""
+    }
+    wait_for_drain "$first_wait"
+
+    # THE PARK. Only after the grace ran out with something still held. The
+    # server interrupts web chats and saves their queued messages, pauses the
+    # workflow runs it executes, and names what it could not park — those this
+    # keeps waiting for, for the rest of the budget. A park that fails dies here,
+    # and the trap's cancel hands everything already parked straight back.
+    if [ "$first_wait" != "$gap_timeout" ] && [ "$drain_status" = "1" ]; then
+      echo "the grace of ${DRAIN_GRACE_SECONDS}s is over — parking what is still running"
+      park_body=$(mktemp)
+      park_code=$(drain_call POST '{}' /park "$park_body" 180) || park_code=""
+      case "$park_code" in
+        200) ;;
+        404) die "the running server has no park endpoint — it predates parking. NOTHING was deployed. Re-run with DRAIN_PARK=0 to wait without parking." ;;
+        409) die "the drain lapsed before anything was parked — NOTHING was deployed" ;;
+        *) die "parking failed (HTTP ${park_code:-no answer}) — NOTHING was deployed, and whatever was parked is handed back to the running server" ;;
+      esac
+      park_lines=$(in_container "cd '$SOURCE_DIR' && bun scripts/drain-wait.ts --park-answer" <"$park_body") \
+        || die "could not read what was parked — NOTHING was deployed, and whatever was parked is handed back to the running server"
+      rm -f "$park_body"
+      PARK_DRAIN_ID=$(printf '%s\n' "$park_lines" | head -1)
+      printf '%s\n' "$park_lines" | tail -n +2
+
+      remaining=$((gap_timeout - ($(date -u +%s) - wait_started)))
+      if [ "$remaining" -gt 0 ]; then
+        wait_for_drain "$remaining"
+      fi
+      case $drain_status in
+        1) die "drain parked what it could, but what it could not park never finished within ${gap_timeout}s — NOTHING was deployed, and the parked work is handed back to the running server. Ask again later, or set SKIP_TURN_GAP=1 to swap anyway and lose the work in flight." ;;
+      esac
+    fi
+
     case $drain_status in
       0) ;;
       1) die "drain was armed but the box never finished what it was holding within ${gap_timeout}s — NOTHING was deployed, and it is still running what it was. Ask again later, or set SKIP_TURN_GAP=1 to swap anyway and lose the work in flight." ;;
@@ -406,6 +471,36 @@ step "7/7  Verify what is actually running"
 RUNNING_SHA=$(docker compose exec -T "$SERVICE" cat /app/.deployed-sha 2>/dev/null | tr -d '\r\n' || true)
 [ -n "$RUNNING_SHA" ] || die "the running image carries no SHA — it predates this script; re-run now that the Dockerfile records one"
 [ "$RUNNING_SHA" = "$SHA" ] || die "running $RUNNING_SHA, expected $SHA"
+
+# What came back of what step 5 parked, asked of the NEW server, which resumes
+# parked work as it boots. Never fatal: the swap has happened and the new image is
+# verified, so a report that cannot be read is said, not treated as a failure.
+if [ -n "$PARK_DRAIN_ID" ]; then
+  report_body=$(mktemp)
+  park_report=""
+  report_waited=0
+  while :; do
+    report_status=2
+    report_code=$(drain_call GET '' "/park/$PARK_DRAIN_ID" "$report_body" 20 2>/dev/null) || report_code=""
+    if [ "$report_code" = "200" ]; then
+      report_status=0
+      park_report=$(in_container "cd '$SOURCE_DIR' && bun scripts/drain-wait.ts --resume-report" <"$report_body") \
+        || report_status=$?
+    fi
+    [ "$report_status" = "0" ] && break
+    [ "$report_waited" -ge "$PARK_REPORT_WAIT" ] && break
+    sleep 2
+    report_waited=$((report_waited + 2))
+  done
+  rm -f "$report_body"
+  case "$report_status" in
+    0) ;;
+    1) park_report="$park_report (not all of it resumed within ${PARK_REPORT_WAIT}s)" ;;
+    *) park_report="parked work: the new server did not say what it resumed" ;;
+  esac
+  echo "$park_report"
+  if [ -n "$PARK_REPORT_FILE" ]; then printf '%s\n' "$park_report" >"$PARK_REPORT_FILE"; fi
+fi
 
 printf '\n\033[32mDeployed %s\033[0m\n' "$SHA"
 in_container "git -C '$DEPLOY_DIR' log --oneline -1"

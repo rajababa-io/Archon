@@ -77,12 +77,26 @@ A deploy that recreates the container needs the server to be holding nothing at 
 moment of the swap. Drain makes that moment instead of waiting for one: the server
 stops admitting new conversation turns and workflow continuations, finishes what it
 already holds, and reports `drain.state: "drained"` on `/api/health` once it holds
-nothing. Work already in flight always runs to completion -- drain never cancels,
-fails, or abandons a run.
+nothing. Drain by itself never cancels, fails, or abandons a run.
 
 A message that arrives during drain is refused with `503` and a message the sender can
 act on; it is never silently dropped. Messages already queued before drain began still
 run.
+
+Agent turns can run for tens of minutes, so waiting for everything to finish may never
+end. A deploy can instead **park** what is still running: `POST /internal/drain/park`
+interrupts each web chat's turn (the chat shows it was paused for a restart), saves the
+messages queued behind it, and pauses each top-level workflow run this server executes.
+Parked chats and runs stop counting toward `drain.holding`. Whatever cannot be parked --
+chats on other platforms, runs another process owns, runs with a live sub-run -- is
+listed in the answer as `blocked`, and the deploy keeps waiting for it.
+
+Parked work is resumed by whichever server next runs without draining: the new server as
+it boots, or this one when its drain is cancelled. Each parked chat receives one message
+asking the agent to check what its interrupted step actually finished, then its queued
+messages run in their original order, exactly once. Parked workflow runs continue from
+the node that was in flight; completed nodes are not re-run. Only work recorded by the
+park step is resumed -- a `running` row with no such record is never touched.
 
 These endpoints exist only when `ARCHON_DRAIN_TOKEN` is set, and require it as a bearer
 token. Like every `/internal/*` path they are host-only -- your reverse proxy must not
@@ -91,7 +105,9 @@ forward them.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/internal/drain` | Begin draining for `budgetSeconds` (1--3600) |
-| DELETE | `/internal/drain` | Stop draining and accept work again (idempotent) |
+| DELETE | `/internal/drain` | Stop draining, hand back anything parked, and accept work again (idempotent) |
+| POST | `/internal/drain/park` | Park what is still running; `409` when not draining |
+| GET | `/internal/drain/park/{drainId}` | What one drain parked, and how much has resumed |
 
 ```bash
 curl -X POST http://127.0.0.1:3090/internal/drain \
@@ -103,6 +119,11 @@ curl -X POST http://127.0.0.1:3090/internal/drain \
 curl -X DELETE http://127.0.0.1:3090/internal/drain \
   -H "Authorization: Bearer $ARCHON_DRAIN_TOKEN"
 # {"draining":false}
+
+curl -X POST http://127.0.0.1:3090/internal/drain/park \
+  -H "Authorization: Bearer $ARCHON_DRAIN_TOKEN"
+# {"drainId":"...","parked":{"chats":3,"queuedMessages":1,"runs":1},
+#  "blocked":[{"kind":"run","id":"...","reason":"not_owned_by_this_server"}]}
 ```
 
 The budget is mandatory and lapses on its own, so a deploy that dies mid-drain cannot

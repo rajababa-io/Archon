@@ -153,6 +153,7 @@ import { findCommandFiles } from '@archon/core/utils/commands';
 import { conversationCheckout } from '@archon/core/utils/conversation-checkout';
 import { type DeployStatus, getDeployStatus } from '../services/deploy-status';
 import { resumeWorkflowRunFromServer } from '../services/workflow-resume-service';
+import { TURN_RESUMED_NOTICE, type ParkedTurnDispatcher } from '../services/deploy-park';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -2229,6 +2230,8 @@ const getUpdateCheckRoute = createRoute({
 export interface ApiRoutesHandle {
   /** Wake a CI watch's chat with its verdict. Throws when no web chat owns the watch. */
   deliverCiWatchMessage: (watch: CiWatch, message: string) => Promise<CiWatchDelivery>;
+  /** Hand a turn a deploy parked back to its web chat. */
+  dispatchParkedTurn: ParkedTurnDispatcher;
 }
 
 export function registerApiRoutes(
@@ -3068,6 +3071,41 @@ export function registerApiRoutes(
     files: { name: string; mimeType: string; size: number }[];
   }
 
+  /**
+   * Write a user's message to the transcript when its turn STARTS, which is what
+   * `UserTurn.persist` does for every user turn. A failure is reported on the
+   * chat's stream rather than thrown: the turn itself still runs.
+   */
+  async function persistDeliveredUserMessage(
+    platformConversationId: string,
+    conversationDbId: string,
+    message: string,
+    fileMeta: UserTurn['files'],
+    userId: string | undefined
+  ): Promise<void> {
+    const meta = fileMeta.length > 0 ? { files: fileMeta } : undefined;
+    try {
+      await messageDb.addMessage(conversationDbId, 'user', message, meta, userId);
+    } catch (e: unknown) {
+      getLog().error({ err: e, conversationId: conversationDbId }, 'message_persistence_failed');
+      try {
+        await webAdapter.emitSSE(
+          platformConversationId,
+          JSON.stringify({
+            type: 'warning',
+            message: 'Message could not be saved to history',
+            timestamp: Date.now(),
+          })
+        );
+      } catch (sseErr: unknown) {
+        getLog().error(
+          { err: sseErr, conversationId: conversationDbId },
+          'sse_warning_double_failure'
+        );
+      }
+    }
+  }
+
   async function dispatchToOrchestrator(
     conversationId: string,
     message: string,
@@ -3134,6 +3172,11 @@ export function registerApiRoutes(
             // Withdrawn means the handler never runs, so nothing else will remove
             // what the upload staged.
             onWithdraw: cleanupStaged,
+            parkable: {
+              text: message,
+              attachedFiles: extraContext?.attachedFiles ?? [],
+              ...(extraContext?.userId !== undefined ? { userId: extraContext.userId } : {}),
+            },
           }
         : undefined
     );
@@ -4074,29 +4117,9 @@ export function registerApiRoutes(
     // Omit path from persisted metadata — the on-disk file is ephemeral and will be
     // deleted after the AI processes it; storing stale paths would confuse future readers.
     const fileMeta = savedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size }));
-    // Persist the user message when its turn STARTS, and pass the DB ID to the adapter
-    // for assistant message persistence. A message queued behind a running turn is
-    // therefore not in the history until it is delivered — see `UserTurn`.
     const persistUserMessage = async (): Promise<void> => {
-      if (!conv) return;
-      const meta = fileMeta.length > 0 ? { files: fileMeta } : undefined;
-      try {
-        await messageDb.addMessage(conv.id, 'user', message, meta, userId);
-      } catch (e: unknown) {
-        getLog().error({ err: e, conversationId: conv.id }, 'message_persistence_failed');
-        try {
-          await webAdapter.emitSSE(
-            conversationId,
-            JSON.stringify({
-              type: 'warning',
-              message: 'Message could not be saved to history',
-              timestamp: Date.now(),
-            })
-          );
-        } catch (sseErr: unknown) {
-          getLog().error({ err: sseErr, conversationId: conv.id }, 'sse_warning_double_failure');
-        }
-      }
+      if (conv)
+        await persistDeliveredUserMessage(conversationId, conv.id, message, fileMeta, userId);
     };
     if (conv) webAdapter.setConversationDbId(conversationId, conv.id);
 
@@ -7043,8 +7066,11 @@ export function registerApiRoutes(
     // Drained is derived from the two counts this route already reports, so the
     // deploy's own busy check and the server's answer can never disagree.
     const drainStatus = lockManager.getDrainStatus();
+    // A parked chat's turn may take a moment to honour its interrupt, but its work
+    // is already saved for the next server, so the deploy is not waiting on it.
+    const parkedIds = new Set(lockManager.getParkedConversationIds());
     const holding = {
-      activeConversations: allActiveIds.length,
+      activeConversations: allActiveIds.filter(id => !parkedIds.has(id)).length,
       queuedMessages: stats.queuedTotal,
       runningWorkflows: runningWorkflowRows.length,
     };
@@ -7097,5 +7123,49 @@ export function registerApiRoutes(
     return c.json(result ?? noUpdate);
   });
 
-  return { deliverCiWatchMessage };
+  /**
+   * Hand a turn a deploy parked back to its web chat. The server's replay owns
+   * order and at-most-once; this owns delivery, through the same dispatch every
+   * web turn takes. A resumed turn is system-authored, so nothing is written as a
+   * user message; a queued message is written at delivery, like any other.
+   */
+  const dispatchParkedTurn: ParkedTurnDispatcher = async (conversationDbId, turn) => {
+    const conversation = await conversationDb.getConversationById(conversationDbId);
+    if (!conversation?.platform_conversation_id) return 'conversation_missing';
+    const platformId = conversation.platform_conversation_id;
+    webAdapter.setConversationDbId(platformId, conversation.id);
+
+    if (turn.kind === 'resume') {
+      // Before the dispatch, so the notice sits above the reply it introduces.
+      await webAdapter
+        .sendDurableNotice(platformId, TURN_RESUMED_NOTICE, { category: 'turn_resumed' })
+        .catch((err: unknown) => {
+          getLog().warn({ err, conversationId: platformId }, 'turn_resumed_notice_failed');
+        });
+      const result = await dispatchToOrchestrator(
+        platformId,
+        turn.prompt,
+        turn.userId !== null ? { userId: turn.userId } : {}
+      );
+      return result.accepted ? 'dispatched' : 'refused_draining';
+    }
+
+    const { text, userId, attachedFiles } = turn.turn;
+    const fileMeta = attachedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size }));
+    const firstFile = attachedFiles[0];
+    const result = await dispatchToOrchestrator(
+      platformId,
+      text,
+      firstFile ? { userId, attachedFiles } : { userId },
+      firstFile ? { files: attachedFiles, uploadDir: dirname(firstFile.path) } : undefined,
+      {
+        persist: () =>
+          persistDeliveredUserMessage(platformId, conversation.id, text, fileMeta, userId),
+        files: fileMeta,
+      }
+    );
+    return result.accepted ? 'dispatched' : 'refused_draining';
+  };
+
+  return { deliverCiWatchMessage, dispatchParkedTurn };
 }

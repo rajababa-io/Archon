@@ -605,7 +605,7 @@ Signup uses email + password (no email verification by default). **Signup postur
 | `COOKIE_SECRET` | 64-hex-char secret for auth session cookies | -- |
 | `AUTH_SERVICE_PORT` | Port for the auth service container | `9000` |
 | `COOKIE_MAX_AGE` | Auth cookie lifetime in seconds | `86400` |
-| `ARCHON_DRAIN_TOKEN` | Bearer token for `POST`/`DELETE /internal/drain`, which stops the server accepting new work so a deploy can replace the container without losing a turn in flight. Unset: the endpoints are not registered. Never proxy `/internal/*`. | -- |
+| `ARCHON_DRAIN_TOKEN` | Bearer token for the `/internal/drain` endpoints, which stop the server accepting new work and park what is still running, so a deploy can replace the container without losing a turn in flight. Unset: the endpoints are not registered. Never proxy `/internal/*`. | -- |
 
 ### Telemetry
 
