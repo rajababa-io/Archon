@@ -843,7 +843,11 @@ function buildBaseClaudeOptions(
       ? { executableArgs: ['--no-env-file'] }
       : {}),
     ...spawnOverride,
-    extraArgs: { 'thinking-display': THINKING_DISPLAY },
+    // Thinking switched off entirely has nothing to display, and the SDK's
+    // `thinking` option is the only switch that turns it off.
+    ...(requestOptions?.thinking === 'off'
+      ? { thinking: { type: 'disabled' as const } }
+      : { extraArgs: { 'thinking-display': THINKING_DISPLAY } }),
     env,
     model: requestOptions?.model ?? assistantDefaults.model,
     abortController: controller,

@@ -61,7 +61,7 @@ describe('suggestNextMessage', () => {
     mockSendQuery.mockClear();
   });
 
-  test('returns the suggestion and what it cost, with no tools and no session', async () => {
+  test('returns the suggestion and what it cost — no tools, session, thinking or guidance files', async () => {
     const result = await suggestNextMessage('claude', '/repo', 'fix it', 'Fixed the bug.', {
       model: 'haiku',
     });
@@ -70,6 +70,8 @@ describe('suggestNextMessage', () => {
     expect(resume).toBeUndefined();
     expect(options?.model).toBe('haiku');
     expect(options?.nodeConfig?.allowed_tools).toEqual([]);
+    expect(options?.nodeConfig?.settingSources).toEqual([]);
+    expect(options?.thinking).toBe('off');
     expect(options?.abortSignal).toBeDefined();
   });
 

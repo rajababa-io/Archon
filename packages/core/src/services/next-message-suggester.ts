@@ -94,7 +94,18 @@ export async function suggestNextMessage(
     const options: SendQueryOptions = {
       ...requestOptions,
       abortSignal: controller.signal,
-      nodeConfig: { ...(requestOptions.nodeConfig ?? {}), allowed_tools: [] },
+      // A few words of output: thinking would multiply the wait and the cost.
+      thinking: 'off',
+      nodeConfig: {
+        ...(requestOptions.nodeConfig ?? {}),
+        allowed_tools: [],
+        // The issue's "short context", taken literally: only the exchange in the
+        // prompt. User and project guidance files are written for the agent
+        // doing the work, not for a five-word guess about it, and user hooks
+        // (a reply-style check, say) would rewrite the guess or loop on it —
+        // measured at 57 s and three rounds against 1.6 s without them.
+        settingSources: [],
+      },
     };
     let text = '';
     let costUsd: number | undefined;
