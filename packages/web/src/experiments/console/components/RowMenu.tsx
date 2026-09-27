@@ -79,12 +79,11 @@ export function MenuItem({
  * well, and the rail's green dot is weaker for every extra thing it says.
  *
  * `checkedAction` names the click on a TICKED row only — "Reopen" beside a
- * ticked `Done`. Unticked, the click is already obvious: you are clicking
- * `Done` to make it done, and "Done · Mark done" would say the same word
- * twice. A column where half the entries carry no information is one you learn
+ * ticked `Closed`. Unticked, the click is already obvious: the label is the
+ * verb `Close`, and "Close · Mark closed" would say the same word twice. A column where half the entries carry no information is one you learn
  * to stop reading, including the half that mattered. It is `aria-hidden`
  * because the role and `aria-checked` already say that activating this clears
- * the state; as an accessible name, "Done Reopen" is worse than nothing.
+ * the state; as an accessible name, "Closed Reopen" is worse than nothing.
  */
 export function MenuCheckItem({
   label,

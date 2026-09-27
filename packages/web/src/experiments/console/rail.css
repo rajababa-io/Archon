@@ -778,7 +778,7 @@
   color: var(--success);
 }
 /* Ready to close: the AGENT says the work landed, and no human has answered.
-   Done's green, hollow. The claim and the confirmation are one family and read
+   Closed's green, hollow. The claim and the confirmation are one family and read
    better as one colour; a seventh hue would have to be learned, where "not
    filled in yet" reads on sight. Geometry carries the whole difference, so the
    diameter stated once above is left alone and only the fill changes — an

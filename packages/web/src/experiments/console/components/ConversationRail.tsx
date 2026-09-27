@@ -69,7 +69,7 @@ export type ChatScope = 'open' | 'done' | 'all';
 
 const SCOPES: readonly { value: ChatScope; label: string }[] = [
   { value: 'open', label: 'Open' },
-  { value: 'done', label: 'Done' },
+  { value: 'done', label: 'Closed' },
   { value: 'all', label: 'All' },
 ];
 
@@ -432,8 +432,8 @@ export function ConversationRail({
           permanent filter field for a list this short was chrome. */}
       <div className="chatlist-head">
         {SCOPES.map(({ value, label }) => {
-          // Counts on Open and Done, not on All.
-          //   Done is the one you cannot see — a count answers "is there
+          // Counts on Open and Closed, not on All.
+          //   Closed is the one you cannot see — a count answers "is there
           //   anything in there?" without a click, which is the only reason to
           //   click it. Open agrees with the list below by construction.
           //   All is not a set you are asking about; it is the absence of a
@@ -456,7 +456,7 @@ export function ConversationRail({
               }`}
             >
               {label}
-              {/* Zero renders blank, as in the rail table — a Done chip with
+              {/* Zero renders blank, as in the rail table — a Closed chip with
                   no number says "nothing finished yet" by its silence. */}
               {count > 0 ? <span className="ml-1.5 text-text-tertiary">{count}</span> : null}
             </button>
@@ -673,13 +673,13 @@ export function ConversationRail({
                     setMenuFor(null);
                   }}
                 />
-                {/* The row names what the chat IS and the tick says whether
-                    it holds, so `Done` is always the second item — findable by
-                    position, and readable at rest without decoding the dot.
-                    `Reopen` appears only on a ticked row, because that is the
-                    only one whose click does the opposite of its label. */}
+                {/* Unticked, the row is the verb `Close`; ticked, it names the
+                    state `Closed` and the tick says it holds. Either way it is
+                    the second item — findable by position. `Reopen` appears
+                    only on a ticked row, because that is the only one whose
+                    click does the opposite of its label. */}
                 <MenuCheckItem
-                  label="Done"
+                  label={c.completed ? 'Closed' : 'Close'}
                   checked={c.completed}
                   checkedAction="Reopen"
                   onSelect={() => {

@@ -18,7 +18,7 @@
  * has asked for something SPECIFIC: a run paused on a gate, or an unanswered
  * ask block. Both are things a human can act on and then be done with.
  *
- * "Done" is the odd one and is meant to be. The others are claims about this
+ * "Closed" (`done`) is the odd one and is meant to be. The others are claims about this
  * instant, which the server can observe; done is a claim about the WORK,
  * which it cannot. A chat is one unit of work — an issue, or a cluster of
  * them — and whether that work has landed is a judgement. Nothing the server
@@ -277,7 +277,7 @@ export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
   working: 'Working',
   awaiting: 'Needs you',
   unread: 'Unread',
-  done: 'Done',
+  done: 'Closed',
   ready: 'Ready to close',
   idle: 'Idle',
 };
