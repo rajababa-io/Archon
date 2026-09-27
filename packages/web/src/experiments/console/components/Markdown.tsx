@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import { createContext, useContext, type ReactElement } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -14,6 +14,28 @@ import { CodeBlock } from './CodeBlock';
  * kept in agreement by hand is a defect the moment it exists, so it moved here
  * instead.
  */
+/**
+ * True inside a link. An image an author already wrapped in a link keeps that
+ * link; wrapping it again would nest `<a>` in `<a>`, which HTML forbids.
+ */
+const INSIDE_LINK = createContext(false);
+
+/**
+ * Every image opens its full-size self. Scaled into the message column a
+ * diagram's labels are unreadable, and whether it could be opened used to
+ * depend on each agent remembering to wrap it in a link.
+ */
+function LinkedImage({ src, alt }: { src?: string; alt?: string }): ReactElement {
+  const insideLink = useContext(INSIDE_LINK);
+  const img = <img src={src} alt={alt ?? ''} />;
+  if (insideLink || !src) return img;
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="cursor-zoom-in">
+      {img}
+    </a>
+  );
+}
+
 export const MD_COMPONENTS: Components = {
   a: ({ href, children }) => (
     <a
@@ -22,9 +44,10 @@ export const MD_COMPONENTS: Components = {
       rel="noreferrer"
       className="underline decoration-text-tertiary/50 underline-offset-2 transition-colors hover:text-accent-bright hover:decoration-accent-bright"
     >
-      {children}
+      <INSIDE_LINK.Provider value={true}>{children}</INSIDE_LINK.Provider>
     </a>
   ),
+  img: ({ src, alt }) => <LinkedImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
   code: ({ className, children }) => {
     const isBlock = className?.startsWith('language-');
     if (isBlock) {
