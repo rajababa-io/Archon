@@ -135,6 +135,7 @@ import {
 } from './prompt-builder';
 import type { WorkflowResultContext } from './prompt-builder';
 import { reportUnpushedWorkInSource } from './post-message-reminder';
+import { StopHookHold } from './stop-hook-hold';
 import * as messageDb from '../db/messages';
 import * as workflowDb from '../db/workflows';
 import { getCodebaseEnvVars } from '../db/env-vars';
@@ -3221,145 +3222,185 @@ async function handleStreamMode(
   let commandDetected = false;
   let commandFullyParsed = false;
   let lastResult: TurnResultInfo | undefined;
+  const hold = new StopHookHold();
 
-  for await (const msg of aiClient.sendQuery(
-    fullPrompt,
-    cwd,
-    session.assistant_session_id ?? undefined,
-    requestOptions
-  )) {
-    if (msg.type === 'assistant' && msg.content) {
-      // Accumulate only while the command is not yet fully captured; post-command
-      // trailing chunks would corrupt the project-name token if joined without a
-      // whitespace boundary, causing the parse regex to overshoot.
-      if (!commandFullyParsed) {
-        allMessages.push(msg.content);
+  // The agent moved on: send the held text, unless a Stop hook sent it back
+  // (#190). A withheld draft stays in the provider's own session transcript.
+  // Every held chunk was also pushed to allMessages (holding implies no command
+  // yet, which implies still accumulating) and nothing was pushed after them,
+  // so they are its tail — drop them there too, or the draft would still be
+  // parsed for commands and persisted for non-web platforms.
+  const continueTurn = async (): Promise<void> => {
+    const { text, sentBack } = hold.continueTurn();
+    if (sentBack) {
+      allMessages.splice(allMessages.length - text.length);
+      getLog().info(
+        { conversationId, chunks: text.length, chars: text.join('').length },
+        'orchestrator.stop_hook_draft_withheld'
+      );
+      return;
+    }
+    for (const chunk of text) await platform.sendMessage(conversationId, chunk);
+  };
+  const endTurn = async (): Promise<void> => {
+    for (const chunk of hold.endTurn()) await platform.sendMessage(conversationId, chunk);
+  };
+
+  try {
+    for await (const msg of aiClient.sendQuery(
+      fullPrompt,
+      cwd,
+      session.assistant_session_id ?? undefined,
+      requestOptions
+    )) {
+      if (msg.type === 'hook_response' && msg.hookEvent === 'Stop') {
+        hold.stopHookDone();
+        continue;
       }
-      if (!commandDetected) {
-        // Check for orchestrator commands BEFORE streaming to frontend.
-        // If detected, suppress this chunk and all future chunks — the full
-        // response will be parsed post-loop and the command dispatched there.
-        const accumulated = allMessages.join('');
-        const normalizedAccumulated = normalizeCommandText(accumulated);
-        if (
-          INVOKE_WORKFLOW_PREFIX_RE.test(normalizedAccumulated) ||
-          REGISTER_PROJECT_PREFIX_RE.test(normalizedAccumulated)
-        ) {
-          commandDetected = true;
-          // If the complete command pattern is already present, stop accumulating —
-          // no more chunks needed. This prevents trailing chunks from corrupting
-          // the project-name token when the command was fully emitted in one chunk.
+      if (msg.type === 'assistant' || msg.type === 'tool' || msg.type === 'thinking') {
+        await continueTurn();
+      }
+      if (msg.type === 'assistant' && msg.content) {
+        // Accumulate only while the command is not yet fully captured; post-command
+        // trailing chunks would corrupt the project-name token if joined without a
+        // whitespace boundary, causing the parse regex to overshoot.
+        if (!commandFullyParsed) {
+          allMessages.push(msg.content);
+        }
+        if (!commandDetected) {
+          // Check for orchestrator commands BEFORE streaming to frontend.
+          // If detected, suppress this chunk and all future chunks — the full
+          // response will be parsed post-loop and the command dispatched there.
+          const accumulated = allMessages.join('');
+          const normalizedAccumulated = normalizeCommandText(accumulated);
+          if (
+            INVOKE_WORKFLOW_PREFIX_RE.test(normalizedAccumulated) ||
+            REGISTER_PROJECT_PREFIX_RE.test(normalizedAccumulated)
+          ) {
+            commandDetected = true;
+            // If the complete command pattern is already present, stop accumulating —
+            // no more chunks needed. This prevents trailing chunks from corrupting
+            // the project-name token when the command was fully emitted in one chunk.
+            if (isCommandFullyParsed(accumulated)) {
+              commandFullyParsed = true;
+            }
+          } else {
+            // Held, not sent: a Stop hook may yet send this text back (#190).
+            hold.hold(msg.content);
+          }
+        } else if (!commandFullyParsed) {
+          // Post-prefix: keep accumulating until the full command pattern is present.
+          const accumulated = allMessages.join('');
           if (isCommandFullyParsed(accumulated)) {
             commandFullyParsed = true;
           }
-        } else {
-          await platform.sendMessage(conversationId, msg.content);
         }
-      } else if (!commandFullyParsed) {
-        // Post-prefix: keep accumulating until the full command pattern is present.
-        const accumulated = allMessages.join('');
-        if (isCommandFullyParsed(accumulated)) {
-          commandFullyParsed = true;
+      } else if (msg.type === 'tool' && msg.toolName) {
+        if (!commandDetected) {
+          const toolMessage = formatToolCall(msg.toolName, msg.toolInput);
+          await platform.sendMessage(conversationId, toolMessage, {
+            category: 'tool_call_formatted',
+          });
+          if (platform.sendStructuredEvent) {
+            await platform.sendStructuredEvent(conversationId, msg);
+          }
         }
-      }
-    } else if (msg.type === 'tool' && msg.toolName) {
-      if (!commandDetected) {
-        const toolMessage = formatToolCall(msg.toolName, msg.toolInput);
-        await platform.sendMessage(conversationId, toolMessage, {
-          category: 'tool_call_formatted',
-        });
-        if (platform.sendStructuredEvent) {
+      } else if (msg.type === 'tool_result' && msg.toolName) {
+        if (!commandDetected && platform.sendStructuredEvent) {
           await platform.sendStructuredEvent(conversationId, msg);
         }
-      }
-    } else if (msg.type === 'tool_result' && msg.toolName) {
-      if (!commandDetected && platform.sendStructuredEvent) {
-        await platform.sendStructuredEvent(conversationId, msg);
-      }
-    } else if (msg.type === 'thinking' && msg.content) {
-      // Structured only: thinking is not part of the reply, so it never goes
-      // through sendMessage, and a platform without structured events has
-      // nowhere honest to put it.
-      if (!commandDetected && platform.sendStructuredEvent) {
-        await platform.sendStructuredEvent(conversationId, msg);
-      }
-    } else if (msg.type === 'result') {
-      if (msg.isError && msg.errorSubtype === 'error_during_execution') {
-        getLog().warn(
-          {
-            conversationId,
-            errorSubtype: msg.errorSubtype,
-            staleSessionId: msg.sessionId,
-            errors: msg.errors,
-            stopReason: msg.stopReason,
-          },
-          'clearing_stale_session_id'
-        );
-        await tryPersistSessionId(session.id, null);
-        newSessionId = undefined;
-      } else if (msg.sessionId) {
-        newSessionId = msg.sessionId;
-      }
-      // Defense-in-depth: errorSubtype === 'success' is the Claude SDK's marker
-      // for a clean stop_sequence termination (the SDK sets is_error: true
-      // alongside subtype: 'success' to encode "non-default termination, not a
-      // failure"). The Claude provider already filters this; the guard here
-      // defends against a third-party IAgentProvider that forwards the SDK
-      // pair raw — without it, direct chat would surface a spurious error to
-      // the user and drop the actual conversation output.
-      if (msg.isError && msg.errorSubtype !== 'success') {
-        getLog().warn(
-          {
-            conversationId,
-            errorSubtype: msg.errorSubtype,
-            errors: msg.errors,
-            stopReason: msg.stopReason,
-          },
-          'ai_result_error'
-        );
-        // Carry the SDK error detail (not just the subtype code) into the
-        // formatter so it can classify actionable cases like "Not logged in"
-        // rather than emitting a generic message (#1983).
-        const errorDetail = [msg.errorSubtype, ...(msg.errors ?? [])].filter(Boolean).join(': ');
-        const syntheticError = new Error(errorDetail || 'AI result error');
-        await platform.sendMessage(
-          conversationId,
-          classifyAndFormatError(syntheticError, platform)
-        );
-        if (newSessionId) {
-          await tryPersistSessionId(session.id, newSessionId);
+      } else if (msg.type === 'thinking' && msg.content) {
+        // Structured only: thinking is not part of the reply, so it never goes
+        // through sendMessage, and a platform without structured events has
+        // nowhere honest to put it.
+        if (!commandDetected && platform.sendStructuredEvent) {
+          await platform.sendStructuredEvent(conversationId, msg);
         }
-        // Anonymous telemetry: AI returned an error result for this chat turn.
-        captureChatTurn({
-          platform: platform.getPlatformType(),
-          provider: aiClient.getType(),
-          model: requestOptions?.model,
-          durationMs: Date.now() - turnStartedAt,
-          outcome: 'failed',
-        });
-        return;
+      } else if (msg.type === 'result') {
+        // The turn is over, so the held reply is final; it goes out before the
+        // result's own error text or usage event.
+        await endTurn();
+        if (msg.isError && msg.errorSubtype === 'error_during_execution') {
+          getLog().warn(
+            {
+              conversationId,
+              errorSubtype: msg.errorSubtype,
+              staleSessionId: msg.sessionId,
+              errors: msg.errors,
+              stopReason: msg.stopReason,
+            },
+            'clearing_stale_session_id'
+          );
+          await tryPersistSessionId(session.id, null);
+          newSessionId = undefined;
+        } else if (msg.sessionId) {
+          newSessionId = msg.sessionId;
+        }
+        // Defense-in-depth: errorSubtype === 'success' is the Claude SDK's marker
+        // for a clean stop_sequence termination (the SDK sets is_error: true
+        // alongside subtype: 'success' to encode "non-default termination, not a
+        // failure"). The Claude provider already filters this; the guard here
+        // defends against a third-party IAgentProvider that forwards the SDK
+        // pair raw — without it, direct chat would surface a spurious error to
+        // the user and drop the actual conversation output.
+        if (msg.isError && msg.errorSubtype !== 'success') {
+          getLog().warn(
+            {
+              conversationId,
+              errorSubtype: msg.errorSubtype,
+              errors: msg.errors,
+              stopReason: msg.stopReason,
+            },
+            'ai_result_error'
+          );
+          // Carry the SDK error detail (not just the subtype code) into the
+          // formatter so it can classify actionable cases like "Not logged in"
+          // rather than emitting a generic message (#1983).
+          const errorDetail = [msg.errorSubtype, ...(msg.errors ?? [])].filter(Boolean).join(': ');
+          const syntheticError = new Error(errorDetail || 'AI result error');
+          await platform.sendMessage(
+            conversationId,
+            classifyAndFormatError(syntheticError, platform)
+          );
+          if (newSessionId) {
+            await tryPersistSessionId(session.id, newSessionId);
+          }
+          // Anonymous telemetry: AI returned an error result for this chat turn.
+          captureChatTurn({
+            platform: platform.getPlatformType(),
+            provider: aiClient.getType(),
+            model: requestOptions?.model,
+            durationMs: Date.now() - turnStartedAt,
+            outcome: 'failed',
+          });
+          return;
+        }
+        if (!commandDetected && platform.sendStructuredEvent) {
+          await platform.sendStructuredEvent(conversationId, msg);
+        }
+        lastResult = {
+          cost: msg.cost,
+          tokens: msg.tokens,
+          // How full the context was when the turn ended. NOT `tokens.input`,
+          // which sums every request in the turn and is therefore a cost figure
+          // — a tool-heavy turn reports millions against a 200k window.
+          contextTokens: msg.contextTokens,
+          stopReason: msg.stopReason,
+          // Carried because a token count without the model it was spent on
+          // cannot be turned into "how full is this context" — the denominator
+          // is the model's window, and only the provider knows which model
+          // actually answered. A provider that names no model in its result
+          // falls back to the one it was handed, which is still a fact about
+          // this turn rather than a setting the console would have to guess.
+          model: msg.resolvedModel?.id ?? msg.requestedModel,
+          effort: msg.appliedEffort,
+        };
       }
-      if (!commandDetected && platform.sendStructuredEvent) {
-        await platform.sendStructuredEvent(conversationId, msg);
-      }
-      lastResult = {
-        cost: msg.cost,
-        tokens: msg.tokens,
-        // How full the context was when the turn ended. NOT `tokens.input`,
-        // which sums every request in the turn and is therefore a cost figure
-        // — a tool-heavy turn reports millions against a 200k window.
-        contextTokens: msg.contextTokens,
-        stopReason: msg.stopReason,
-        // Carried because a token count without the model it was spent on
-        // cannot be turned into "how full is this context" — the denominator
-        // is the model's window, and only the provider knows which model
-        // actually answered. A provider that names no model in its result
-        // falls back to the one it was handed, which is still a fact about
-        // this turn rather than a setting the console would have to guess.
-        model: msg.resolvedModel?.id ?? msg.requestedModel,
-        effort: msg.appliedEffort,
-      };
     }
+  } finally {
+    // End of stream, a thrown error, or an abort: held text is released on
+    // every exit, never dropped.
+    await endTurn();
   }
 
   if (newSessionId) {
@@ -3477,6 +3518,9 @@ async function handleBatchMode(
   let commandDetected = false;
   let commandFullyParsed = false;
   let lastResult: TurnResultInfo | undefined;
+  // Batch sends one message at the end, so nothing is released early; the hold
+  // only finds a draft a Stop hook sent back, to cut it from the reply (#190).
+  const hold = new StopHookHold();
 
   for await (const msg of aiClient.sendQuery(
     fullPrompt,
@@ -3484,12 +3528,29 @@ async function handleBatchMode(
     session.assistant_session_id ?? undefined,
     requestOptions
   )) {
+    if (msg.type === 'hook_response' && msg.hookEvent === 'Stop') {
+      hold.stopHookDone();
+      continue;
+    }
+    if (msg.type === 'assistant' || msg.type === 'tool') {
+      const { text, sentBack } = hold.continueTurn();
+      // Held chunks are the tail of assistantMessages; the cap's shift() can
+      // only have trimmed the front.
+      if (sentBack) {
+        assistantMessages.splice(-Math.min(text.length, assistantMessages.length));
+        getLog().info(
+          { conversationId, chunks: text.length, chars: text.join('').length },
+          'orchestrator.stop_hook_draft_withheld'
+        );
+      }
+    }
     if (msg.type === 'assistant' && msg.content) {
       // Always record in allChunks for debug logging; accumulate assistantMessages
       // only while the command is not yet fully captured (same reason as stream mode).
       allChunks.push({ type: 'assistant', content: msg.content });
       if (!commandFullyParsed) {
         assistantMessages.push(msg.content);
+        if (!commandDetected) hold.hold(msg.content);
       }
 
       // Cap assistant-only chunks while no command has been detected.  Once
