@@ -42,6 +42,7 @@ import type {
   AttachedFile,
   HandleMessageContext,
   TurnContext,
+  TurnOrigin,
   GlobalConfig,
   TiersPatch,
   UserRole,
@@ -3172,7 +3173,8 @@ export function registerApiRoutes(
     message: string,
     extraContext?: Omit<HandleMessageContext, 'isolationHints'>,
     filesToCleanup?: { files: AttachedFile[]; uploadDir: string },
-    userTurn?: UserTurn
+    userTurn?: UserTurn,
+    origin: TurnOrigin = 'new'
   ): Promise<{ accepted: boolean; status: string; queuedId?: string }> {
     // Set once acquireLock returns. A turn that starts immediately runs its
     // handler before that, so it reads false; a queued one starts later and
@@ -3247,7 +3249,8 @@ export function registerApiRoutes(
               await userTurn.persist({ midTurn: true });
             },
           }
-        : undefined
+        : undefined,
+      origin
     );
 
     if (result.status === 'refused-draining') {
@@ -7266,7 +7269,10 @@ export function registerApiRoutes(
       const result = await dispatchToOrchestrator(
         platformId,
         turn.prompt,
-        turn.userId !== null ? { userId: turn.userId } : {}
+        turn.userId !== null ? { userId: turn.userId } : {},
+        undefined,
+        undefined,
+        'replay'
       );
       return result.accepted ? 'dispatched' : 'refused_draining';
     }
@@ -7283,7 +7289,8 @@ export function registerApiRoutes(
         persist: () =>
           persistDeliveredUserMessage(platformId, conversation.id, text, fileMeta, userId),
         files: fileMeta,
-      }
+      },
+      'replay'
     );
     return result.accepted ? 'dispatched' : 'refused_draining';
   };

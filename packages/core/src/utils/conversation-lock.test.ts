@@ -875,3 +875,131 @@ describe('parking for a deploy', () => {
     expect(manager.getDrainId()).not.toBe(drainId);
   });
 });
+
+describe('holding a parked conversation until its replay', () => {
+  /** A drain that parked `conv-parked` and then ended the way `end` ends it. */
+  function parkedThenEnded(
+    end: (manager: ConversationLockManager) => void
+  ): ConversationLockManager {
+    const manager = new ConversationLockManager(10);
+    manager.beginDrain(600);
+    expect(manager.takeForPark('conv-parked').status).toBe('taken');
+    end(manager);
+    expect(manager.isDraining()).toBe(false);
+    return manager;
+  }
+
+  test('after a cancel, a new message queues behind the replay and runs after it', async () => {
+    const manager = parkedThenEnded(m => m.cancelDrain());
+    const log: string[] = [];
+    const resume = gate(log, 'resume');
+    const replayedQueued = gate(log, 'replayed-queued');
+    const sentAfterCancel = gate(log, 'sent-after-cancel');
+
+    const early = await manager.acquireLock('conv-parked', sentAfterCancel.handler, {
+      text: 'sent after cancel',
+    });
+    expect(early.status).toBe('queued-conversation');
+    expect(log).toEqual([]);
+    expect(manager.listQueued('conv-parked').map(m => m.text)).toEqual(['sent after cancel']);
+
+    expect(
+      (await manager.acquireLock('conv-parked', resume.handler, undefined, 'replay')).status
+    ).toBe('started');
+    await manager.acquireLock('conv-parked', replayedQueued.handler, undefined, 'replay');
+    manager.releaseReplayHolds(new Set());
+
+    await drainUntilStarted(log, 1);
+    resume.release();
+    await drainUntilStarted(log, 2);
+    replayedQueued.release();
+    await drainUntilStarted(log, 3);
+    sentAfterCancel.release();
+    await drainUntilIdle(manager);
+    expect(log).toEqual(['resume', 'replayed-queued', 'sent-after-cancel']);
+  });
+
+  test('a conversation with nothing parked starts right after the cancel', async () => {
+    const manager = parkedThenEnded(m => m.cancelDrain());
+    const log: string[] = [];
+    const other = gate(log, 'other');
+
+    expect((await manager.acquireLock('conv-other', other.handler)).status).toBe('started');
+    other.release();
+    await drainUntilIdle(manager);
+  });
+
+  test('a lapsed drain holds what it parked, the same as a cancelled one', async () => {
+    const manager = parkedThenEnded(m => {
+      const expiresAtMs = Date.parse(m.getDrainStatus()?.expiresAt ?? '');
+      expect(m.isDraining(expiresAtMs)).toBe(false);
+    });
+
+    const result = await manager.acquireLock('conv-parked', gate([], 'held').handler);
+    expect(result.status).toBe('queued-conversation');
+  });
+
+  test('a conversation still owed parked work stays held through a release', async () => {
+    const manager = parkedThenEnded(m => m.cancelDrain());
+    const log: string[] = [];
+    const held = gate(log, 'held');
+    await manager.acquireLock('conv-parked', held.handler);
+
+    manager.releaseReplayHolds(new Set(['conv-parked']));
+    for (let tick = 0; tick < 20; tick++) await Promise.resolve();
+    expect(log).toEqual([]);
+
+    manager.releaseReplayHolds(new Set());
+    await drainUntilStarted(log, 1);
+    held.release();
+    await drainUntilIdle(manager);
+  });
+
+  test('a held message cannot be steered into the running replay', async () => {
+    const manager = parkedThenEnded(m => m.cancelDrain());
+    let finish!: () => void;
+    await manager.acquireLock(
+      'conv-parked',
+      async turn => {
+        turn.inbox.open();
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+      },
+      undefined,
+      'replay'
+    );
+    const held = await manager.acquireLock('conv-parked', async () => {}, {
+      text: 'sent after cancel',
+    });
+    const id = held.queuedId ?? '';
+
+    expect(manager.acceptsSteer('conv-parked')).toBe(false);
+    expect(manager.steer('conv-parked', id)).toEqual({ status: 'not-accepting' });
+
+    manager.releaseReplayHolds(new Set());
+    expect(manager.acceptsSteer('conv-parked')).toBe(true);
+    expect(manager.steer('conv-parked', id)).toEqual({ status: 'sent' });
+    finish();
+    await drainUntilIdle(manager);
+  });
+
+  test('a held conversation does not keep a freed slot from other queued work', async () => {
+    const manager = new ConversationLockManager(1);
+    const log: string[] = [];
+    const running = gate(log, 'running');
+    await manager.acquireLock('conv-busy', running.handler);
+    manager.beginDrain(600);
+    manager.takeForPark('conv-parked');
+    manager.cancelDrain();
+
+    await manager.acquireLock('conv-parked', gate(log, 'held').handler);
+    const waiting = gate(log, 'waiting');
+    await manager.acquireLock('conv-waiting', waiting.handler);
+
+    running.release();
+    await drainUntilStarted(log, 2);
+    expect(log).toEqual(['running', 'waiting']);
+    waiting.release();
+  });
+});

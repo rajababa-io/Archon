@@ -186,12 +186,19 @@ export class DeployParkAbort extends Error {
 }
 
 /**
+ * Where a turn came from. `replay` is parked work a deploy is handing back: it
+ * runs ahead of every `new` message, because it was sent before any of them.
+ */
+export type TurnOrigin = 'new' | 'replay';
+
+/**
  * Represents a queued message waiting for processing
  */
 interface QueuedMessage {
   id: string;
   handler: TurnHandler;
   timestamp: number;
+  origin: TurnOrigin;
   description?: QueueDescription;
   /** Handed to the running turn's inbox; cleared if that turn ends without reading it. */
   steering?: boolean;
@@ -212,7 +219,7 @@ interface ActiveTurn {
 export type SteerResult =
   | { status: 'sent' }
   | { status: 'not-queued' }
-  /** Nothing running, or its provider cannot take a message mid-turn. */
+  /** Nothing running, its provider cannot take a message mid-turn, or the conversation still owes a replay. */
   | { status: 'not-accepting' }
   /** Attachments cannot ride into a running turn; the message waits for its own. */
   | { status: 'has-files' };
@@ -318,6 +325,13 @@ export class ConversationLockManager {
   private messageQueues: Map<string, QueuedMessage[]>;
   private maxConcurrent: number;
   private drainState: DrainState | undefined;
+  /**
+   * Conversations a drain parked that has since ended, whose parked work is not
+   * yet handed back. Their new messages queue behind the replay instead of
+   * starting — outliving the drain is the point, since un-parking ends the drain
+   * before the replay reaches them.
+   */
+  private awaitingReplay = new Set<string>();
   /** Told when a turn starts accepting mid-turn input or a steered message lands. */
   private queueListener: ((conversationId: string) => void) | undefined;
 
@@ -340,11 +354,13 @@ export class ConversationLockManager {
    * @param conversationId - Unique conversation identifier
    * @param handler - Async function to execute
    * @param description - Makes the message visible and withdrawable while queued
+   * @param origin - `replay` only for parked work being handed back
    */
   async acquireLock(
     conversationId: string,
     handler: TurnHandler,
-    description?: QueueDescription
+    description?: QueueDescription,
+    origin: TurnOrigin = 'new'
   ): Promise<LockAcquisitionResult> {
     const draining = this.currentDrain();
     if (draining) {
@@ -360,6 +376,7 @@ export class ConversationLockManager {
       handler,
       timestamp: Date.now(),
       description,
+      origin,
     });
   }
 
@@ -372,8 +389,8 @@ export class ConversationLockManager {
     conversationId: string,
     message: QueuedMessage
   ): Promise<LockAcquisitionResult> {
-    // Check if conversation already active - queue if yes
-    if (this.activeConversations.has(conversationId)) {
+    // Queue if the conversation is busy, or still owes a replay this message must follow
+    if (this.activeConversations.has(conversationId) || !this.mayStart(conversationId, message)) {
       this.queueMessage(conversationId, message);
       return { status: 'queued-conversation', queuedId: message.id };
     }
@@ -445,7 +462,9 @@ export class ConversationLockManager {
     if (!this.messageQueues.has(conversationId)) {
       this.messageQueues.set(conversationId, queue);
     }
-    queue.push(message);
+    const firstNew = message.origin === 'replay' ? queue.findIndex(m => m.origin === 'new') : -1;
+    if (firstNew === -1) queue.push(message);
+    else queue.splice(firstNew, 0, message);
     getLog().debug({ conversationId, queueLength: queue.length }, 'message_queued');
   }
 
@@ -464,6 +483,8 @@ export class ConversationLockManager {
     // slot frees. Shifting it into admit() would re-queue it at the TAIL, behind
     // messages sent after it.
     if (this.activeConversations.size >= this.maxConcurrent) return;
+    // Same reason: a held head stays put until its conversation's replay is done.
+    if (queue[0] && !this.mayStart(conversationId, queue[0])) return;
 
     const next = queue.shift();
     if (!next) return;
@@ -593,7 +614,10 @@ export class ConversationLockManager {
 
   /** Can a queued message be sent into this conversation's running turn right now? */
   acceptsSteer(conversationId: string): boolean {
-    return this.activeConversations.get(conversationId)?.inbox.accepting === true;
+    return (
+      !this.awaitingReplay.has(conversationId) &&
+      this.activeConversations.get(conversationId)?.inbox.accepting === true
+    );
   }
 
   /**
@@ -607,6 +631,8 @@ export class ConversationLockManager {
     if (!message?.description) return { status: 'not-queued' };
     if (message.steering === true) return { status: 'sent' };
     if ((message.description.files ?? []).length > 0) return { status: 'has-files' };
+    // Only a replay can be running while held; steering into it would jump the backlog
+    if (!this.mayStart(conversationId, message)) return { status: 'not-accepting' };
     const turn = this.activeConversations.get(conversationId);
     if (!turn?.inbox.push({ id, text: message.description.text })) {
       return { status: 'not-accepting' };
@@ -718,11 +744,45 @@ export class ConversationLockManager {
     return toDrainStatus(state);
   }
 
-  /** Resume admitting work. Idempotent — a deploy's failure path calls it blind. */
+  /**
+   * Resume admitting work. Idempotent — a deploy's failure path calls it blind.
+   * What the drain parked stays held until `releaseReplayHolds`.
+   */
   cancelDrain(): void {
     if (!this.drainState) return;
-    this.drainState = undefined;
+    this.endDrain(this.drainState);
     getLog().warn('drain_cancelled');
+  }
+
+  /**
+   * End the hold on every conversation awaiting replay except those still owed
+   * parked work, and start what queued behind it.
+   *
+   * @param stillOwed - Conversations with parked work not yet handed back
+   */
+  releaseReplayHolds(stillOwed: ReadonlySet<string>): void {
+    for (const conversationId of [...this.awaitingReplay]) {
+      if (stillOwed.has(conversationId)) continue;
+      this.awaitingReplay.delete(conversationId);
+      getLog().info({ conversationId }, 'replay_hold_released');
+      if (!this.activeConversations.has(conversationId)) {
+        this.processQueue(conversationId).catch((error: unknown) => {
+          getLog().error({ err: error, conversationId }, 'queue_processing_error');
+        });
+      }
+    }
+  }
+
+  private endDrain(state: DrainState): void {
+    this.drainState = undefined;
+    for (const conversationId of state.parkedConversations) {
+      this.awaitingReplay.add(conversationId);
+    }
+  }
+
+  /** A `new` message may not start while its conversation still owes a replay. */
+  private mayStart(conversationId: string, message: QueuedMessage): boolean {
+    return message.origin === 'replay' || !this.awaitingReplay.has(conversationId);
   }
 
   /**
@@ -743,7 +803,7 @@ export class ConversationLockManager {
     const state = this.drainState;
     if (!state) return undefined;
     if (nowMs >= state.expiresAtMs) {
-      this.drainState = undefined;
+      this.endDrain(state);
       getLog().warn(
         { requestedAt: state.requestedAt, refusedCount: state.refusedCount },
         'drain_budget_expired'
@@ -762,9 +822,10 @@ export class ConversationLockManager {
       return;
     }
 
-    // Find first conversation with queued messages that's not currently active
+    // Find first conversation with a startable queued message that's not currently active
     for (const [convId, queue] of this.messageQueues.entries()) {
-      if (queue.length > 0 && !this.activeConversations.has(convId)) {
+      const head = queue[0];
+      if (head && !this.activeConversations.has(convId) && this.mayStart(convId, head)) {
         await this.processQueue(convId);
         break; // Process one at a time
       }

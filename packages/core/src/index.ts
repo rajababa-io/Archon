@@ -215,6 +215,7 @@ export {
   type QueueDescription,
   type SteerResult,
   type TurnContext,
+  type TurnOrigin,
   type MidTurnInput,
   TurnInbox,
   type WithdrawResult,
