@@ -1,13 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChatStatus } from './chat-status';
-import {
-  alertText,
-  badgeText,
-  chatAlerts,
-  chatStatuses,
-  tabTitle,
-  wantingCount,
-} from './tab-signal';
+import { alertText, badgeText, chatAlerts, chatStatuses, wantingCount } from './tab-signal';
 
 const m = (entries: Record<string, ChatStatus>): Map<string, ChatStatus> =>
   new Map(Object.entries(entries));
@@ -71,15 +64,6 @@ describe('wantingCount', () => {
       wantingCount(m({ a: 'awaiting', b: 'unread', c: 'working', d: 'done', e: 'ready' }))
     ).toBe(2);
     expect(wantingCount(new Map())).toBe(0);
-  });
-});
-
-describe('tabTitle', () => {
-  test('bare title at zero', () => {
-    expect(tabTitle('Archon', 0)).toBe('Archon');
-  });
-  test('count in front otherwise', () => {
-    expect(tabTitle('Archon', 2)).toBe('(2) Archon');
   });
 });
 

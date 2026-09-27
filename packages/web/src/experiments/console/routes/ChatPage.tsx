@@ -485,7 +485,7 @@ export function ChatPage(): ReactElement {
    */
   const unread = useMemo(() => unreadIds(conversations ?? []), [conversations]);
 
-  // The tab title and the opt-in notification, read off every chat in the rail
+  // The tab badge and the opt-in notification, read off every chat in the rail
   // by the rail's own rules. Clicking a notification opens its chat here.
   const railStatuses = useMemo(
     () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds),
@@ -592,7 +592,7 @@ export function ChatPage(): ReactElement {
    *
    * `visible` gates it too: a hidden tab has not been read, even with the
    * chat open at its bottom. Marking it anyway would clear the unread mark the
-   * tab title counts, so a turn that ends while you are away would leave no
+   * tab badge counts, so a turn that ends while you are away would leave no
    * trace for you to come back to. Returning to the tab re-runs this.
    *
    * The ref keys on the ACTIVITY TIMESTAMP, not just the chat, and is what
