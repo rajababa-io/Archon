@@ -276,6 +276,11 @@ function createTestAdapter(): GitHubAdapter {
           Promise.resolve({ data: { total_count: 0, check_suites: [] } })
         ),
       },
+      actions: {
+        listWorkflowRunsForRepo: mock(() =>
+          Promise.resolve({ data: { total_count: 0, workflow_runs: [] } })
+        ),
+      },
     },
   };
 

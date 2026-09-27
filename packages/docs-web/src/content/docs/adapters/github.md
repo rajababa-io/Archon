@@ -156,6 +156,8 @@ A web chat can call the `watch_ci` tool to be told when CI finishes on one commi
 
 The signal is the same `check_run` subscription on the same `/webhooks/github` URL and `WEBHOOK_SECRET` as above. A watch is decided from GitHub's check state for the whole commit, not from the one delivery that woke it, so any single delivery can be lost: the server also re-checks every open watch at startup and every five minutes. A watch whose checks never all finish reports that after 24 hours and closes. Closing the chat cancels its watches.
 
+A fine-grained personal access token cannot be granted check permissions, so on a private repository GitHub refuses it the check listings. The watch then reads the commit's GitHub Actions runs instead, which needs the token's **Actions: read** permission on that repository; checks posted by other GitHub Apps are not seen in that mode. If the Actions runs are refused too, the chat is told at once that the commit cannot be watched and the watch closes.
+
 To subscribe repositories that already send Archon other events, or none yet:
 
 ```bash

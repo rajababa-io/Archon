@@ -33,9 +33,14 @@ export interface FinishedCheck {
 /**
  * The forge's answer for one commit. `pending` covers both "some check is still
  * running" and "no check has been created yet" — a commit whose CI has not
- * started is not a commit whose CI passed.
+ * started is not a commit whose CI passed. `unreadable` is a refusal that will
+ * not change by waiting (the credential lacks access to the repository's CI),
+ * so the watch says so at once rather than hold the chat until it expires.
  */
-export type HeadChecks = { kind: 'pending' } | { kind: 'complete'; checks: FinishedCheck[] };
+export type HeadChecks =
+  | { kind: 'pending' }
+  | { kind: 'complete'; checks: FinishedCheck[] }
+  | { kind: 'unreadable'; reason: string };
 
 /**
  * `refused`: the server would not start a turn (it is draining for a restart),
@@ -59,7 +64,10 @@ export const CI_WATCH_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 /** Conclusions that do not fail a commit. Everything else is named in the message. */
 const PASSING_CONCLUSIONS = new Set(['success', 'neutral', 'skipped']);
 
-type Verdict = { kind: 'complete'; checks: FinishedCheck[] } | { kind: 'expired' };
+type Verdict =
+  | { kind: 'complete'; checks: FinishedCheck[] }
+  | { kind: 'unreadable'; reason: string }
+  | { kind: 'expired' };
 
 const MACHINE_HEADER =
   '[Automated message from the CI watch this chat opened with `watch_ci` — not written by a person.]';
@@ -71,6 +79,9 @@ function describeTarget(watch: CiWatch): string {
 
 export function ciWatchMessage(watch: CiWatch, verdict: Verdict): string {
   const target = describeTarget(watch);
+  if (verdict.kind === 'unreadable') {
+    return `${MACHINE_HEADER}\nCI on ${target} cannot be watched: ${verdict.reason} The watch is closed. Check the commit yourself and tell the user where it stands.`;
+  }
   if (verdict.kind === 'expired') {
     return `${MACHINE_HEADER}\nCI never finished on ${target}: after ${String(CI_WATCH_MAX_AGE_MS / 3_600_000)} hours some checks were still pending or none had started. The watch is closed. Check the commit yourself and tell the user where it stands.`;
   }
@@ -116,11 +127,21 @@ async function settleGroup(
   deps: CiWatchDeps,
   now: Date | null
 ): Promise<number> {
-  const checks = await deps.readHeadChecks(repo, headSha);
+  let checks: HeadChecks;
+  try {
+    checks = await deps.readHeadChecks(repo, headSha);
+  } catch (err) {
+    // The webhook path has no clock to expire against; the sweep retries it.
+    if (now === null) throw err;
+    // A read that keeps failing must not also stop the watch expiring, or the
+    // chat waits in silence forever. Logged, then treated as still pending.
+    getLog().warn({ err, repo, headSha }, 'ci_watch.read_head_failed');
+    checks = { kind: 'pending' };
+  }
   let fired = 0;
   for (const watch of watches) {
     let verdict: Verdict | null = null;
-    if (checks.kind === 'complete') verdict = checks;
+    if (checks.kind !== 'pending') verdict = checks;
     else if (now !== null && now.getTime() - watch.createdAt.getTime() >= CI_WATCH_MAX_AGE_MS)
       verdict = { kind: 'expired' };
     if (verdict !== null && (await fire(watch, verdict, deps))) fired += 1;
@@ -145,8 +166,9 @@ export async function settleCiWatchesForHead(
 
 /**
  * The safety net: every open watch, whether or not a webhook arrived for it.
- * Also the only place a watch expires. One commit's forge error is logged and
- * skipped so it cannot stall every other chat's watch.
+ * Also the only place a watch expires — including one whose forge reads keep
+ * failing. One commit's failure is logged and skipped so it cannot stall every
+ * other chat's watch.
  */
 export async function reconcileCiWatches(deps: CiWatchDeps, now = new Date()): Promise<number> {
   const groups = new Map<string, CiWatch[]>();

@@ -29,7 +29,8 @@ delete process.env.WORKSPACE_PATH;
 const { GitHubAdapter } = await import('./adapter');
 const { closeDatabase, getDatabase } = await import('@archon/core/db');
 const { openCiWatch } = await import('@archon/core/db/ci-watches');
-const { settleCiWatchesForHead } = await import('@archon/core/services/ci-watch');
+const { reconcileCiWatches, settleCiWatchesForHead } =
+  await import('@archon/core/services/ci-watch');
 type CiWatchDeps = import('@archon/core/services/ci-watch').CiWatchDeps;
 
 afterAll(async () => {
@@ -58,6 +59,10 @@ interface Run {
 /** GitHub's state for the watched commit, as the stubbed listings report it. */
 let runs: Run[] = [];
 let suiteStatus = 'completed';
+/** The commit's GitHub Actions runs, for a credential refused the Checks API. */
+let workflowRuns: Run[] = [];
+/** Listings GitHub answers with 403, as it does a fine-grained PAT on a private repo. */
+let refused = new Set<'checks' | 'actions'>();
 let forgeReads = 0;
 const sent: { conversationId: string; message: string }[] = [];
 
@@ -81,6 +86,22 @@ function checkRunCompleted(headSha: string): object {
     },
     repository: { full_name: 'Example/Repo' },
     sender: { login: 'github-actions[bot]' },
+  };
+}
+
+function forbidden(): Error & { status: number } {
+  return Object.assign(new Error('Resource not accessible by personal access token'), {
+    status: 403,
+  });
+}
+
+function depsFor(adapter: InstanceType<typeof GitHubAdapter>): CiWatchDeps {
+  return {
+    readHeadChecks: (repo, headSha) => adapter.readHeadChecks(repo, headSha),
+    deliver: async (watch, message) => {
+      sent.push({ conversationId: watch.conversationId, message });
+      return 'delivered';
+    },
   };
 }
 
@@ -110,6 +131,7 @@ function makeAdapter(): InstanceType<typeof GitHubAdapter> {
       checks: {
         listForRef: async () => {
           forgeReads += 1;
+          if (refused.has('checks')) throw forbidden();
           return { data: { total_count: runs.length, check_runs: runs } };
         },
         listSuitesForRef: async () => ({
@@ -119,15 +141,15 @@ function makeAdapter(): InstanceType<typeof GitHubAdapter> {
           },
         }),
       },
+      actions: {
+        listWorkflowRunsForRepo: async () => {
+          if (refused.has('actions')) throw forbidden();
+          return { data: { total_count: workflowRuns.length, workflow_runs: workflowRuns } };
+        },
+      },
     },
   };
-  const deps: CiWatchDeps = {
-    readHeadChecks: (repo, headSha) => adapter.readHeadChecks(repo, headSha),
-    deliver: async (watch, message) => {
-      sent.push({ conversationId: watch.conversationId, message });
-      return 'delivered';
-    },
-  };
+  const deps = depsFor(adapter);
   adapter.onCheckRunCompleted(async (repo, headSha) => {
     await settleCiWatchesForHead(repo, headSha, deps);
   });
@@ -151,6 +173,8 @@ beforeEach(async () => {
   await getDatabase().query('DELETE FROM remote_agent_ci_watches', []);
   runs = [];
   suiteStatus = 'completed';
+  workflowRuns = [];
+  refused = new Set();
   forgeReads = 0;
   sent.length = 0;
 });
@@ -237,5 +261,45 @@ describe('check_run webhook → CI watch', () => {
     expect(await adapter.receiveWebhook(payload, signature, 'delivery-6', 'check_run')).toBe(
       'accepted'
     );
+  });
+});
+
+describe('a credential GitHub refuses the Checks API', () => {
+  test('finished Actions runs: the sweep sends one message', async () => {
+    const chat = await watchingChat();
+    refused = new Set(['checks']);
+    workflowRuns = [
+      { name: 'CI', status: 'completed', conclusion: 'success' },
+      { name: 'Issue status labels', status: 'completed', conclusion: 'success' },
+    ];
+    const deps = depsFor(makeAdapter());
+
+    expect(await reconcileCiWatches(deps)).toBe(1);
+    expect(await reconcileCiWatches(deps)).toBe(0);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.conversationId).toBe(chat);
+    expect(sent[0]?.message).toContain('all 2 checks passed');
+  });
+
+  test('an Actions run still going: nothing is sent', async () => {
+    await watchingChat();
+    refused = new Set(['checks']);
+    workflowRuns = [
+      { name: 'CI', status: 'in_progress', conclusion: null },
+      { name: 'Issue status labels', status: 'completed', conclusion: 'success' },
+    ];
+
+    expect(await reconcileCiWatches(depsFor(makeAdapter()))).toBe(0);
+    expect(sent).toEqual([]);
+  });
+
+  test('Actions refused too: the chat is told the watch cannot see CI', async () => {
+    await watchingChat();
+    refused = new Set(['checks', 'actions']);
+
+    expect(await reconcileCiWatches(depsFor(makeAdapter()))).toBe(1);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.message).toContain('cannot be watched');
+    expect(sent[0]?.message).toContain('HTTP 403');
   });
 });

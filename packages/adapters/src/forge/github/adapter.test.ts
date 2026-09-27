@@ -296,6 +296,17 @@ function makeNoChecksStubs(): {
   };
 }
 
+/** A commit with no Actions runs, for the same webhook tests. */
+function makeNoWorkflowRunsStubs(): {
+  listWorkflowRunsForRepo: Mock<
+    () => Promise<{ data: { total_count: number; workflow_runs: never[] } }>
+  >;
+} {
+  return {
+    listWorkflowRunsForRepo: mock(async () => ({ data: { total_count: 0, workflow_runs: [] } })),
+  };
+}
+
 /**
  * Replaces an adapter's private Octokit client with that surface and returns
  * the stubs, for the callers that assert against them.
@@ -326,6 +337,7 @@ function installOctokitStubs(
       issues: { listComments: stubs.listComments, createComment: stubs.createComment },
       pulls: { get: stubs.pullsGet },
       checks: makeNoChecksStubs(),
+      actions: makeNoWorkflowRunsStubs(),
     },
   };
   return stubs;
@@ -1807,6 +1819,7 @@ describe('GitHubAdapter', () => {
           repos: { get: OctokitStubs['reposGet'] };
           pulls: { get: OctokitStubs['pullsGet'] };
           checks: ReturnType<typeof makeNoChecksStubs>;
+          actions: ReturnType<typeof makeNoWorkflowRunsStubs>;
         };
       };
 
@@ -1855,6 +1868,7 @@ describe('GitHubAdapter', () => {
                 get: pullsGet,
               },
               checks: makeNoChecksStubs(),
+              actions: makeNoWorkflowRunsStubs(),
             },
           };
           octokitInstances.set(installationId, oct);

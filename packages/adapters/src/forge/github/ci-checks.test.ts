@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { parseCompletedCheckRunHead, summarizeHeadChecks } from './ci-checks';
+import {
+  isAccessRefusal,
+  parseCompletedCheckRunHead,
+  summarizeHeadChecks,
+  summarizeWorkflowRuns,
+} from './ci-checks';
 
 const done = (name: string, conclusion = 'success') => ({
   name,
@@ -54,6 +59,41 @@ describe('summarizeHeadChecks', () => {
         [done('build')]
       ).kind
     ).toBe('complete');
+  });
+});
+
+describe('summarizeWorkflowRuns', () => {
+  test('every run finished: complete, with each conclusion', () => {
+    expect(summarizeWorkflowRuns([done('CI'), done('Labels', 'failure')])).toEqual({
+      kind: 'complete',
+      checks: [
+        { name: 'CI', conclusion: 'success' },
+        { name: 'Labels', conclusion: 'failure' },
+      ],
+    });
+  });
+
+  test('a run still queued or running: pending', () => {
+    expect(
+      summarizeWorkflowRuns([done('CI'), { name: 'Labels', status: 'queued', conclusion: null }])
+    ).toEqual({ kind: 'pending' });
+  });
+
+  test('no run yet: pending, not passed', () => {
+    expect(summarizeWorkflowRuns([])).toEqual({ kind: 'pending' });
+  });
+});
+
+describe('isAccessRefusal', () => {
+  test('403 and 404 are refusals', () => {
+    expect(isAccessRefusal({ status: 403 })).toBe(true);
+    expect(isAccessRefusal({ status: 404 })).toBe(true);
+  });
+
+  test('server errors, rate limits and non-HTTP errors are not', () => {
+    expect(isAccessRefusal({ status: 502 })).toBe(false);
+    expect(isAccessRefusal({ status: 429 })).toBe(false);
+    expect(isAccessRefusal(new Error('socket hang up'))).toBe(false);
   });
 });
 

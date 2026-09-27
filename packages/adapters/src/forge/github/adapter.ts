@@ -50,10 +50,13 @@ import { parseAllowedUsers as parseGitHubAllowedUsers, isGitHubUserAuthorized } 
 import { splitIntoParagraphChunks } from '../../utils/message-splitting';
 import type { HeadChecks } from '@archon/core/services/ci-watch';
 import {
+  isAccessRefusal,
   parseCompletedCheckRunHead,
   summarizeHeadChecks,
+  summarizeWorkflowRuns,
   type CheckRunState,
   type CheckSuiteState,
+  type WorkflowRunState,
 } from './ci-checks';
 import {
   isCheckRunCompletedEvent,
@@ -133,6 +136,9 @@ type ListCheckRunsArgs = NonNullable<Parameters<Octokit['rest']['checks']['listF
 type ListCheckSuitesArgs = NonNullable<
   Parameters<Octokit['rest']['checks']['listSuitesForRef']>[0]
 >;
+type ListWorkflowRunsArgs = NonNullable<
+  Parameters<Octokit['rest']['actions']['listWorkflowRunsForRepo']>[0]
+>;
 
 /** Called with the head commit of every completed `check_run` delivery. */
 export type CheckRunCompletedListener = (repo: string, headSha: string) => Promise<void>;
@@ -167,6 +173,11 @@ interface GitHubApi {
       }>;
       listSuitesForRef(args: ListCheckSuitesArgs): Promise<{
         data: { total_count: number; check_suites: CheckSuiteState[] };
+      }>;
+    };
+    actions: {
+      listWorkflowRunsForRepo(args: ListWorkflowRunsArgs): Promise<{
+        data: { total_count: number; workflow_runs: WorkflowRunState[] };
       }>;
     };
   };
@@ -1095,10 +1106,63 @@ ${userComment}`;
     this.checkRunCompletedListener = listener;
   }
 
-  /** Every check on one commit, reduced to finished-or-not by `summarizeHeadChecks`. */
+  /**
+   * Every check on one commit, reduced to finished-or-not.
+   *
+   * The Checks API is the complete reading and is tried first. When the
+   * credential is refused it (403/404 — a fine-grained PAT on a private
+   * repository can never be granted check access), the commit's GitHub Actions
+   * runs are read instead. When those are refused too, the answer is
+   * `unreadable`: retrying cannot change a permission, so the watch must say so
+   * rather than wait.
+   */
   async readHeadChecks(repo: string, headSha: string): Promise<HeadChecks> {
     const [owner, name] = repo.split('/');
     if (!owner || !name) throw new Error(`Not an owner/name repository: ${repo}`);
+    try {
+      return await this.readCheckRunsForHead(owner, name, headSha);
+    } catch (err) {
+      if (!isAccessRefusal(err)) throw err;
+      getLog().info(
+        { owner, repo: name, status: err.status },
+        'github.checks_refused_reading_workflow_runs'
+      );
+    }
+    try {
+      return await this.readWorkflowRunsForHead(owner, name, headSha);
+    } catch (err) {
+      if (!isAccessRefusal(err)) throw err;
+      const status = String(err.status);
+      return {
+        kind: 'unreadable',
+        reason: `the GitHub credential this server uses was refused both check runs and Actions runs on ${repo} (HTTP ${status}). Grant it Actions read access to that repository.`,
+      };
+    }
+  }
+
+  private readWorkflowRunsForHead(
+    owner: string,
+    name: string,
+    headSha: string
+  ): Promise<HeadChecks> {
+    return this.withTokenRefresh(owner, name, async octokit => {
+      const runs: WorkflowRunState[] = [];
+      for (let page = 1; ; page++) {
+        const { data } = await octokit.rest.actions.listWorkflowRunsForRepo({
+          owner,
+          repo: name,
+          head_sha: headSha,
+          per_page: CHECKS_PAGE_SIZE,
+          page,
+        });
+        runs.push(...data.workflow_runs);
+        if (data.workflow_runs.length < CHECKS_PAGE_SIZE || runs.length >= data.total_count) break;
+      }
+      return summarizeWorkflowRuns(runs);
+    });
+  }
+
+  private readCheckRunsForHead(owner: string, name: string, headSha: string): Promise<HeadChecks> {
     return this.withTokenRefresh(owner, name, async octokit => {
       const runs: CheckRunState[] = [];
       for (let page = 1; ; page++) {
