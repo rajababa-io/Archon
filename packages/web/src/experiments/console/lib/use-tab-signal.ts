@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef } from 'react';
 import type { ChatStatus } from '../primitives/chat-status';
-import { alertText, anyWorking, chatAlerts, tabTitle } from '../primitives/tab-signal';
+import { alertText, badgeText, chatAlerts, tabTitle, wantingCount } from '../primitives/tab-signal';
 import { useFaviconBadge } from './favicon-badge';
 import { notifyState } from './notify';
 
@@ -28,11 +28,12 @@ export function useTabSignal(
     };
   }, []);
 
+  const count = wantingCount(statuses);
   useEffect(() => {
-    if (baseRef.current !== null) document.title = tabTitle(baseRef.current, statuses);
-  }, [statuses]);
+    if (baseRef.current !== null) document.title = tabTitle(baseRef.current, count);
+  }, [count]);
 
-  useFaviconBadge(anyWorking(statuses));
+  useFaviconBadge(badgeText(count));
 
   const titlesRef = useRef(titles);
   titlesRef.current = titles;

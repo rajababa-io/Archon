@@ -1,21 +1,21 @@
 /**
- * The favicon with a small working-blue dot on it, while any chat works.
+ * The favicon with a count badge on it, drawn the way Gmail draws unread mail:
+ * a white rounded tag in the bottom-right corner with the number in dark bold.
  *
- * On the favicon rather than in the title because the title is plain text: it
- * cannot take a colour, and a text dot is drawn as large as the letters. The
- * icon is the one place in the tab strip the console can paint.
- *
- * The colour is the theme's own `--running`, read off the console root at draw
- * time, so it is the same blue as the rail's working dot under any theme.
+ * On the favicon because the icon is the part of a tab that survives a crowded
+ * tab strip; the title text is the first thing a narrow tab cuts off.
  */
 import { useEffect } from 'react';
 
-/** Dot diameter as a fraction of the icon. Small enough to leave the logo readable. */
-const DOT = 0.4;
+/** Canvas size. Drawn large and scaled down by the browser, so edges stay crisp. */
+const SIZE = 64;
+/** Badge height as a fraction of the icon — Gmail's tag covers about half. */
+const BADGE_H = 0.56;
 
-export function useFaviconBadge(on: boolean): void {
+/** `text` is what the badge says; empty means the plain icon. */
+export function useFaviconBadge(text: string): void {
   useEffect(() => {
-    if (!on) return;
+    if (text === '') return;
     const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
     if (link === null) return;
     const original = link.href;
@@ -23,42 +23,42 @@ export function useFaviconBadge(on: boolean): void {
     const img = new Image();
     img.onload = (): void => {
       if (cancelled) return;
-      const size = 64;
       const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
+      canvas.width = SIZE;
+      canvas.height = SIZE;
       const ctx = canvas.getContext('2d');
       if (ctx === null) return;
-      const blue = runningColor();
-      // No theme colour means no console root on the page; a guessed blue would
-      // be a second copy of the token, so the plain icon stays instead.
-      if (blue === '') return;
-      ctx.drawImage(img, 0, 0, size, size);
-      const r = (size * DOT) / 2;
-      const cx = size - r - 1;
-      const cy = size - r - 1;
-      // A dark ring first, so the dot stays a dot on light and dark tab strips.
+      ctx.drawImage(img, 0, 0, SIZE, SIZE);
+
+      const h = Math.round(SIZE * BADGE_H);
+      ctx.font = `bold ${String(Math.round(h * 0.86))}px Arial, Helvetica, sans-serif`;
+      const w = Math.max(h * 0.86, ctx.measureText(text).width + h * 0.36);
+      const x = SIZE - w;
+      const y = SIZE - h;
+
+      // A dark outline under the white tag, so it separates from the logo and
+      // from a light tab strip alike.
       ctx.beginPath();
-      ctx.arc(cx, cy, r + 3, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.roundRect(x - 2, y - 2, w + 2, h + 2, h * 0.3);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fillStyle = blue;
+      ctx.roundRect(x, y, w, h, h * 0.26);
+      ctx.fillStyle = '#ffffff';
       ctx.fill();
+
+      ctx.fillStyle = '#202124';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, x + w / 2, y + h / 2 + h * 0.05);
       link.href = canvas.toDataURL('image/png');
     };
-    // An icon that fails to load leaves the plain favicon: the dot is a nicety,
-    // and the title count still carries what needs you.
+    // An icon that fails to load leaves the plain favicon; the title still
+    // carries the count.
     img.src = original;
     return (): void => {
       cancelled = true;
       link.href = original;
     };
-  }, [on]);
-}
-
-function runningColor(): string {
-  const root = document.querySelector('.console-root');
-  return root === null ? '' : getComputedStyle(root).getPropertyValue('--running').trim();
+  }, [text]);
 }

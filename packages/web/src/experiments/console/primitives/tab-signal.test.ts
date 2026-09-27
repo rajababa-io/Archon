@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChatStatus } from './chat-status';
-import { alertText, anyWorking, chatAlerts, chatStatuses, tabTitle } from './tab-signal';
+import {
+  alertText,
+  badgeText,
+  chatAlerts,
+  chatStatuses,
+  tabTitle,
+  wantingCount,
+} from './tab-signal';
 
 const m = (entries: Record<string, ChatStatus>): Map<string, ChatStatus> =>
   new Map(Object.entries(entries));
@@ -58,23 +65,31 @@ describe('chatStatuses', () => {
   });
 });
 
-describe('tabTitle', () => {
-  test('leaves the title alone when nothing wants you', () => {
-    expect(tabTitle('Archon', m({ a: 'idle', b: 'done', c: 'ready' }))).toBe('Archon');
-  });
-  test('working is not in the text — the favicon carries it', () => {
-    expect(tabTitle('Archon', m({ a: 'working', b: 'idle' }))).toBe('Archon');
-  });
-  test('counts chats that want you — awaiting and unread', () => {
-    expect(tabTitle('Archon', m({ a: 'awaiting', b: 'unread', c: 'working' }))).toBe('(2) Archon');
+describe('wantingCount', () => {
+  test('counts awaiting and unread — never working, done or ready', () => {
+    expect(
+      wantingCount(m({ a: 'awaiting', b: 'unread', c: 'working', d: 'done', e: 'ready' }))
+    ).toBe(2);
+    expect(wantingCount(new Map())).toBe(0);
   });
 });
 
-describe('anyWorking', () => {
-  test('true only when some chat is working', () => {
-    expect(anyWorking(m({ a: 'idle', b: 'working' }))).toBe(true);
-    expect(anyWorking(m({ a: 'awaiting', b: 'unread' }))).toBe(false);
-    expect(anyWorking(new Map())).toBe(false);
+describe('tabTitle', () => {
+  test('bare title at zero', () => {
+    expect(tabTitle('Archon', 0)).toBe('Archon');
+  });
+  test('count in front otherwise', () => {
+    expect(tabTitle('Archon', 2)).toBe('(2) Archon');
+  });
+});
+
+describe('badgeText', () => {
+  test('nothing at zero, the number to nine, 9+ past it', () => {
+    expect(badgeText(0)).toBe('');
+    expect(badgeText(1)).toBe('1');
+    expect(badgeText(9)).toBe('9');
+    expect(badgeText(10)).toBe('9+');
+    expect(badgeText(42)).toBe('9+');
   });
 });
 
