@@ -6073,6 +6073,7 @@ export interface components {
       handoffAtPercent: number;
       autoHandoff: boolean;
       ciWaitAlarmMinutes: number;
+      suggestNextMessage: boolean;
     };
     UpdateAssistantConfigBody: {
       assistant?: string;
@@ -6097,6 +6098,7 @@ export interface components {
       handoffAtPercent?: number;
       autoHandoff?: boolean;
       ciWaitAlarmMinutes?: number;
+      suggestNextMessage?: boolean;
     };
     ProviderListResponse: {
       providers: components['schemas']['ProviderInfo'][];

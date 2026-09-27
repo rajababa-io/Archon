@@ -1023,5 +1023,6 @@ function toSafeChats(resolved: ResolvedChatsConfig): SafeChatsConfig {
     handoffAtPercent: resolved.handoffAtPercent,
     autoHandoff: resolved.autoHandoff,
     ciWaitAlarmMinutes: resolved.ciWaitAlarmMinutes,
+    suggestNextMessage: resolved.suggestNextMessage,
   };
 }

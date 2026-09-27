@@ -7,6 +7,11 @@ describe('resolveChatsConfig', () => {
     expect(c.nudgeAt).toBeCloseTo(0.4);
     expect(c.handoffAt).toBeCloseTo(0.5);
     expect(c.autoHandoff).toBe(true);
+    expect(c.suggestNextMessage).toBe(true);
+  });
+
+  test('suggested next messages can be switched off', () => {
+    expect(resolveChatsConfig({ suggestNextMessage: false }).suggestNextMessage).toBe(false);
   });
 
   test('percentages become fractions', () => {

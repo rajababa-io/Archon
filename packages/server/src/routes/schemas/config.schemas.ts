@@ -65,6 +65,7 @@ export const chatsConfigSchema = z
     handoffAtPercent: thresholdPercentSchema,
     autoHandoff: z.boolean(),
     ciWaitAlarmMinutes: ciWaitAlarmMinutesSchema,
+    suggestNextMessage: z.boolean(),
   })
   .openapi('ChatsConfig');
 
@@ -83,6 +84,7 @@ export const updateChatsBodySchema = z
     handoffAtPercent: thresholdPercentSchema.optional(),
     autoHandoff: z.boolean().optional(),
     ciWaitAlarmMinutes: ciWaitAlarmMinutesSchema.optional(),
+    suggestNextMessage: z.boolean().optional(),
   })
   .openapi('UpdateChatsBody');
 

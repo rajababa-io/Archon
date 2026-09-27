@@ -225,6 +225,13 @@ export interface ChatsConfig {
    * @default 20
    */
   ciWaitAlarmMinutes?: number;
+  /**
+   * After a web chat turn ends, offer a suggested next message in the chat box,
+   * written by the `small` tier from the last exchange. Nothing is ever sent
+   * without the user choosing to; `false` stops the model call entirely.
+   * @default true
+   */
+  suggestNextMessage?: boolean;
 }
 
 /**
@@ -522,4 +529,5 @@ export interface SafeChatsConfig {
   handoffAtPercent: number;
   autoHandoff: boolean;
   ciWaitAlarmMinutes: number;
+  suggestNextMessage: boolean;
 }

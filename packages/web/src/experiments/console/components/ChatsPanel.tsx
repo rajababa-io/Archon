@@ -16,7 +16,7 @@ import { INPUT_CLASS, Switch } from './SettingsFormPrimitives';
  * project scope here would be a control with no wire, which is the defect this
  * whole settings pass exists to remove.
  *
- * All three rows are live. The mockup drew `autoHandoff` greyed and labelled
+ * All four rows are live. The mockup drew `autoHandoff` greyed and labelled
  * "not implemented", which was true when it was drawn; the auto-handoff path
  * shipped afterwards and reads this value on every turn.
  */
@@ -131,6 +131,18 @@ export function ChatsPanel(): ReactElement {
             checked={form.autoHandoff}
             onChange={v => {
               setForm(f => (f === null ? f : { ...f, autoHandoff: v }));
+            }}
+          />
+        </Row>
+        <Row
+          title="Suggest the next message"
+          description="After each reply, the small model tier writes a likely next message into the empty chat box. Tab takes it; nothing is sent without Enter. Each suggestion is one short model call, and its cost shows beside it. Off means none are generated."
+        >
+          <Switch
+            label="Suggest the next message"
+            checked={form.suggestNextMessage}
+            onChange={v => {
+              setForm(f => (f === null ? f : { ...f, suggestNextMessage: v }));
             }}
           />
         </Row>

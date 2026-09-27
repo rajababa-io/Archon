@@ -245,6 +245,16 @@ export interface IPlatformAdapter {
     metadata?: Record<string, unknown>
   ): Promise<void>;
 
+  /**
+   * Offer a suggested next message where the user types. Implemented only by a
+   * platform that can show one without sending it; a platform without it is
+   * never charged for generating one.
+   */
+  offerNextMessage?(
+    conversationId: string,
+    suggestion: { text: string; costUsd?: number }
+  ): Promise<void>;
+
   /** Retract previously streamed text (used when workflow routing intercepts) */
   emitRetract?(conversationId: string): Promise<void>;
 
