@@ -270,6 +270,12 @@ function createTestAdapter(): GitHubAdapter {
           })
         ),
       },
+      checks: {
+        listForRef: mock(() => Promise.resolve({ data: { total_count: 0, check_runs: [] } })),
+        listSuitesForRef: mock(() =>
+          Promise.resolve({ data: { total_count: 0, check_suites: [] } })
+        ),
+      },
     },
   };
 

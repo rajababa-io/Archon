@@ -48,6 +48,13 @@ import { resolveDefaultAssistant } from '@archon/core/config/resolve-assistant';
 import { createLogger } from '@archon/paths';
 import { parseAllowedUsers as parseGitHubAllowedUsers, isGitHubUserAuthorized } from './auth';
 import { splitIntoParagraphChunks } from '../../utils/message-splitting';
+import type { HeadChecks } from '@archon/core/services/ci-watch';
+import {
+  parseCompletedCheckRunHead,
+  summarizeHeadChecks,
+  type CheckRunState,
+  type CheckSuiteState,
+} from './ci-checks';
 import {
   isCheckRunCompletedEvent,
   MalformedWebhookEventError,
@@ -122,6 +129,16 @@ type PullRequestData = Awaited<ReturnType<Octokit['rest']['pulls']['get']>>['dat
 type PullRequestHead = Pick<PullRequestData['head'], 'ref' | 'sha'> & {
   repo: Pick<NonNullable<PullRequestData['head']['repo']>, 'full_name'> | null;
 };
+type ListCheckRunsArgs = NonNullable<Parameters<Octokit['rest']['checks']['listForRef']>[0]>;
+type ListCheckSuitesArgs = NonNullable<
+  Parameters<Octokit['rest']['checks']['listSuitesForRef']>[0]
+>;
+
+/** Called with the head commit of every completed `check_run` delivery. */
+export type CheckRunCompletedListener = (repo: string, headSha: string) => Promise<void>;
+
+/** GitHub's page ceiling for check listings. */
+const CHECKS_PAGE_SIZE = 100;
 
 interface GitHubApi {
   rest: {
@@ -142,6 +159,14 @@ interface GitHubApi {
           head: PullRequestHead;
           base: { repo: Pick<PullRequestData['base']['repo'], 'full_name'> };
         };
+      }>;
+    };
+    checks: {
+      listForRef(args: ListCheckRunsArgs): Promise<{
+        data: { total_count: number; check_runs: CheckRunState[] };
+      }>;
+      listSuitesForRef(args: ListCheckSuitesArgs): Promise<{
+        data: { total_count: number; check_suites: CheckSuiteState[] };
       }>;
     };
   };
@@ -176,6 +201,12 @@ export class GitHubAdapter implements IPlatformAdapter {
    * they reach the lock manager, which orders but does not dedup.
    */
   private readonly deliveryDedup = new DeliveryDeduplicator();
+  /**
+   * Separate from `deliveryDedup`, which keys comment events by comment
+   * identity: a `check_run` delivery has no such identity, only its delivery id.
+   */
+  private readonly checkRunDeliveryDedup = new DeliveryDeduplicator();
+  private checkRunCompletedListener: CheckRunCompletedListener | null = null;
   private readonly retryDelayFn: (attempt: number) => number;
   /**
    * Resolve the originating user's personal GitHub token (App mode only).
@@ -1053,6 +1084,80 @@ ${userComment}`;
     }
   }
 
+  /**
+   * Hear the head commit of every completed `check_run` this adapter accepts.
+   *
+   * A sibling of the durable-wait signal, not part of it: that one is keyed by
+   * pull request and fires on the first matching event, while a listener here
+   * is told only which commit moved and must ask GitHub whether it is done.
+   */
+  onCheckRunCompleted(listener: CheckRunCompletedListener): void {
+    this.checkRunCompletedListener = listener;
+  }
+
+  /** Every check on one commit, reduced to finished-or-not by `summarizeHeadChecks`. */
+  async readHeadChecks(repo: string, headSha: string): Promise<HeadChecks> {
+    const [owner, name] = repo.split('/');
+    if (!owner || !name) throw new Error(`Not an owner/name repository: ${repo}`);
+    return this.withTokenRefresh(owner, name, async octokit => {
+      const runs: CheckRunState[] = [];
+      for (let page = 1; ; page++) {
+        const { data } = await octokit.rest.checks.listForRef({
+          owner,
+          repo: name,
+          ref: headSha,
+          filter: 'latest',
+          per_page: CHECKS_PAGE_SIZE,
+          page,
+        });
+        runs.push(...data.check_runs);
+        if (data.check_runs.length < CHECKS_PAGE_SIZE || runs.length >= data.total_count) break;
+      }
+      const suites: CheckSuiteState[] = [];
+      for (let page = 1; ; page++) {
+        const { data } = await octokit.rest.checks.listSuitesForRef({
+          owner,
+          repo: name,
+          ref: headSha,
+          per_page: CHECKS_PAGE_SIZE,
+          page,
+        });
+        suites.push(...data.check_suites);
+        if (data.check_suites.length < CHECKS_PAGE_SIZE || suites.length >= data.total_count) break;
+      }
+      return summarizeHeadChecks(suites, runs);
+    });
+  }
+
+  /**
+   * Both consumers of a `check_run` delivery. The CI-watch listener runs in its
+   * own try so a failure there can neither fail the delivery nor stop the
+   * durable-wait signal; the reconcile sweep retries what it missed.
+   */
+  private async handleCheckRun(decoded: unknown, deliveryId: string | undefined): Promise<void> {
+    const head = parseCompletedCheckRunHead(decoded);
+    const listener = this.checkRunCompletedListener;
+    if (head && listener) {
+      if (deliveryId !== undefined && this.checkRunDeliveryDedup.seen(`check_run:${deliveryId}`)) {
+        getLog().debug({ deliveryId }, 'github.check_run_duplicate_delivery');
+      } else {
+        try {
+          await listener(head.repo, head.headSha);
+        } catch (error) {
+          getLog().error(
+            { err: error as Error, deliveryId, repo: head.repo },
+            'github.check_run_listener_failed'
+          );
+        }
+      }
+    }
+    if (isCheckRunCompletedEvent(decoded)) {
+      await this.handleCompletedCheckRun(decoded);
+    } else {
+      getLog().debug('github.check_run_ignored');
+    }
+  }
+
   /** Receive conversational events and durable-wait signals independently of source plugins. */
   async receiveWebhook(
     payload: string,
@@ -1075,7 +1180,7 @@ ${userComment}`;
       return 'malformed';
     }
     if (eventName === 'check_run') {
-      if (isCheckRunCompletedEvent(decoded)) await this.handleCompletedCheckRun(decoded);
+      await this.handleCheckRun(decoded, deliveryId);
     } else {
       // Chat execution is asynchronous; source-plugin receipt acceptance has its own endpoint.
       void this.handleWebhook(payload, signature, deliveryId, eventName).catch((error: unknown) => {
@@ -1154,11 +1259,7 @@ ${userComment}`;
     // 2. Parse event
     const decoded = JSON.parse(payload) as unknown;
     if (githubEvent === 'check_run') {
-      if (isCheckRunCompletedEvent(decoded)) {
-        await this.handleCompletedCheckRun(decoded);
-      } else {
-        getLog().debug('github.check_run_ignored');
-      }
+      await this.handleCheckRun(decoded, deliveryId);
       return;
     }
     const event = decoded as WebhookEvent;
