@@ -231,6 +231,28 @@ describe('reconcileCiWatches — the safety net', () => {
     expect(sent[0]?.message).toContain('CI never finished');
   });
 
+  test('a read that keeps failing still expires, and says so', async () => {
+    const chat = await newChat();
+    await openCiWatch({ conversationId: chat, repo: 'o/r', headSha: SHA, pullRequest: null });
+    const { deps, sent } = harness(PASSED);
+    const failing: Deps = { ...deps, readHeadChecks: () => Promise.reject(new Error('502')) };
+
+    expect(await reconcileCiWatches(failing)).toBe(0);
+    const later = new Date(Date.now() + CI_WATCH_MAX_AGE_MS + 60_000);
+    expect(await reconcileCiWatches(failing, later)).toBe(1);
+    expect(sent[0]?.message).toContain('CI never finished');
+  });
+
+  test('checks the forge refuses to show: the chat is told at once', async () => {
+    const chat = await newChat();
+    await openCiWatch({ conversationId: chat, repo: 'o/r', headSha: SHA, pullRequest: null });
+    const { deps, sent } = harness({ kind: 'unreadable', reason: 'no access.' });
+
+    expect(await reconcileCiWatches(deps)).toBe(1);
+    expect(sent[0]?.message).toContain('cannot be watched: no access.');
+    expect(await reconcileCiWatches(deps)).toBe(0);
+  });
+
   test("one commit's forge error does not stop the others", async () => {
     const chat = await newChat();
     await openCiWatch({ conversationId: chat, repo: 'o/broken', headSha: SHA, pullRequest: null });

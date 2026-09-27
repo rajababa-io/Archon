@@ -39,6 +39,46 @@ export function summarizeHeadChecks(
   };
 }
 
+export interface WorkflowRunState {
+  name?: string | null;
+  status: string | null;
+  conclusion: string | null;
+}
+
+/**
+ * Whether every GitHub Actions run on a commit has finished.
+ *
+ * The reading used when the credential cannot see the Checks API: a
+ * fine-grained PAT cannot be granted check permissions at all, so on a private
+ * repository both check listings answer 403 while the Actions listing, under
+ * the `Actions: read` permission, answers. A workflow run stays open until
+ * every one of its jobs has run, so the `needs:` gap `summarizeHeadChecks`
+ * guards against with suites does not arise here. Checks posted by other Apps
+ * are invisible to this reading.
+ */
+export function summarizeWorkflowRuns(runs: readonly WorkflowRunState[]): HeadChecks {
+  if (runs.length === 0) return { kind: 'pending' };
+  if (runs.some(run => run.status !== 'completed')) return { kind: 'pending' };
+  return {
+    kind: 'complete',
+    checks: runs.map(run => ({
+      name: run.name ?? 'unnamed workflow',
+      conclusion: run.conclusion ?? 'unknown',
+    })),
+  };
+}
+
+/**
+ * Whether an Octokit error is GitHub declining this credential access to the
+ * resource (403, or the 404 it gives for a private resource the caller may not
+ * see). Read from the HTTP status, never the message text.
+ */
+export function isAccessRefusal(err: unknown): err is { status: 403 | 404 } {
+  if (typeof err !== 'object' || err === null) return false;
+  const status = (err as { status?: unknown }).status;
+  return status === 403 || status === 404;
+}
+
 /**
  * The head commit a completed `check_run` delivery is about, or null.
  *
