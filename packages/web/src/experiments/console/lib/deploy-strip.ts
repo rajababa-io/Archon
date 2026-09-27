@@ -21,7 +21,7 @@ export type DeployTone =
   | 'ok'
   /** The last attempt failed, was killed, or was refused. */
   | 'bad'
-  /** Nothing in flight and nothing to report. */
+  /** Nothing in flight and nothing wrong — including a merge the policy held. */
   | 'quiet';
 
 export interface DeployStripView {
@@ -54,6 +54,7 @@ const VERDICT_LABEL: Record<NonNullable<DeployStatus['last']>['verdict'], string
   FAILED: 'Deploy failed',
   KILLED: 'Deploy stopped',
   REFUSED: 'Deploy refused',
+  HELD: 'Deploy held',
 };
 
 /** The step, as the strip names it: `4/7 Build`. */
@@ -114,7 +115,9 @@ export function deployStripView(status: DeployStatus): DeployStripView {
     };
   }
   return {
-    tone: last.verdict === 'OK' ? 'ok' : 'bad',
+    // HELD is the policy declining to ship a merge (Deploy on Merge is off),
+    // which is the switch working, not a failure to report in red.
+    tone: last.verdict === 'OK' ? 'ok' : last.verdict === 'HELD' ? 'quiet' : 'bad',
     label: VERDICT_LABEL[last.verdict],
     detail: last.reason ?? null,
     startedAt: null,

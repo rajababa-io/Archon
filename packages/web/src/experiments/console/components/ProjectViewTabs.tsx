@@ -77,9 +77,12 @@ export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): Re
             {label}
             {/* The same numbers the rail carries, in the same order. Blank for
                 zero, so a quiet tab stays quiet — a `0` beside every tab is
-                noise, and this row is read constantly. */}
+                noise, and this row is read constantly. The label's own size
+                and baseline: a smaller count sat visibly off the word's line. */}
             {count !== null ? (
-              <span className="ml-1.5 text-mini font-normal tabular-nums opacity-70">{count}</span>
+              <span className="ml-1.5 align-baseline font-normal tabular-nums opacity-70">
+                {count}
+              </span>
             ) : null}
             {isActive ? (
               <span

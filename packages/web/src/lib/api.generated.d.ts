@@ -6258,6 +6258,7 @@ export interface components {
         requestedAt: string;
         expiresAt: string;
         refusedCount: number;
+        parkAt?: string;
         holding: {
           activeConversations: number;
           queuedMessages: number;
@@ -6285,7 +6286,7 @@ export interface components {
         last?: {
           at: string;
           /** @enum {string} */
-          verdict: 'OK' | 'FAILED' | 'REFUSED' | 'KILLED';
+          verdict: 'OK' | 'FAILED' | 'REFUSED' | 'KILLED' | 'HELD';
           sha: string;
           reason?: string;
         };

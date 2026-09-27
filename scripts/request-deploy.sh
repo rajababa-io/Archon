@@ -47,6 +47,21 @@ REMOTE_BRANCH="${REMOTE_BRANCH:-deploy}"
 
 SHA=$(git rev-parse HEAD)
 
+# Who is asking, written as the request's second line (#211). A chat asking
+# after a merge is `merge`, and the host deploys it only while the project's
+# Deploy on Merge is on — otherwise it is recorded as HELD and nothing else
+# happens. `manual <id>` is written only by the server's request-deploy-tip.sh, on behalf of
+# a person who pressed Deploy now; the host checks the id with the server, so
+# setting this by hand gets a request held, not deployed.
+DEPLOY_SOURCE="${DEPLOY_SOURCE:-merge}"
+case "$DEPLOY_SOURCE" in
+  merge | manual\ *) ;;
+  *)
+    echo "DEPLOY_SOURCE must be 'merge' or 'manual <id>', not '$DEPLOY_SOURCE'" >&2
+    exit 1
+    ;;
+esac
+
 if [ -e "$REQUEST" ]; then
   echo "A request is already pending ($(cat "$REQUEST")) — the host has not consumed it yet." >&2
   exit 1
@@ -113,9 +128,13 @@ fi
 
 echo "pushed $SHA to $REMOTE/$REMOTE_BRANCH (via $pushed)"
 
-printf '%s\n' "$SHA" >"$REQUEST"
+printf '%s\n%s\n' "$SHA" "$DEPLOY_SOURCE" >"$REQUEST"
 
-echo "requested $SHA"
+echo "requested $SHA ($DEPLOY_SOURCE)"
+if [ "$DEPLOY_SOURCE" = "merge" ]; then
+  echo "If this project's Deploy on Merge is off, the host records it as HELD and"
+  echo "deploys nothing; a person deploys it from the console with Deploy now."
+fi
 git log --oneline -1
 echo
 # Timings, not a promise. They are the shape of the thing rather than a

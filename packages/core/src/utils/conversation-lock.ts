@@ -253,6 +253,12 @@ export interface DrainStatus {
   requestedAt: string;
   expiresAt: string;
   refusedCount: number;
+  /**
+   * When the deploy will park what is still running, if it said. The deploy
+   * owns its grace window; this only repeats what it declared, so the console
+   * can count down to the moment chats are paused (#211).
+   */
+  parkAt?: string;
 }
 
 /**
@@ -297,6 +303,7 @@ interface DrainState {
   drainId: string;
   /** Conversations whose work was parked: not counted as held while their turn winds down. */
   parkedConversations: Set<string>;
+  parkAtMs?: number;
 }
 
 function toDrainStatus(state: DrainState): DrainStatus {
@@ -304,6 +311,7 @@ function toDrainStatus(state: DrainState): DrainStatus {
     requestedAt: state.requestedAt,
     expiresAt: new Date(state.expiresAtMs).toISOString(),
     refusedCount: state.refusedCount,
+    ...(state.parkAtMs !== undefined ? { parkAt: new Date(state.parkAtMs).toISOString() } : {}),
   };
 }
 
@@ -722,8 +730,10 @@ export class ConversationLockManager {
    * keeps the refusal count, so a deploy can extend its own wait.
    *
    * @param budgetSeconds - How long drain stays in effect before lapsing
+   * @param graceSeconds - When the deploy says it will park what is left, counted
+   *   from the drain's first request. Informational: nothing here parks on it.
    */
-  beginDrain(budgetSeconds: number): DrainStatus {
+  beginDrain(budgetSeconds: number, graceSeconds?: number): DrainStatus {
     if (!Number.isFinite(budgetSeconds) || budgetSeconds <= 0) {
       throw new RangeError(`drain budget must be a positive number of seconds: ${budgetSeconds}`);
     }
@@ -736,6 +746,11 @@ export class ConversationLockManager {
       drainId: existing?.drainId ?? randomUUID(),
       parkedConversations: existing?.parkedConversations ?? new Set<string>(),
     };
+    if (graceSeconds !== undefined) {
+      state.parkAtMs = Date.parse(state.requestedAt) + graceSeconds * 1000;
+    } else if (existing?.parkAtMs !== undefined) {
+      state.parkAtMs = existing.parkAtMs;
+    }
     this.drainState = state;
     getLog().warn(
       { budgetSeconds, active: this.activeConversations.size, queued: this.getQueuedCount() },

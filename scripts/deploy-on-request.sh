@@ -10,8 +10,13 @@
 # on it, and this script is that decision.
 #
 # THE PROTOCOL, one file:
-#   <volume>/deploy-request   written by the container, contains ONE 40-char
-#                             SHA — the commit it wants running. Consumed here.
+#   <volume>/deploy-request   written by the container. Line 1 is ONE 40-char
+#                             SHA — the commit it wants running. Line 2 says who
+#                             asked: `merge` (a chat, after a merge) or
+#                             `manual <id>` (a person pressed Deploy now). A
+#                             request with no line 2 is `merge`. Consumed here.
+#   <volume>/deploy-cancel    written by the server when a person presses Cancel
+#                             deploy. Honoured until the swap starts, then not.
 #   <volume>/deploy-last.log  everything the deploy printed. The container reads
 #                             it afterwards, because the deploy restarts the
 #                             container and kills whatever asked for it.
@@ -92,8 +97,63 @@ record() { printf '%s  %s\n' "$(now)" "$1" >>"$HISTORY"; }
 # attempt re-arms the .path unit the instant the service exits, and the box
 # deploys in a loop for as long as the file exists.
 [ -f "$REQUEST" ] || exit 0
-WANT=$(tr -d ' \r\n' <"$REQUEST" 2>/dev/null)
+WANT=$(sed -n 1p "$REQUEST" 2>/dev/null | tr -d ' \r\n')
+ASKED_BY=$(sed -n 2p "$REQUEST" 2>/dev/null | tr -d '\r')
 rm -f "$REQUEST"
+
+# WHETHER TO ACT AT ALL (#211). Deploy on Merge is a per-project setting a
+# person flips in the console, and the running server is the only thing that
+# knows its value — so it is asked, every time, before anything else happens.
+#
+#   merge          runs only while Deploy on Merge is on; otherwise HELD.
+#   manual <id>    runs only if the server issued <id> for this commit. The
+#                  request file sits on a volume anything in the container can
+#                  write, so the word "manual" proves nothing on its own; the id
+#                  is what a person pressing Deploy now leaves behind.
+#
+# Anything the server cannot answer is HELD, never run. A HELD request is only
+# recorded: no lock, no log rotation, no drain — the box does not notice it.
+#
+# The answer is one machine token (`run`, or `hold:<reason>`) from a route made
+# for this script, so nothing here reads prose.
+case "$ASKED_BY" in
+  '' | merge) SOURCE=merge; REQUEST_ID="" ;;
+  manual\ *) SOURCE=manual; REQUEST_ID=${ASKED_BY#manual } ;;
+  *) SOURCE=unknown; REQUEST_ID="" ;;
+esac
+
+policy_for() {
+  local query="method=archon-host&source=$SOURCE&sha=$WANT"
+  [ -n "$REQUEST_ID" ] && query="$query&request=$REQUEST_ID"
+  (cd "$DEPLOY_DIR" && docker compose exec -T "$SERVICE" \
+    sh -c 'curl -sS --max-time 10 -H "Authorization: Bearer $ARCHON_DRAIN_TOKEN" "http://127.0.0.1:${PORT:-3000}/internal/deploy-policy?$1"' \
+    _ "$query" 2>/dev/null) | tr -d ' \r\n'
+}
+
+if [ "${SKIP_DEPLOY_POLICY:-0}" = "1" ]; then
+  # For an operator at the host who has decided already. Nothing in the
+  # container can set this: it is read from this script's own environment.
+  POLICY=run
+else
+  POLICY=$(policy_for)
+fi
+case "$POLICY" in
+  run) ;;
+  hold:*)
+    case "${POLICY#hold:}" in
+      toggle-off) why="Deploy on Merge is off" ;;
+      not-issued) why="the console did not issue this manual request" ;;
+      no-project) why="no project has this deploy" ;;
+      *) why="${POLICY#hold:}" ;;
+    esac
+    record "HELD $WANT — $why ($SOURCE)"
+    exit 0
+    ;;
+  *)
+    record "HELD $WANT — the server could not say whether to deploy ($SOURCE)"
+    exit 0
+    ;;
+esac
 
 # One deploy at a time. Two requests inside one build would have docker compose
 # fighting itself over the same service.
@@ -114,6 +174,7 @@ fi
 exec >"$LOG" 2>&1
 
 note "request: ${WANT:-<empty>}"
+note "asked by: $SOURCE"
 
 if ! printf '%s' "$WANT" | grep -Eq '^[0-9a-f]{40}$'; then
   note "STOPPED: not a commit SHA — refusing to guess what was meant"
@@ -221,10 +282,43 @@ note "starting deploy"
 # credited to this one.
 PARK_REPORT="$VOLUME/deploy-park-report"
 rm -f "$PARK_REPORT"
-SOURCE_DIR="$SOURCE_DIR" PARK_REPORT_FILE="$PARK_REPORT" bash "$DEPLOY" &
+# Cancel deploy (#211). A person pressing it leaves $CANCEL; the deploy leaves
+# $SWAP_MARK the moment it starts recreating the container. Before that mark a
+# cancel stops the deploy exactly as `systemctl stop` did — TERM to the child,
+# whose own trap cancels the drain and hands parked work back — and after it a
+# cancel is refused, because stopping mid-swap is the one thing worse than
+# finishing. Both are cleared first, so neither can outlive its own attempt.
+CANCEL="$VOLUME/deploy-cancel"
+SWAP_MARK="$VOLUME/deploy-swapping"
+rm -f "$CANCEL" "$SWAP_MARK"
+SOURCE_DIR="$SOURCE_DIR" PARK_REPORT_FILE="$PARK_REPORT" SWAP_MARKER_FILE="$SWAP_MARK" \
+  bash "$DEPLOY" &
 DEPLOY_PID=$!
+CANCELLED=0
+CANCEL_POLL_SECONDS="${CANCEL_POLL_SECONDS:-2}"
+while kill -0 "$DEPLOY_PID" 2>/dev/null; do
+  if [ -e "$CANCEL" ]; then
+    rm -f "$CANCEL"
+    if [ -e "$SWAP_MARK" ]; then
+      note "cancel ignored — the swap had already started"
+    else
+      note "CANCELLED from the console — stopping before the swap"
+      CANCELLED=1
+      kill -TERM "$DEPLOY_PID" 2>/dev/null
+      break
+    fi
+  fi
+  sleep "$CANCEL_POLL_SECONDS"
+done
 status=0
 wait "$DEPLOY_PID" || status=$?
+rm -f "$SWAP_MARK"
+
+if [ "$CANCELLED" = "1" ]; then
+  RUNNING=$(in_container "cat /app/.deployed-sha")
+  record "KILLED $WANT — cancelled from the console; running ${RUNNING:-unknown}"
+  exit 0
+fi
 
 if [ "$status" -eq 0 ]; then
   note "DEPLOYED $WANT"

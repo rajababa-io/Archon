@@ -318,6 +318,20 @@ describe('ConversationLockManager', () => {
   });
 
   describe('drain', () => {
+    test('reports when the deploy said it will park, and keeps it across a re-request (#211)', () => {
+      const manager = new ConversationLockManager(10);
+      const first = manager.beginDrain(600, 120);
+      expect(first.parkAt).toBe(new Date(Date.parse(first.requestedAt) + 120_000).toISOString());
+
+      // Extending the budget without restating the grace must not lose it.
+      const extended = manager.beginDrain(900);
+      expect(extended.parkAt).toBe(first.parkAt);
+
+      manager.cancelDrain();
+      expect(manager.beginDrain(60).parkAt).toBeUndefined();
+      manager.cancelDrain();
+    });
+
     test('refuses a new conversation instead of queueing it', async () => {
       const manager = new ConversationLockManager(10);
       const log: string[] = [];

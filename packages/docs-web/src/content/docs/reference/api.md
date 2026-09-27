@@ -61,13 +61,15 @@ naming what is still held:
     "requestedAt": "2026-09-23T19:00:00.000Z",
     "expiresAt": "2026-09-23T19:30:00.000Z",
     "refusedCount": 4,
+    "parkAt": "2026-09-23T19:10:00.000Z",
     "holding": { "activeConversations": 1, "queuedMessages": 0, "runningWorkflows": 2 }
   }
 }
 ```
 
-`state` is `drained` only when all three `holding` counts are zero. The key is absent
-entirely when the server is not draining.
+`state` is `drained` only when all three `holding` counts are zero. `parkAt` is when the
+deploy said it will park what is still running, present only when it said. The key is
+absent entirely when the server is not draining.
 
 ---
 
@@ -104,10 +106,11 @@ forward them.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| POST | `/internal/drain` | Begin draining for `budgetSeconds` (1--3600) |
+| POST | `/internal/drain` | Begin draining for `budgetSeconds` (1--3600); optional `graceSeconds` is reported back as `drain.parkAt` |
 | DELETE | `/internal/drain` | Stop draining, hand back anything parked, and accept work again (idempotent) |
 | POST | `/internal/drain/park` | Park what is still running; `409` when not draining |
 | GET | `/internal/drain/park/{drainId}` | What one drain parked, and how much has resumed |
+| GET | `/internal/deploy-policy` | The host's question before acting on a deploy request: answers `run` or `hold:<reason>` as plain text |
 
 ```bash
 curl -X POST http://127.0.0.1:3090/internal/drain \
@@ -727,3 +730,29 @@ curl -X POST http://localhost:3090/api/workflows/archon-assist/run \
 # 3. Monitor via SSE
 curl -N http://localhost:3090/api/stream/$CONV_ID
 ```
+
+---
+
+## Project deploy
+
+A project that deploys has a deploy row in the console header: what is live, the merged
+PRs not yet live, a **Deploy on Merge** switch, **Deploy now**, and **Cancel deploy**. A
+project with no deploy answers `{"deploy": null}` and gets no row.
+
+| Method | Path | Who | Description |
+|--------|------|-----|-------------|
+| GET | `/api/projects/{projectId}/deploy` | any | Live commit, waiting PRs, the install's deploy status, and whether this request could act (`canAct`) |
+| PATCH | `/api/projects/{projectId}/deploy` | person | `{"deployOnMerge": true \| false}` |
+| POST | `/api/projects/{projectId}/deploy` | person | Deploy now: `{"sha": "<the waiting tip>"}`; `409` if a deploy is already requested or the branch has moved |
+| DELETE | `/api/projects/{projectId}/deploy` | person | Cancel deploy; `409` once the swap has started |
+| GET | `/api/projects/{projectId}/deploy/log` | any | Toggle flips, Deploy now, Cancel, and every held, OK, failed and stopped deploy, newest first |
+
+**Person** means a request carrying a Cloudflare Access login pass
+(`Cf-Access-Jwt-Assertion`) that verifies against `ARCHON_CF_ACCESS_TEAM_DOMAIN` and
+`ARCHON_CF_ACCESS_AUD`. Anything else -- including every agent, which can reach the
+server directly -- gets `403`. With those two settings unset, every person-only action is
+refused.
+
+A chat that runs `scripts/request-deploy.sh` asks as `merge`: the host deploys it only
+while Deploy on Merge is on, and otherwise records it in `deploy-history` as `HELD`.
+Deploy now asks as `manual`, with an id the server checks before the host acts.

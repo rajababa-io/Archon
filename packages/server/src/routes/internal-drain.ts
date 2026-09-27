@@ -45,6 +45,9 @@ export { MAX_DRAIN_BUDGET_SECONDS };
 
 const drainRequestSchema = z.object({
   budgetSeconds: z.number().positive().max(MAX_DRAIN_BUDGET_SECONDS),
+  // How long the deploy lets the box finish before it parks what is left. Only
+  // reported back through health; an older deploy script omits it.
+  graceSeconds: z.number().nonnegative().max(MAX_DRAIN_BUDGET_SECONDS).optional(),
 });
 
 /** The slice of the lock manager these routes drive. */
@@ -91,7 +94,7 @@ export function registerInternalDrainRoutes(
         400
       );
     }
-    const status = lockManager.beginDrain(parsed.data.budgetSeconds);
+    const status = lockManager.beginDrain(parsed.data.budgetSeconds, parsed.data.graceSeconds);
     // WARN: the box has stopped accepting work. An operator reading startup logs
     // after a failed deploy needs to find this without grepping for debug lines.
     getLog().warn(

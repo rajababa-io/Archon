@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { useLocation, useParams } from 'react-router';
 import { ProjectViewTabs } from './ProjectViewTabs';
 import { DeployStrip } from './DeployStrip';
+import { DeployRow } from './DeployRow';
 import { ProjectStateChip } from './ProjectStateChip';
 import { useProjectLabel } from '../lib/display-name';
 import { Glyph } from '../lib/glyph';
@@ -10,6 +11,7 @@ import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import * as skill from '../skills';
 import type { Project } from '../primitives/project';
+import type { ProjectDeploy } from '../skills/deploy';
 import type { RunCounts } from '../skills/runs';
 import {
   activeProjectTab,
@@ -44,6 +46,13 @@ interface FeedShape {
  * appear in both — the header carried only the name, which left the icon
  * looking like a property of the list rather than of the project.
  *
+ * A project with a deploy gets one more row, between the name and the tabs
+ * (see DeployRow). That breaks the fixed height above, deliberately and only
+ * for those projects: the row is permanent for them, so it is the same height
+ * on every screen of that project, and projects without one never draw it.
+ * The one moment it can move the page is the first visit before the answer
+ * lands; after that the cached answer reserves it on the first frame.
+ *
  * The name is the repo alone. `owner/repo` above a path that already spells
  * the owner out said it twice and left the distinguishing half truncated;
  * the full name is still on the title attribute for anyone who wants it.
@@ -70,6 +79,18 @@ export function ProjectHeader(): ReactElement {
     )
   );
   const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
+  const { data: deploy, error: deployError } = useEntity<ProjectDeploy | null>(
+    projectId === undefined ? 'noop:all-projects:deploy' : K.projectDeploy(projectId),
+    () => (projectId === undefined ? Promise.resolve(null) : skill.getProjectDeploy(projectId))
+  );
+  const hasDeployRow = projectId !== undefined && deploy !== undefined && deploy !== null;
+  // The install-wide strip repeats the row's Live status, so a deploy project
+  // shows only the row. Held back until the answer lands, so a deploy project
+  // does not flash the strip first; a failed read falls back to the strip.
+  const showStrip =
+    projectId === undefined ||
+    deployError !== undefined ||
+    (deploy !== undefined && deploy === null);
 
   // Renaming in the rail reaches the header through the same override store,
   // so the two can never disagree about what this project is called.
@@ -103,7 +124,7 @@ export function ProjectHeader(): ReactElement {
         {/* Install-wide, in space this row was already spending on nothing.
             See components/DeployStrip for why it is here rather than in a band
             of its own, and what that placement costs. */}
-        <DeployStrip />
+        {showStrip ? <DeployStrip /> : null}
 
         {activity !== null ? (
           <span
@@ -123,6 +144,14 @@ export function ProjectHeader(): ReactElement {
           </span>
         ) : null}
       </div>
+
+      {hasDeployRow ? (
+        <DeployRow
+          projectId={projectId}
+          projectName={label === '' ? 'Project' : label}
+          deploy={deploy}
+        />
+      ) : null}
 
       {/* One min-height governs both states, so no project scoped cannot make
           the header a different height from a project that is. A spacer sized

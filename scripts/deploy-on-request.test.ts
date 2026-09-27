@@ -64,6 +64,7 @@ function writeDockerStub(bin: string, headSha: string, runningSha: string): void
     `#!/usr/bin/env bash
 for arg in "$@"; do
   case "$arg" in
+    *"deploy-policy"*) printf 'run\\n'; exit 0 ;;
     *"rev-parse HEAD"*) printf '%s\\n' '${headSha}'; exit 0 ;;
     *".deployed-sha"*) ${runningSha === '' ? 'exit 1' : `printf '%s\\n' '${runningSha}'; exit 0`} ;;
   esac
@@ -309,6 +310,7 @@ case "$1 $2" in
 esac
 for arg in "$@"; do
   case "$arg" in
+    *"deploy-policy"*) printf 'run\\n'; exit 0 ;;
     *"rev-parse HEAD"*) printf '%s\\n' '${WANT}'; exit 0 ;;
     *".deployed-sha"*) printf '%s\\n' '${WANT}'; exit 0 ;;
   esac
@@ -433,7 +435,12 @@ function writeWorktreeDockerStub(
     'detached',
     '',
     ...worktrees.flatMap(w => [`worktree ${w.path}`, `HEAD ${w.sha}`, 'branch refs/heads/x', '']),
-  ].join('\\n');
+  ]
+    .join('\\n')
+    // Single-quoted in the stub below; a path carrying a quote must not end the
+    // string, or the stub is a syntax error and every question it is asked comes
+    // back empty — which would make the odd-path test pass for the wrong reason.
+    .replaceAll("'", "'\\''");
   const perPath = worktrees
     .map(w => `    *"git -C '${w.path}' rev-parse HEAD"*) printf '%s\\n' '${w.sha}'; exit 0 ;;`)
     .join('\n');
@@ -443,6 +450,7 @@ function writeWorktreeDockerStub(
     `#!/usr/bin/env bash
 for arg in "$@"; do
   case "$arg" in
+    *"deploy-policy"*) printf 'run\\n'; exit 0 ;;
     *"worktree list --porcelain"*) printf '${porcelain}\\n'; exit 0 ;;
 ${perPath}
     *"rev-parse HEAD"*) printf '%s\\n' '${mainHead}'; exit 0 ;;
@@ -500,6 +508,160 @@ describePosix('a request made from a worktree', () => {
     writeSourceRecordingDeploy(box.deploy);
 
     expect(await run(box, WANT)).toBe(1);
-    expect(read(join(box.volume, 'deploy-last.log'))).not.toContain('SOURCE_DIR=');
+    const log = read(join(box.volume, 'deploy-last.log'));
+    expect(log).toContain('no worktree has it');
+    expect(log).not.toContain('SOURCE_DIR=');
+  });
+});
+
+/**
+ * A `docker` that answers the policy question with `answer`, and writes the
+ * query it was asked into `<bin>/policy-query` so a test can see who the script
+ * said was asking.
+ */
+function writePolicyDockerStub(bin: string, answer: string): void {
+  const stub = join(bin, 'docker');
+  writeFileSync(
+    stub,
+    `#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in
+    *"deploy-policy"*) printf '%s\\n' "\${@: -1}" >'${join(bin, 'policy-query')}'; printf '%s\\n' '${answer}'; exit 0 ;;
+    *"rev-parse HEAD"*) printf '%s\\n' '${WANT}'; exit 0 ;;
+    *".deployed-sha"*) printf '%s\\n' '${OTHER}'; exit 0 ;;
+  esac
+done
+exit 0
+`,
+    { mode: 0o755 }
+  );
+  chmodSync(stub, 0o755);
+}
+
+describePosix('Deploy on Merge decides whether a request runs (#211)', () => {
+  test('a merge request while the toggle is off is HELD, and nothing else happens', async () => {
+    const box = sandbox('held');
+    writePolicyDockerStub(box.bin, 'hold:toggle-off');
+    writeSucceedingDeploy(box.deploy);
+
+    expect(await run(box, `${WANT}\nmerge`)).toBe(0);
+
+    const history = read(join(box.volume, 'deploy-history'));
+    expect(history).toMatch(new RegExp(`HELD ${WANT} — Deploy on Merge is off \\(merge\\)`));
+    expect(history).not.toContain('OK ');
+    // Held means untouched: no log opened, no lock taken, request consumed.
+    expect(existsSync(join(box.volume, 'deploy-last.log'))).toBe(false);
+    expect(existsSync(join(box.volume, 'deploy-request'))).toBe(false);
+    expect(read(join(box.bin, 'policy-query'))).toContain('source=merge');
+  });
+
+  test('a request with no second line is treated as a merge, not as manual', async () => {
+    const box = sandbox('old-format');
+    writePolicyDockerStub(box.bin, 'hold:toggle-off');
+    writeSucceedingDeploy(box.deploy);
+
+    expect(await run(box, WANT)).toBe(0);
+    expect(read(join(box.bin, 'policy-query'))).toContain('source=merge');
+    expect(read(join(box.volume, 'deploy-history'))).toContain(`HELD ${WANT}`);
+  });
+
+  test('a manual request the server issued runs, and passes its id along', async () => {
+    const box = sandbox('manual');
+    const id = '0f0e0d0c-0b0a-4908-8706-050403020100';
+    writePolicyDockerStub(box.bin, 'run');
+    writeSucceedingDeploy(box.deploy);
+
+    expect(await run(box, `${WANT}\nmanual ${id}`)).toBe(0);
+
+    const query = read(join(box.bin, 'policy-query'));
+    expect(query).toContain('source=manual');
+    expect(query).toContain(`request=${id}`);
+    expect(read(join(box.volume, 'deploy-history'))).toContain(`OK ${WANT}`);
+    expect(read(join(box.volume, 'deploy-last.log'))).toContain('asked by: manual');
+  });
+
+  test('a server that cannot answer means HELD, never a deploy', async () => {
+    const box = sandbox('no-answer');
+    writePolicyDockerStub(box.bin, '');
+    writeSucceedingDeploy(box.deploy);
+
+    expect(await run(box, `${WANT}\nmerge`)).toBe(0);
+    expect(read(join(box.volume, 'deploy-history'))).toContain(
+      `HELD ${WANT} — the server could not say whether to deploy`
+    );
+  });
+});
+
+/** A deploy that marks the swap as begun, then hangs. */
+function writeSwappingDeploy(path: string): void {
+  writeFileSync(
+    path,
+    '#!/usr/bin/env bash\ntouch "$SWAP_MARKER_FILE"\necho swapping\nsleep 3\nexit 0\n',
+    { mode: 0o755 }
+  );
+  chmodSync(path, 0o755);
+}
+
+describePosix('Cancel deploy (#211)', () => {
+  const cancelEnv = { CANCEL_POLL_SECONDS: '0.1' };
+
+  function spawnWithEnv(box: Sandbox, request: string): Bun.Subprocess {
+    writeFileSync(join(box.volume, 'deploy-request'), `${request}\n`);
+    return Bun.spawn(['bash', SCRIPT], {
+      env: {
+        ...process.env,
+        ...cancelEnv,
+        PATH: `${box.bin}:${process.env.PATH ?? ''}`,
+        VOLUME: box.volume,
+        DEPLOY: box.deploy,
+        DEPLOY_DIR: box.deployDir,
+        SOURCE_DIR: '/source',
+        SERVICE: 'app',
+      },
+      stdout: 'pipe',
+      stderr: 'pipe',
+    });
+  }
+
+  test('before the swap, a cancel stops the deploy and records KILLED with what is live', async () => {
+    const box = sandbox('cancel');
+    writePolicyDockerStub(box.bin, 'run');
+    writeHangingDeploy(box.deploy);
+
+    const proc = spawnWithEnv(box, `${WANT}\nmerge`);
+    await waitForLog(box, 'started');
+    writeFileSync(join(box.volume, 'deploy-cancel'), `${WANT}\n`);
+
+    expect(await proc.exited).toBe(0);
+    expect(read(join(box.volume, 'deploy-history'))).toContain(
+      `KILLED ${WANT} — cancelled from the console; running ${OTHER}`
+    );
+    expect(existsSync(join(box.volume, 'deploy-cancel'))).toBe(false);
+  });
+
+  test('once the swap has begun, a cancel is ignored and the deploy finishes', async () => {
+    const box = sandbox('too-late');
+    writePolicyDockerStub(box.bin, 'run');
+    writeSwappingDeploy(box.deploy);
+
+    const proc = spawnWithEnv(box, `${WANT}\nmerge`);
+    await waitForLog(box, 'swapping');
+    writeFileSync(join(box.volume, 'deploy-cancel'), `${WANT}\n`);
+
+    expect(await proc.exited).toBe(0);
+    expect(read(join(box.volume, 'deploy-last.log'))).toContain(
+      'cancel ignored — the swap had already started'
+    );
+    expect(read(join(box.volume, 'deploy-history'))).toContain(`OK ${WANT}`);
+  });
+
+  test('a cancel left over from an earlier attempt is not applied to this one', async () => {
+    const box = sandbox('stale-cancel');
+    writePolicyDockerStub(box.bin, 'run');
+    writeSucceedingDeploy(box.deploy);
+    writeFileSync(join(box.volume, 'deploy-cancel'), 'stale\n');
+
+    expect(await run(box, `${WANT}\nmerge`)).toBe(0);
+    expect(read(join(box.volume, 'deploy-history'))).toContain(`OK ${WANT}`);
   });
 });

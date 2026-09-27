@@ -999,6 +999,29 @@ export class SqliteAdapter implements IDatabase {
       CREATE INDEX IF NOT EXISTS idx_parked_work_drain
         ON remote_agent_parked_work(drain_id);
 
+      -- Per-project deploy settings and the console's deploy actions (#211).
+      -- Mirrors migrations/038_project_deploy.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_project_deploy (
+        codebase_id TEXT PRIMARY KEY REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        method TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        deploy_on_merge INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_by TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS remote_agent_deploy_events (
+        id TEXT PRIMARY KEY,
+        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        kind TEXT NOT NULL CHECK (kind IN ('toggle_on', 'toggle_off', 'deploy_requested', 'deploy_cancelled')),
+        actor TEXT,
+        sha TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_deploy_events_codebase
+        ON remote_agent_deploy_events(codebase_id, created_at);
+
       -- Workflow events table
       CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
