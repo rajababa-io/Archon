@@ -44,12 +44,39 @@ export function MenuItem({
   label,
   onSelect,
   danger = false,
+  disabledReason,
 }: {
   label: string;
   onSelect: () => void;
   /** Destructive: red, and kept last behind a separator by the caller. */
   danger?: boolean;
+  /**
+   * Set when the action is unavailable right now. The row stays in place and
+   * greys out, with this written under the label: a row that vanished would
+   * move every row below it, and a grey row with no reason reads as broken.
+   */
+  disabledReason?: string;
 }): ReactElement {
+  if (disabledReason !== undefined) {
+    return (
+      <button
+        type="button"
+        role="menuitem"
+        aria-disabled
+        aria-description={disabledReason}
+        onClick={e => {
+          e.stopPropagation();
+        }}
+        className="flex w-full cursor-default items-start gap-2 rounded-[5px] px-2 py-1 text-left text-body"
+      >
+        <TickSlot on={false} />
+        <span className="flex flex-col">
+          <span className="text-text-tertiary">{label}</span>
+          <span className="text-small text-text-tertiary opacity-80">{disabledReason}</span>
+        </span>
+      </button>
+    );
+  }
   return (
     <button
       type="button"

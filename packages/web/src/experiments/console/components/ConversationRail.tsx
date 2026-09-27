@@ -18,6 +18,7 @@ import { relativeTime } from '../lib/format';
 import {
   askAwaitingIds,
   chatStatus,
+  markUnreadBlocker,
   completedIds,
   readyIds,
   unreadIds,
@@ -87,6 +88,8 @@ interface ConversationRailProps {
    * neighbour because only the rail knows the displayed order.
    */
   onComplete: (id: string, completed: boolean, next: string | null) => void;
+  /** Put an idle chat back to unread, so it shows amber until you read it again. */
+  onMarkUnread: (id: string) => void;
   /**
    * Persist an arrangement: `ids` is the rail as displayed, top first.
    *
@@ -160,6 +163,7 @@ export function ConversationRail({
   onSelect,
   onRename,
   onComplete,
+  onMarkUnread,
   onReorder,
   scope,
   onScopeChange,
@@ -700,6 +704,16 @@ export function ConversationRail({
                         ? chooseNeighbourChat(visible, activeConvId, [c.id])
                         : null
                     );
+                    setMenuFor(null);
+                  }}
+                />
+                <MenuItem
+                  label="Mark unread"
+                  disabledReason={
+                    markUnreadBlocker(status, isActive, c.lastActivityAt !== null) ?? undefined
+                  }
+                  onSelect={() => {
+                    onMarkUnread(c.id);
                     setMenuFor(null);
                   }}
                 />

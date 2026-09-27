@@ -237,6 +237,17 @@ export function ChatPage(): ReactElement {
     })();
   };
 
+  const markConversationUnread = (id: string): void => {
+    void (async (): Promise<void> => {
+      try {
+        await skill.markConversationUnread(id);
+        invalidateConversations();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Could not mark the chat unread.');
+      }
+    })();
+  };
+
   /**
    * Persist the rail's arrangement.
    *
@@ -869,6 +880,7 @@ export function ChatPage(): ReactElement {
         onSelect={selectConversation}
         onRename={renameConversation}
         onComplete={completeConversation}
+        onMarkUnread={markConversationUnread}
         onReorder={reorderConversations}
         scope={scope}
         onScopeChange={setScope}

@@ -578,6 +578,27 @@ export async function markConversationRead(id: string): Promise<void> {
 }
 
 /**
+ * Put a chat back to unread, the reverse of `markConversationRead`.
+ *
+ * NULL rather than a timestamp just before `last_activity_at`: NULL already
+ * means "never read" and the rail already reads it as unread, so this adds no
+ * third meaning to the column. Reading the chat to the end clears it again
+ * exactly as it would a chat nobody had opened.
+ *
+ * Like marking read, it leaves `updated_at` alone — the row's content has not
+ * changed.
+ */
+export async function markConversationUnread(id: string): Promise<void> {
+  const result = await pool.query(
+    'UPDATE remote_agent_conversations SET last_read_at = NULL WHERE id = $1',
+    [id]
+  );
+  if (result.rowCount === 0) {
+    throw new ConversationNotFoundError(id);
+  }
+}
+
+/**
  * Set or clear a conversation's color label.
  *
  * `null` clears it. The value is validated at the API boundary against

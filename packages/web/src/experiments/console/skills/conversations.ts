@@ -332,6 +332,17 @@ export async function markConversationRead(conversationPlatformId: string): Prom
   );
 }
 
+/**
+ * Put a chat back to unread — the reverse of `markConversationRead`, and the
+ * same resource. The server clears the read marker; there is no body.
+ */
+export async function markConversationUnread(conversationPlatformId: string): Promise<void> {
+  await requestJson<{ success: boolean }>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/read`,
+    { method: 'DELETE' }
+  );
+}
+
 /** How the server took a message: started now, or queued behind a running turn. */
 export type DispatchResult = components['schemas']['DispatchResponse'];
 

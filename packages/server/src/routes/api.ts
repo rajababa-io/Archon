@@ -1105,6 +1105,27 @@ const markConversationReadRoute = createRoute({
   },
 });
 
+/**
+ * Put a chat back to unread — the reverse of the route above, on the same
+ * resource. DELETE because it removes the read record rather than setting a
+ * value; as with marking read, there is no body.
+ */
+const markConversationUnreadRoute = createRoute({
+  method: 'delete',
+  path: '/api/conversations/{id}/read',
+  tags: ['Conversations'],
+  summary: 'Put a chat back to unread',
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: successResponseSchema } },
+      description: 'Marked unread',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
 const deleteConversationRoute = createRoute({
   method: 'delete',
   path: '/api/conversations/{id}',
@@ -4019,6 +4040,25 @@ export function registerApiRoutes(
       }
       getLog().error({ err: error, platformId }, 'mark_conversation_read_failed');
       return apiError(c, 500, 'Failed to mark conversation read');
+    }
+  });
+
+  // DELETE /api/conversations/:id/read - Put the unread mark back
+  registerOpenApiRoute(markConversationUnreadRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      await conversationDb.markConversationUnread(conv.id);
+      return c.json({ success: true });
+    } catch (error) {
+      if (error instanceof ConversationNotFoundError) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      getLog().error({ err: error, platformId }, 'mark_conversation_unread_failed');
+      return apiError(c, 500, 'Failed to mark conversation unread');
     }
   });
 

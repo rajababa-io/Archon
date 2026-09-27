@@ -33,6 +33,7 @@ const mockUpdateConversationTitle = mock(async (_id: string, _title: string) => 
 const mockSetConversationCompleted = mock(async (_id: string, _completed: boolean) => {});
 const mockSetConversationReady = mock(async (_id: string, _ready: boolean) => {});
 const mockMarkConversationRead = mock(async (_id: string) => {});
+const mockMarkConversationUnread = mock(async (_id: string) => {});
 const mockSetConversationArchived = mock(async (_id: string, _archived: boolean) => {});
 const mockListConversations = mock(
   async (_options?: {
@@ -119,6 +120,7 @@ mock.module('@archon/core/db/conversations', () => ({
   setConversationModelPin: mockSetConversationModelPin,
   getConversationById: mockGetConversationById,
   markConversationRead: mockMarkConversationRead,
+  markConversationUnread: mockMarkConversationUnread,
   setConversationArchived: mockSetConversationArchived,
   listConversations: mockListConversations,
   getOrCreateConversation: mockGetOrCreateConversation,
@@ -450,6 +452,37 @@ describe('POST /api/conversations/:id/read', () => {
     });
     expect(response.status).toBe(404);
     expect(mockMarkConversationRead).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /api/conversations/:id/read', () => {
+  test('resolves the platform ID and marks the internal one unread', async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => MOCK_CONV);
+    mockMarkConversationUnread.mockImplementationOnce(async () => {});
+
+    const app = new OpenAPIHono();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    const response = await app.request('/api/conversations/web-test-abc/read', {
+      method: 'DELETE',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ success: true });
+    expect(mockMarkConversationUnread).toHaveBeenCalledWith('internal-uuid-123');
+  });
+
+  test('returns 404 for a chat that is not there', async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => null);
+    mockMarkConversationUnread.mockClear();
+
+    const app = new OpenAPIHono();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+
+    const response = await app.request('/api/conversations/web-nonexistent-id/read', {
+      method: 'DELETE',
+    });
+    expect(response.status).toBe(404);
+    expect(mockMarkConversationUnread).not.toHaveBeenCalled();
   });
 });
 

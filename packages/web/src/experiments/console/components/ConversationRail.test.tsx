@@ -26,6 +26,7 @@ const draw = (overrides: Partial<Parameters<typeof ConversationRail>[0]> = {}): 
       onSelect={() => undefined}
       onRename={() => undefined}
       onComplete={() => undefined}
+      onMarkUnread={() => undefined}
       onReorder={() => undefined}
       scope="open"
       onScopeChange={() => undefined}
