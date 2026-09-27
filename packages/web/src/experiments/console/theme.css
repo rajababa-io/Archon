@@ -89,6 +89,7 @@
      because the dark value is already bright enough to read as amber. */
   --warning-mark: oklch(0.8 0.14 85);
   --warning-soft: oklch(0.8 0.14 85 / 0.14);
+  --ci-wait: oklch(0.72 0.15 300);
   --error: oklch(0.68 0.215 18);
   --error-soft: oklch(0.68 0.215 18 / 0.14);
 

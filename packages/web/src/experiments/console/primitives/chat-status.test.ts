@@ -5,6 +5,7 @@ import {
   chatStatus,
   completedIds,
   readyIds,
+  runningRunIds,
   unreadIds,
 } from './chat-status';
 
@@ -14,7 +15,8 @@ const sets = (
   done: string[] = [],
   unread: string[] = [],
   ready: string[] = [],
-  waiting: string[] = []
+  waiting: string[] = [],
+  running: string[] = []
 ) => ({
   working: new Set(working),
   awaiting: new Set(awaiting),
@@ -22,6 +24,7 @@ const sets = (
   unread: new Set(unread),
   ready: new Set(ready),
   waiting: new Set(waiting),
+  running: new Set(running),
 });
 
 describe('chatStatus', () => {
@@ -47,6 +50,18 @@ describe('chatStatus', () => {
     expect(chatStatus('a', sets([], [], ['a'], [], [], ['a']))).toBe('done');
     expect(chatStatus('a', sets([], [], [], [], ['a'], ['a']))).toBe('ready');
     expect(chatStatus('b', sets([], [], [], [], [], ['a']))).toBe('idle');
+  });
+
+  // #188: a chat whose run executed for twenty minutes read "Nothing is running
+  // in this chat". Running takes idle's place, and CI's, and nothing else's.
+  test('a running run replaces idle and waiting, and nothing that outranks them', () => {
+    expect(chatStatus('a', sets([], [], [], [], [], [], ['a']))).toBe('running');
+    expect(chatStatus('a', sets([], [], [], [], [], ['a'], ['a']))).toBe('running');
+    expect(chatStatus('a', sets(['a'], [], [], [], [], [], ['a']))).toBe('working');
+    expect(chatStatus('a', sets([], ['a'], [], [], [], [], ['a']))).toBe('awaiting');
+    expect(chatStatus('a', sets([], [], [], ['a'], [], [], ['a']))).toBe('unread');
+    expect(chatStatus('a', sets([], [], ['a'], [], [], [], ['a']))).toBe('done');
+    expect(chatStatus('a', sets([], [], [], [], ['a'], [], ['a']))).toBe('ready');
   });
 
   // The pair this state exists to separate. `done` is the human's answer and
@@ -190,6 +205,26 @@ describe('awaitingInputIds', () => {
   });
 });
 
+describe('runningRunIds', () => {
+  test('only a run that is moving counts — paused, finished and failed do not', () => {
+    const runs = ['running', 'paused', 'completed', 'failed', 'cancelled'].map(status => ({
+      status,
+      conversationPlatformId: status,
+    }));
+    expect([...runningRunIds(runs)]).toEqual(['running']);
+  });
+
+  test('a chat-dispatched run is found by its worker id, as awaiting finds it', () => {
+    expect([...runningRunIds([{ status: 'running', workerPlatformId: 'web-1' }])]).toEqual([
+      'web-1',
+    ]);
+  });
+
+  test('a run with no conversation marks no chat', () => {
+    expect([...runningRunIds([{ status: 'running' }])]).toEqual([]);
+  });
+});
+
 describe('askAwaitingIds', () => {
   const ask = (body: string): string => ['```ask', body, '```'].join('\n');
   const spec = '{"questions":[{"title":"Ship it?","options":[{"label":"Yes"}]}]}';
@@ -243,6 +278,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('idle');
@@ -256,6 +292,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('idle');
@@ -272,6 +309,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: new Set(['a']),
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('unread');
@@ -285,6 +323,7 @@ describe('chatStatus when the working signal is missing', () => {
         done: none,
         unread: none,
         ready: none,
+        running: none,
         waiting: none,
       })
     ).toBe('awaiting');

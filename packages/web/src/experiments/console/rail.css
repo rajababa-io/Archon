@@ -798,12 +798,23 @@
   background: transparent;
   box-shadow: inset 0 0 0 2px currentColor;
 }
-/* Waiting on CI: the chat asked to be told when CI finishes, and the server
-   is watching for it. Working's blue, hollow — the same move ready makes on
-   done's green: "something is happening for this chat" in one hue, and the
-   empty centre says it is not the agent running. */
-.chat-status.is-waiting {
+/* Run going: a workflow run this chat started is executing. Working's blue,
+   hollow — the same move ready makes on done's green: "work is moving for this
+   chat" in one hue, and the empty centre says it is not the agent's own turn. */
+.chat-status.is-running {
   color: var(--running);
+}
+.chat-status.is-running i {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+/* Waiting on CI: the chat asked to be told when CI finishes, and the server
+   is watching for it. Hollow, because it is a wait, and purple because no
+   other state uses it — it shared the run's blue until runs had a mark (#188),
+   and orange would have differed from the filled amber "Needs you" by fill
+   alone. */
+.chat-status.is-waiting {
+  color: var(--ci-wait);
 }
 .chat-status.is-waiting i {
   background: transparent;
