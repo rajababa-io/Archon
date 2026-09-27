@@ -21,6 +21,8 @@ const mockQuery = mock<MockQuery>(async function* (_params) {
 // Mock the claude-agent-sdk
 mock.module('@anthropic-ai/claude-agent-sdk', () => ({
   query: mockQuery,
+  tool: (name: string) => ({ name }),
+  createSdkMcpServer: (config: { name: string }) => ({ type: 'sdk', name: config.name }),
 }));
 
 import { ClaudeProvider, classifySubprocessError, shouldPassNoEnvFile } from './provider';
@@ -524,6 +526,44 @@ describe('ClaudeProvider', () => {
           permissionMode: 'bypassPermissions',
         }),
       });
+    });
+
+    // #222: with a string prompt the SDK closes the CLI's input at the first
+    // result, and an in-process tool called in a later, background-woken turn
+    // then never reaches its handler.
+    test('a turn offering in-process tools streams its prompt and asks the CLI for session states', async () => {
+      for await (const _ of client.sendQuery('my prompt', '/workspace', undefined, {
+        nativeTools: [
+          {
+            name: 'ping',
+            description: 'ping',
+            inputSchema: { properties: {}, required: [] },
+            handler: async () => 'pong',
+          },
+        ],
+      })) {
+        // consume
+      }
+
+      const callArgs = mockQuery.mock.calls[0][0] as {
+        prompt: unknown;
+        options: { env: Record<string, string | undefined> };
+      };
+      expect(typeof callArgs.prompt).not.toBe('string');
+      expect(callArgs.options.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe('1');
+    });
+
+    test('a turn with neither tools nor an inbox keeps the plain prompt', async () => {
+      for await (const _ of client.sendQuery('my prompt', '/workspace')) {
+        // consume
+      }
+
+      const callArgs = mockQuery.mock.calls[0][0] as {
+        prompt: unknown;
+        options: { env: Record<string, string | undefined> };
+      };
+      expect(callArgs.prompt).toBe('my prompt');
+      expect(callArgs.options.env.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBeUndefined();
     });
 
     test('omits persistSession from SDK options by default', async () => {
