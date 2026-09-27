@@ -438,6 +438,12 @@ async function dispatchBackgroundWorkflowOwned(
         'workflow.worktree_disabled_by_policy'
       );
       workerCwd = codebase.default_cwd;
+      await db.updateConversation(workerConv.id, { cwd: workerCwd }).catch((e: unknown) => {
+        getLog().warn(
+          { err: toError(e), workerPlatformId },
+          'orchestrator.worker_cwd_persist_failed'
+        );
+      });
     } else if (ctx.adoptionLane?.kind === 'reuse-worktree') {
       // Adoption lane 2: the adopted run's worktree survives — inherit it dirty-as-is
       // instead of cutting a fresh one from base. Linking the env keeps standard

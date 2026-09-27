@@ -608,6 +608,10 @@ describe('dispatchBackgroundWorkflow', () => {
     expect(mockCreateWorkflowRun).toHaveBeenCalledTimes(1);
     const runRow = mockCreateWorkflowRun.mock.calls[0]?.[0];
     expect(runRow?.working_path).toBe('/workspace/test-repo');
+    // The worker row agrees with where the run executes; it was seeded with the
+    // parent's cwd, so without the correction it would name the parent's tree.
+    const lastWorkerUpdate = mockUpdateConversation.mock.calls.at(-1) as unknown[] | undefined;
+    expect(lastWorkerUpdate?.[1]).toEqual({ cwd: '/workspace/test-repo' });
     // Operators can distinguish live-checkout runs from worktree runs in logs.
     expect(mockLogger.info).toHaveBeenCalledWith(
       { workflowName: 'bg-workflow', conversationId: 'parent-conv', codebaseId: 'cb-1' },
