@@ -28,18 +28,18 @@ export function TurnChecklist({ items }: TurnChecklistProps): ReactElement | nul
       aria-label="Agent's to-do list"
       className="mt-2 w-fit max-w-[74ch] min-w-[16rem] rounded-[var(--radius-card)] border border-border bg-surface-inset px-3 py-2"
     >
-      <header className="mb-1 flex items-baseline gap-2 font-mono text-[length:var(--text-micro)] text-text-tertiary">
-        <span className="font-semibold uppercase tracking-[0.11em]">To-do</span>
+      <header className="mb-1 flex items-baseline gap-2 text-mini text-text-tertiary">
+        <span className="font-medium">To-do</span>
         <span className="tabular-nums">
           {done} of {items.length} done
         </span>
       </header>
-      <ol className="flex flex-col gap-[0.1875rem] text-[length:var(--text-small)]">
+      <ol className="flex flex-col gap-[0.1875rem] text-small">
         {items.map(item => {
           const mark = MARK[item.status];
           return (
             <li key={item.id} className="flex items-baseline gap-2">
-              <span aria-hidden className="w-3 shrink-0 font-mono" style={{ color: mark.color }}>
+              <span aria-hidden className="w-3 shrink-0" style={{ color: mark.color }}>
                 {mark.glyph}
               </span>
               <span className="sr-only">{mark.label}: </span>

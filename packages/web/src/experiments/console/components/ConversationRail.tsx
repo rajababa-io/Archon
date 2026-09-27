@@ -445,7 +445,7 @@ export function ConversationRail({
                 onScopeChange(value);
               }}
               aria-pressed={scope === value}
-              className={`rounded-[6px] px-2 py-[3px] font-mono text-[10.5px] transition-colors ${
+              className={`rounded-[6px] px-2 py-[3px] text-mini transition-colors ${
                 scope === value
                   ? 'bg-surface-hover text-text-primary'
                   : 'text-text-tertiary hover:text-text-secondary'
@@ -480,7 +480,7 @@ export function ConversationRail({
 
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
+        className="min-h-0 flex-1 overflow-y-auto px-2 pb-1.25"
         // The whole list answers the drag, not each row: rows slide under the
         // cursor during the preview, so a per-row hit test would report
         // whichever row had just moved into place rather than the one the user
@@ -500,7 +500,7 @@ export function ConversationRail({
       >
         {pendingNew ? (
           <div
-            className="mb-0.5 flex items-center gap-2.5 rounded-[10px] border px-2.5 py-2"
+            className="mb-0.5 flex items-center gap-2 rounded-lg border px-2.5 py-1.25"
             style={{
               borderColor: 'color-mix(in oklch, var(--accent), transparent 55%)',
               background: 'var(--surface-elevated)',
@@ -509,16 +509,16 @@ export function ConversationRail({
             <span aria-hidden className="w-3.5 shrink-0" />
             <span
               aria-hidden
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-dashed font-mono text-[12px] font-bold text-text-tertiary"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-dashed text-body font-medium text-text-tertiary"
               style={{ borderColor: 'var(--border-bright)' }}
             >
               +
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold text-text-primary">
+              <span className="block truncate text-body font-medium text-text-primary">
                 New chat
               </span>
-              <span className="mt-[2px] block text-[11px] text-text-tertiary">
+              <span className="mt-[2px] block text-small text-text-tertiary">
                 Send a message to start it
               </span>
             </span>
@@ -526,7 +526,7 @@ export function ConversationRail({
         ) : null}
 
         {visible.length === 0 && !pendingNew ? (
-          <p className="px-2 py-3 text-[12px] text-text-tertiary">No chats yet.</p>
+          <p className="px-2 py-1.75 text-body text-text-tertiary">No chats yet.</p>
         ) : null}
 
         {visible.map((c, index) => {
@@ -657,7 +657,7 @@ export function ConversationRail({
                 anchor={rowRefs.current.get(c.id) ?? null}
                 open={menuFor === c.id}
                 onClose={closeMenu}
-                width={188}
+                width={220}
                 label={`Actions for ${conversationLabel(c)}`}
               >
                 <MenuItem
@@ -697,7 +697,7 @@ export function ConversationRail({
             finished chats eventually outrun it. Say so under the last row:
             without this the list stops at the cap and looks complete. */}
         {omitted > 0 ? (
-          <p className="px-2 py-3 text-[11px] text-text-tertiary">
+          <p className="px-2 py-1.75 text-small text-text-tertiary">
             {omitted} older {omitted === 1 ? 'chat' : 'chats'} not shown.
           </p>
         ) : null}

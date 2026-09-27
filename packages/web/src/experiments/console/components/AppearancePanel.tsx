@@ -55,7 +55,7 @@ function Segmented<T extends string>({
             onPick(value);
           }}
           aria-pressed={active === value}
-          className={`rounded-[8px] border px-2.5 py-1 font-mono text-[11px] transition-colors ${
+          className={`rounded-[8px] border px-2.5 py-1 text-small transition-colors ${
             active === value ? 'text-text-primary' : 'text-text-tertiary hover:text-text-secondary'
           }`}
           style={{
@@ -83,13 +83,13 @@ function Row({
 }): ReactElement {
   return (
     <div
-      className={`flex items-center justify-between gap-4 py-2 ${
-        divided ? 'border-t border-border pt-2.5' : ''
+      className={`flex items-center justify-between gap-3 py-1.25 ${
+        divided ? 'border-t border-border pt-1.5' : ''
       }`}
     >
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-text-primary">{title}</div>
-        <div className="mt-0.5 text-[11.5px] text-text-tertiary">{hint}</div>
+        <div className="text-body font-medium text-text-primary">{title}</div>
+        <div className="mt-0.5 text-small text-text-tertiary">{hint}</div>
       </div>
       {children}
     </div>
@@ -148,7 +148,7 @@ export function AppearancePanel(): ReactElement {
           onChange={e => {
             setAppearance({ theme: e.target.value as ThemeChoice });
           }}
-          className="shrink-0 rounded-[8px] border border-border bg-surface-inset px-2.5 py-1 font-mono text-[11px] text-text-primary transition-colors hover:border-border-bright"
+          className="shrink-0 rounded-[8px] border border-border bg-surface-inset px-2.5 py-1 text-small text-text-primary transition-colors hover:border-border-bright"
         >
           {THEME_OPTIONS.map(o => (
             <option key={o.value} value={o.value}>
@@ -160,7 +160,7 @@ export function AppearancePanel(): ReactElement {
       {appearance.theme === 'custom' ? <ThemeCustomiser value={appearance.custom} /> : null}
       <Row
         title="Text size"
-        hint="Scales the whole interface, not just the text. Five steps, 6% apart."
+        hint="Scales the whole interface, not just the text. XS to XL is about 70%."
       >
         <Segmented
           label="Text size"
@@ -195,12 +195,10 @@ export function AppearancePanel(): ReactElement {
           onPick={setClockFormat}
         />
       </Row>
-      <div className="flex items-baseline gap-3 border-t border-border pt-2.5">
-        <span className="font-mono text-[10.5px] tracking-[0.12em] text-text-tertiary">
-          PREVIEW
-        </span>
-        <span className="font-mono text-[12.5px] text-text-secondary">{clock(sampleIso)}</span>
-        <span className="font-mono text-[10.5px] text-text-tertiary">
+      <div className="flex items-baseline gap-2.25 border-t border-border pt-1.5">
+        <span className="text-mini text-text-tertiary">PREVIEW</span>
+        <span className="text-body text-text-secondary">{clock(sampleIso)}</span>
+        <span className="text-mini text-text-tertiary">
           (other: {formatClockIn(sampleIso, activeClock === '12' ? '24' : '12')})
         </span>
       </div>

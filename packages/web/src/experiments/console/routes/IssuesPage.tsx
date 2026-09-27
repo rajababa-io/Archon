@@ -47,11 +47,11 @@ function Card({
         type="button"
         onClick={onOpen}
         title={`${placement.reason}\nOpens here`}
-        className="block w-full rounded-[9px] border border-border bg-surface px-3 py-2.5 text-left transition-colors hover:border-border-bright hover:bg-surface-hover"
+        className="block w-full rounded-lg border border-border bg-surface px-3 py-1.5 text-left transition-colors hover:border-border-bright hover:bg-surface-hover"
       >
-        <div className="text-[13px] leading-[1.4] text-text-primary">{issue.title}</div>
+        <div className="text-body leading-[1.4] text-text-primary">{issue.title}</div>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <span className="font-mono text-[10.5px] text-text-tertiary">#{issue.number}</span>
+          <span className="text-mini text-text-tertiary">#{issue.number}</span>
           {type !== null ? (
             <IssueTypeChip
               name={type.name}
@@ -64,7 +64,7 @@ function Card({
           {areas.map(a => (
             <span
               key={a.name}
-              className="inline-flex h-[17px] items-center rounded-full border px-[7px] text-[10px]"
+              className="inline-flex h-[17px] items-center rounded-full border px-[7px] text-mini"
               style={{ borderColor: a.color, color: 'var(--text-secondary)' }}
             >
               {a.name}
@@ -171,7 +171,7 @@ export function IssuesPage(): ReactElement {
     [...byColumn].filter(([k]) => !hidden.has(k)).reduce((n, [, v]) => n + v.length, 0);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3 px-8 pb-6 pt-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-x-2.25 gap-y-1.75 px-6.25 pb-3.75 pt-2.5">
       <div className="flex items-center gap-2">
         {/* How fresh this is, stated rather than implied.
             The prototype's line reads "Live · synced 4s ago · webhook + 60s
@@ -179,7 +179,7 @@ export function IssuesPage(): ReactElement {
             webhook, the route does a plain GraphQL POST with no ETag, and
             nothing polls. It is read when you open the tab and when you press
             refresh, so that is what it says. */}
-        <span className="font-mono text-[11px] text-text-tertiary">
+        <span className="text-small text-text-tertiary">
           {data?.repo ?? ''} · read-only
           {fetchedAt === undefined
             ? ''
@@ -208,9 +208,9 @@ export function IssuesPage(): ReactElement {
           />
         ))}
 
-        <div className="ml-auto flex items-center gap-2.5">
+        <div className="ml-auto flex items-center gap-2">
           {hidden.size > 0 ? (
-            <span className="text-[11px] text-text-tertiary">
+            <span className="text-small text-text-tertiary">
               {hiddenCount} issue{hiddenCount === 1 ? '' : 's'} in {hidden.size} hidden column
               {hidden.size === 1 ? '' : 's'}
             </span>
@@ -222,13 +222,13 @@ export function IssuesPage(): ReactElement {
               setColumnsOpen(v => !v);
             }}
             title="Choose which columns to show"
-            className="inline-flex h-[22px] items-center gap-1.5 rounded-[7px] border px-2 text-[11px] text-text-secondary transition-colors hover:text-text-primary"
+            className="inline-flex h-[22px] items-center gap-1.5 rounded-[7px] border px-2 text-small text-text-secondary transition-colors hover:text-text-primary"
             style={{ borderColor: 'var(--border)' }}
           >
             <Columns3 className="h-[12px] w-[12px]" />
             Columns
             {hidden.size > 0 ? (
-              <span className="font-mono text-text-tertiary">
+              <span className="text-text-tertiary">
                 {ISSUE_COLUMNS.length - hidden.size}/{ISSUE_COLUMNS.length}
               </span>
             ) : null}
@@ -262,14 +262,14 @@ export function IssuesPage(): ReactElement {
                       return next;
                     });
                   }}
-                  className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-[12.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-left text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
                 >
                   <Check
                     className={`h-[13px] w-[13px] shrink-0 ${shown ? '' : 'opacity-0'}`}
                     aria-hidden
                   />
                   <span className="flex-1">{c.label}</span>
-                  <span className="font-mono text-[10.5px] text-text-tertiary">{n}</span>
+                  <span className="text-mini text-text-tertiary">{n}</span>
                 </button>
               );
             })}
@@ -282,7 +282,7 @@ export function IssuesPage(): ReactElement {
                   onClick={() => {
                     setHidden(new Set());
                   }}
-                  className="flex w-full items-center rounded-[6px] px-2 py-1.5 text-left text-[12.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="flex w-full items-center rounded-[6px] px-2 py-1.5 text-left text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
                 >
                   Show all columns
                 </button>
@@ -293,21 +293,21 @@ export function IssuesPage(): ReactElement {
       </div>
 
       <div
-        className="grid min-h-0 flex-1 gap-2.5"
+        className="grid min-h-0 flex-1 gap-x-2 gap-y-1.5"
         style={{ gridTemplateColumns: `repeat(${String(visible.length)}, minmax(0, 1fr))` }}
       >
         {visible.map(col => {
           const items = byColumn.get(col.key) ?? [];
           return (
             <section key={col.key} className="group/col flex min-h-0 flex-col">
-              <div className="flex items-center gap-1.5 px-1 pb-2">
+              <div className="flex items-center gap-1.5 px-1 pb-1.25">
                 <span
                   aria-hidden
                   className="h-[7px] w-[7px] shrink-0 rounded-full"
                   style={{ background: col.color }}
                 />
-                <span className="text-[12px] font-medium text-text-secondary">{col.label}</span>
-                <span className="font-mono text-[11px] text-text-tertiary">{items.length}</span>
+                <span className="text-body font-medium text-text-secondary">{col.label}</span>
+                <span className="text-small text-text-tertiary">{items.length}</span>
                 <button
                   type="button"
                   title={`Hide ${col.label}`}
@@ -322,7 +322,7 @@ export function IssuesPage(): ReactElement {
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto pr-1">
                 {items.length === 0 ? (
-                  <p className="px-1 py-1.5 text-[11px] text-text-tertiary">
+                  <p className="px-1 py-1.5 text-small text-text-tertiary">
                     {COLUMN_EMPTY[col.key]}
                   </p>
                 ) : (

@@ -23,7 +23,7 @@ interface WhenBuilderProps {
 const OPS: readonly WhenOp[] = ['==', '!=', '<', '>', '<=', '>='];
 
 const SMALL_INPUT =
-  'rounded-[7px] border border-border bg-surface px-1.5 py-1 font-mono text-[11.5px] text-text-primary outline-none focus:border-accent-bright/60';
+  'rounded-[7px] border border-border bg-surface px-1.5 py-1 font-mono text-small text-text-primary outline-none focus:border-accent-bright/60';
 
 function emptyAtom(firstUpstream: string | undefined): AtomNode {
   return { kind: 'node', nodeId: firstUpstream ?? 'node', op: '==', value: '' };
@@ -57,7 +57,7 @@ function NodeRefFields({
           <option key={id} value={id}>{`$${id}`}</option>
         ))}
       </select>
-      <span className="font-mono text-[11px] text-text-tertiary">.output.</span>
+      <span className="font-mono text-small text-text-tertiary">.output.</span>
       <input
         aria-label="Field"
         type="text"
@@ -101,7 +101,7 @@ function InputRefFields({
 }): ReactElement {
   return (
     <>
-      <span className="font-mono text-[11px] text-text-tertiary">$INPUTS.</span>
+      <span className="font-mono text-small text-text-tertiary">$INPUTS.</span>
       <input
         aria-label="Input name"
         type="text"
@@ -163,7 +163,7 @@ function AtomRow({
         type="button"
         onClick={onRemove}
         aria-label="Remove condition"
-        className="rounded px-1 text-[13px] leading-none text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
+        className="rounded px-1 text-body leading-none text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
       >
         ×
       </button>
@@ -181,9 +181,7 @@ export function WhenBuilder({ value, upstreamIds, onChange }: WhenBuilderProps):
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-text-tertiary">
-        When (condition)
-      </span>
+      <span className="text-mini font-medium text-text-tertiary">When (condition)</span>
       <input
         type="text"
         value={raw}
@@ -193,10 +191,10 @@ export function WhenBuilder({ value, upstreamIds, onChange }: WhenBuilderProps):
           const next = e.target.value;
           onChange(next.trim().length > 0 ? next : undefined);
         }}
-        className="w-full rounded-[8px] border border-border bg-surface px-2 py-1.5 font-mono text-[12px] text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent-bright/60"
+        className="w-full rounded-[8px] border border-border bg-surface px-2 py-1.5 font-mono text-body text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent-bright/60"
       />
       {parsed !== null && !parsed.ok ? (
-        <p className="text-[11px] text-error">{parsed.error}</p>
+        <p className="text-small text-error">{parsed.error}</p>
       ) : null}
 
       {parsed?.ok === true ? (
@@ -204,9 +202,7 @@ export function WhenBuilder({ value, upstreamIds, onChange }: WhenBuilderProps):
           {parsed.ast.or.map((group, gi) => (
             <div key={gi} className="flex flex-col gap-1">
               <div className="flex flex-col gap-1 rounded-[8px] border border-border bg-surface-inset p-1.5">
-                <span className="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-text-tertiary">
-                  all of
-                </span>
+                <span className="text-mini font-medium text-text-tertiary">all of</span>
                 {group.map((atom, ai) => (
                   <AtomRow
                     key={ai}
@@ -237,15 +233,13 @@ export function WhenBuilder({ value, upstreamIds, onChange }: WhenBuilderProps):
                       ),
                     });
                   }}
-                  className="self-start rounded border border-dashed border-border px-1.5 py-0.5 text-[10.5px] text-text-tertiary transition-colors hover:text-text-primary"
+                  className="self-start rounded border border-dashed border-border px-1.5 py-0.5 text-mini text-text-tertiary transition-colors hover:text-text-primary"
                 >
                   + and
                 </button>
               </div>
               {gi < parsed.ast.or.length - 1 ? (
-                <span className="text-center font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-text-tertiary">
-                  or
-                </span>
+                <span className="text-center text-mini font-medium text-text-tertiary">or</span>
               ) : null}
             </div>
           ))}
@@ -258,7 +252,7 @@ export function WhenBuilder({ value, upstreamIds, onChange }: WhenBuilderProps):
           onClick={(): void => {
             emit({ or: [[emptyAtom(upstreamIds[0])]] });
           }}
-          className="self-start rounded border border-dashed border-border px-2 py-1 text-[11px] text-text-tertiary transition-colors hover:text-text-primary"
+          className="self-start rounded border border-dashed border-border px-2 py-1 text-small text-text-tertiary transition-colors hover:text-text-primary"
         >
           + Add condition
         </button>
@@ -269,7 +263,7 @@ export function WhenBuilder({ value, upstreamIds, onChange }: WhenBuilderProps):
             onClick={(): void => {
               emit({ or: [...parsed.ast.or, [emptyAtom(upstreamIds[0])]] });
             }}
-            className="self-start rounded border border-dashed border-border px-2 py-1 text-[11px] text-text-tertiary transition-colors hover:text-text-primary"
+            className="self-start rounded border border-dashed border-border px-2 py-1 text-small text-text-tertiary transition-colors hover:text-text-primary"
           >
             + Add OR group
           </button>

@@ -33,14 +33,14 @@ export function AgentsPanel(): ReactElement | null {
   if (error !== undefined) {
     return (
       <SettingsSection title="Agents">
-        <p className="font-mono text-[11px] text-error">{error.message}</p>
+        <p className="text-small text-error">{error.message}</p>
       </SettingsSection>
     );
   }
   if (data === undefined) {
     return (
       <SettingsSection title="Agents">
-        <p className="font-mono text-[11px] text-text-tertiary">Loading…</p>
+        <p className="text-small text-text-tertiary">Loading…</p>
       </SettingsSection>
     );
   }
@@ -53,14 +53,14 @@ export function AgentsPanel(): ReactElement | null {
 
   return (
     <SettingsSection title="Agents">
-      <div className="flex flex-col gap-3 text-[12px]">
+      <div className="flex flex-col gap-x-2.25 gap-y-1.75 text-body">
         <p className="text-text-secondary">
           Each agent lists the credentials it can spend. Connect a key or subscription inside the
           agent you want to run — runs and chats you start bill to your credential instead of the
           shared install key.
         </p>
         {!data.enabled ? (
-          <p className="font-mono text-[11px] text-text-tertiary">
+          <p className="text-small text-text-tertiary">
             Per-user credentials are disabled on this install (no TOKEN_ENCRYPTION_KEY) — showing
             install-level status only.
           </p>

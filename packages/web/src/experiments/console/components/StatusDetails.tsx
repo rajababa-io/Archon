@@ -49,7 +49,7 @@ export function StatusDetailsView({
   const effort = facts?.effort ?? null;
   const cost = facts?.costUsd ?? null;
   return (
-    <span className="flex min-w-0 items-center gap-3 font-mono text-[10.5px] text-text-tertiary">
+    <span className="flex min-w-0 items-center gap-3 text-mini text-text-tertiary">
       <ContextBar messages={messages} />
       {model === null ? null : (
         <span title={model} className="truncate">

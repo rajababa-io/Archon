@@ -14,15 +14,14 @@ export function ScopeToggle({
   scope: SettingsScope;
   onChange: (scope: SettingsScope) => void;
 }): ReactElement {
-  const base =
-    'rounded-[7px] px-2.5 py-[5px] font-mono text-[11px] font-semibold transition-colors';
+  const base = 'rounded-[7px] px-2.5 py-[5px] text-small font-medium transition-colors';
   const active = 'bg-surface-elevated text-text-primary shadow-sm';
   const inactive = 'text-text-tertiary hover:text-text-secondary';
   return (
     <div
       role="group"
       aria-label="Settings scope"
-      className="flex shrink-0 items-center gap-0.5 rounded-[9px] border border-border bg-surface-inset p-0.5"
+      className="flex shrink-0 items-center gap-0.5 rounded-lg border border-border bg-surface-inset p-0.5"
     >
       <button
         type="button"

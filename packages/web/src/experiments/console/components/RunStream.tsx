@@ -306,9 +306,9 @@ export function RunStream({
   if (visible.length === 0) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-center">
-        <div className="flex flex-col items-center gap-2 text-text-tertiary">
+        <div className="flex flex-col items-center gap-x-2 gap-y-1.25 text-text-tertiary">
           <span className="h-2 w-2 animate-pulse rounded-full bg-[color:var(--running)]" />
-          <p className="text-sm">Waiting for first event…</p>
+          <p className="text-large">Waiting for first event…</p>
         </div>
       </div>
     );
@@ -319,7 +319,7 @@ export function RunStream({
       {visible.map(entry => {
         if (entry.kind === 'message') {
           return (
-            <div key={entry.key} className="py-4">
+            <div key={entry.key} className="py-2.5">
               <MessageItem message={entry.message} />
             </div>
           );
@@ -359,9 +359,7 @@ export function RunStream({
                 label={label}
                 headerRight={
                   detail.length > 0 ? (
-                    <span className="truncate font-mono text-[11px] text-text-secondary">
-                      {detail}
-                    </span>
+                    <span className="truncate text-small text-text-secondary">{detail}</span>
                   ) : null
                 }
               />
@@ -378,7 +376,7 @@ export function RunStream({
                 label={entry.row.label}
                 headerRight={
                   entry.row.detail.length > 0 ? (
-                    <span className="truncate font-mono text-[11px] text-text-secondary">
+                    <span className="truncate text-small text-text-secondary">
                       {entry.row.detail}
                     </span>
                   ) : null

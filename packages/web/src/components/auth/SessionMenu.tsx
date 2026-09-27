@@ -30,7 +30,7 @@ export function SessionMenu(): ReactElement | null {
   }
 
   return (
-    <div className="border-t border-border px-3 py-2 text-[12px]">
+    <div className="border-t border-border px-3 py-2 text-body">
       <p className="truncate text-text-tertiary" title={session.user.email}>
         {session.user.name || session.user.email}
       </p>

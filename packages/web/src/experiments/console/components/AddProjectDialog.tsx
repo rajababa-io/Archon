@@ -126,7 +126,7 @@ export function AddProjectDialog({
         onMouseDown={e => {
           e.stopPropagation();
         }}
-        className="relative w-full max-w-[520px] overflow-hidden rounded-2xl border bg-surface-elevated p-[22px] text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)]"
+        className="relative w-full max-w-[520px] overflow-hidden rounded-lg border bg-surface-elevated p-[22px] text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)]"
         // Inline because the console scope's wildcard border-color rule
         // repaints Tailwind border utilities (see theme.css).
         style={{ borderColor: 'var(--border-bright)' }}
@@ -135,12 +135,10 @@ export function AddProjectDialog({
         <span aria-hidden className="brand-bar absolute left-0 right-0 top-0 h-[2px] opacity-90" />
 
         {/* Header */}
-        <div className="mb-[18px] flex items-start justify-between gap-4">
+        <div className="mb-[11.5px] flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-[18px] font-extrabold tracking-[-0.3px] text-text-primary">
-              Add project
-            </h2>
-            <p className="mt-1 text-[13px] text-text-tertiary">
+            <h2 className="text-title font-semibold text-text-primary">Add project</h2>
+            <p className="mt-1 text-body text-text-tertiary">
               Connect a repository or a local folder as a workspace.
             </p>
           </div>
@@ -151,7 +149,7 @@ export function AddProjectDialog({
             aria-label="Close"
             className="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
-            <span aria-hidden className="block text-[14px] leading-none">
+            <span aria-hidden className="block text-large leading-none">
               ✕
             </span>
           </button>
@@ -159,7 +157,7 @@ export function AddProjectDialog({
 
         {/* Segmented control with sliding indicator */}
         <div
-          className="relative mb-5 grid grid-cols-2 rounded-[11px] border bg-surface p-1"
+          className="relative mb-3.25 grid grid-cols-2 rounded-lg border bg-surface p-1"
           style={{ borderColor: 'var(--border)' }}
         >
           <span
@@ -178,7 +176,7 @@ export function AddProjectDialog({
                 setMode(m);
               }}
               aria-pressed={mode === m}
-              className={`relative z-[1] flex items-center justify-center gap-2 rounded-lg px-3 py-[9px] text-[13px] font-semibold transition-colors ${
+              className={`relative z-[1] flex items-center justify-center gap-2 rounded-lg px-3 py-[5.5px] text-body font-medium transition-colors ${
                 mode === m ? 'text-text-primary' : 'text-text-secondary hover:text-text-primary'
               }`}
             >
@@ -191,11 +189,11 @@ export function AddProjectDialog({
         </div>
 
         {/* Field */}
-        <label className="mb-[9px] block font-mono text-[11px] font-semibold uppercase tracking-[0.09em] text-text-tertiary">
+        <label className="mb-[9px] block font-mono text-small font-medium text-text-tertiary">
           {isGit ? 'Repository URL' : 'Local folder path'}
         </label>
         <div
-          className="flex h-[46px] items-center gap-2.5 rounded-[11px] border bg-surface px-3.5 transition-all focus-within:shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_91%)]"
+          className="flex h-[46px] items-center gap-2 rounded-lg border bg-surface px-2.75 transition-all focus-within:shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_91%)]"
           style={{ borderColor: 'var(--border-bright)' }}
         >
           <span aria-hidden className="flex text-text-tertiary">
@@ -212,16 +210,16 @@ export function AddProjectDialog({
             placeholder={
               isGit ? 'https://github.com/owner/repo' : 'C:\\Users\\you\\projects\\my-repo'
             }
-            className="min-w-0 flex-1 bg-transparent font-mono text-[14px] text-text-primary outline-none placeholder:text-text-tertiary"
+            className="min-w-0 flex-1 bg-transparent text-large text-text-primary outline-none placeholder:text-text-tertiary"
             disabled={submitting}
           />
         </div>
-        <p className="mt-[11px] text-[12.5px] leading-relaxed text-text-tertiary">
+        <p className="mt-[11px] text-body leading-relaxed text-text-tertiary">
           {isGit ? (
             <>
               Archon will clone this repo to{' '}
               <code
-                className="rounded border bg-surface px-1.5 py-0.5 font-mono text-[0.92em] text-text-secondary"
+                className="rounded border bg-surface px-1.5 py-0.5 text-[0.92em] text-text-secondary"
                 style={{ borderColor: 'var(--border)' }}
               >
                 ~/.archon/workspaces/{owner}/{repo}/source
@@ -237,18 +235,18 @@ export function AddProjectDialog({
         </p>
 
         {error !== null ? (
-          <p className="mt-3 rounded border border-error/40 bg-error/10 px-2 py-1.5 font-mono text-[11px] text-error">
+          <p className="mt-2 rounded border border-error/40 bg-error/10 px-2 py-1.5 text-small text-error">
             {error}
           </p>
         ) : null}
 
         {/* Footer */}
-        <div className="mt-[22px] flex items-center justify-end gap-[11px]">
+        <div className="mt-[14.5px] flex items-center justify-end gap-[8px]">
           <button
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="rounded-[10px] border bg-transparent px-[18px] py-2.5 text-[13px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+            className="rounded-lg border bg-transparent px-[14px] py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
             style={{ borderColor: 'var(--border-bright)' }}
           >
             Cancel
@@ -256,9 +254,9 @@ export function AddProjectDialog({
           <button
             type="submit"
             disabled={submitting || value.trim().length === 0}
-            className="brand-bar inline-flex items-center gap-[7px] rounded-[10px] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-45 disabled:shadow-none"
+            className="brand-bar inline-flex items-center gap-[7px] rounded-lg px-[14px] py-1.5 text-body font-medium text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-45 disabled:shadow-none"
           >
-            <span aria-hidden className="text-[14px] leading-none">
+            <span aria-hidden className="text-large leading-none">
               +
             </span>
             {submitting ? 'Adding…' : 'Add project'}

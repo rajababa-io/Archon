@@ -95,17 +95,17 @@ export function NodeDivider({
   return (
     <div
       id={`node-transition-${nodeId}`}
-      className="flex flex-col gap-1 border-b border-border/60 py-[11px]"
+      className="flex flex-col gap-1 border-b border-border/60 py-[7px]"
     >
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <time
           dateTime={timestamp}
           title={wallClock}
-          className="w-14 shrink-0 font-mono text-[11.5px] tabular-nums text-text-tertiary"
+          className="w-14 shrink-0 text-small tabular-nums text-text-tertiary"
         >
           {displayed}
         </time>
-        <span className="font-mono text-[13px] font-semibold text-text-primary">{nodeName}</span>
+        <span className="text-body font-medium text-text-primary">{nodeName}</span>
         {/* Dashed leader line (design v3 .log-line). */}
         <div
           className="h-px flex-1"
@@ -115,7 +115,7 @@ export function NodeDivider({
           }}
           aria-hidden
         />
-        <span className={`font-mono text-[11.5px] ${STATUS_COLOR[status]}`}>
+        <span className={`text-small ${STATUS_COLOR[status]}`}>
           {STATUS_LABEL[status]}
           {dur}
           {cost}
@@ -123,13 +123,13 @@ export function NodeDivider({
         </span>
       </div>
       {hasStopDetail ? (
-        <div className="ml-[68px] flex flex-wrap items-baseline gap-x-2 font-mono text-[10px] text-text-tertiary">
+        <div className="ml-[68px] flex flex-wrap items-baseline gap-x-2 text-mini text-text-tertiary">
           <span>stop</span>
           <span className="text-text-secondary">{stopReason}</span>
         </div>
       ) : null}
       {hasSkipDetail ? (
-        <div className="ml-[68px] flex flex-wrap items-baseline gap-x-2 font-mono text-[10px] text-text-tertiary">
+        <div className="ml-[68px] flex flex-wrap items-baseline gap-x-2 text-mini text-text-tertiary">
           <span>reason</span>
           <span className="text-text-secondary">{skipReason}</span>
           {skipExpr !== null && skipExpr !== undefined && skipExpr.length > 0 ? (

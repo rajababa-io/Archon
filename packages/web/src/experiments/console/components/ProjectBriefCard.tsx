@@ -35,24 +35,24 @@ export function ProjectBriefCard({ projectId }: { projectId: string }): ReactEle
     // Says what it is rather than offering a text box: there is nothing for
     // the reader to do here, and pretending otherwise wastes a click.
     return (
-      <p className="rounded-[10px] border border-dashed border-border px-4 py-3 text-[13px] text-text-tertiary">
+      <p className="rounded-lg border border-dashed border-border px-3 py-1.75 text-body text-text-tertiary">
         Not written yet. This is filled in from the repository, the runs and the open issues.
       </p>
     );
   }
 
   return (
-    <div className="rounded-[10px] border border-border bg-surface px-4 py-3">
-      <div className="flex flex-col gap-2.5">
+    <div className="rounded-lg border border-border bg-surface px-3 py-1.75">
+      <div className="flex flex-col gap-x-2 gap-y-1.5">
         {FIELDS.map(({ key, label }) => {
           const value = brief[key];
           if (value.trim() === '') return null;
           return (
-            <div key={key} className="flex gap-3">
-              <span className="w-[42px] shrink-0 pt-px font-mono text-[10.5px] font-bold uppercase tracking-[0.1em] text-text-tertiary">
+            <div key={key} className="flex gap-2.25">
+              <span className="w-[42px] shrink-0 pt-px text-mini font-medium text-text-tertiary">
                 {label}
               </span>
-              <span className="min-w-0 flex-1 text-[13px] leading-[1.6] text-text-secondary">
+              <span className="min-w-0 flex-1 text-body leading-[1.6] text-text-secondary">
                 {value}
               </span>
             </div>
@@ -60,7 +60,7 @@ export function ProjectBriefCard({ projectId }: { projectId: string }): ReactEle
         })}
       </div>
       {brief.updatedAt !== null ? (
-        <p className="mt-2.5 border-t border-border pt-2 font-mono text-[10.5px] text-text-tertiary">
+        <p className="mt-2.5 border-t border-border pt-1.25 text-mini text-text-tertiary">
           Written {relativeTime(new Date(brief.updatedAt).toISOString())}
         </p>
       ) : null}

@@ -28,10 +28,10 @@ export function AccountPanel(): ReactElement | null {
 
   return (
     <SettingsSection title="Account">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-[13px] text-text-primary">{who ?? 'Signed in'}</div>
-          <div className="mt-0.5 text-[11.5px] text-text-tertiary">
+          <div className="truncate text-body text-text-primary">{who ?? 'Signed in'}</div>
+          <div className="mt-0.5 text-small text-text-tertiary">
             Ends this browser session. Nothing on the server changes.
           </div>
         </div>
@@ -46,7 +46,7 @@ export function AccountPanel(): ReactElement | null {
               setBusy(false);
             });
           }}
-          className="shrink-0 rounded-[9px] border border-border px-3.5 py-1.5 text-[12px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
+          className="shrink-0 rounded-lg border border-border px-2.75 py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
         >
           {busy ? 'Signing out…' : 'Sign out'}
         </button>

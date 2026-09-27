@@ -42,11 +42,11 @@ export function IssueTypeChip({
     opacity: dimmed ? 0.38 : 1,
   };
   const className =
-    'inline-flex h-[17px] shrink-0 items-center gap-1 rounded-full px-[7px] text-[9.5px] font-semibold uppercase tracking-[0.05em]';
+    'inline-flex h-[17px] shrink-0 items-center gap-1 rounded-full px-[7px] text-mini font-medium';
   const body = (
     <>
       {name}
-      {count === undefined ? null : <span className="font-mono opacity-70">{String(count)}</span>}
+      {count === undefined ? null : <span className="opacity-70">{String(count)}</span>}
     </>
   );
   if (onClick === undefined) {

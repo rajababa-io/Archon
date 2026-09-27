@@ -138,7 +138,7 @@ export function Inspector({
 
   if (node === null) {
     return (
-      <div className="flex h-full items-center justify-center p-6 text-center text-[12.5px] text-text-tertiary">
+      <div className="flex h-full items-center justify-center p-6 text-center text-body text-text-tertiary">
         {selectionCount > 1
           ? `${String(selectionCount)} nodes selected — align, distribute, or copy them from the toolbar.`
           : 'Select a node to edit it.'}
@@ -174,16 +174,16 @@ export function Inspector({
   };
 
   return (
-    <div className="flex h-full flex-col gap-3 overflow-y-auto p-3">
+    <div className="flex h-full flex-col gap-x-2.25 gap-y-1.75 overflow-y-auto p-3">
       <div className="flex items-center gap-2">
         <span
           aria-hidden
           className="h-5 w-[3px] shrink-0 rounded-sm"
           style={{ background: `var(--node-${node.variant})` }}
         />
-        <span className="text-[13px] font-semibold text-text-primary">{registry.label}</span>
+        <span className="text-body font-medium text-text-primary">{registry.label}</span>
         {registry.capabilities.requiresInteractive === true ? (
-          <span className="rounded-full border border-border px-1.5 py-px font-mono text-[9px] uppercase tracking-widest text-text-tertiary">
+          <span className="rounded-full border border-border px-1.5 py-px text-mini text-text-tertiary">
             interactive
           </span>
         ) : null}
@@ -200,9 +200,9 @@ export function Inspector({
           onKeyDown={(e: KeyboardEvent<HTMLInputElement>): void => {
             if (e.key === 'Enter') commitRename();
           }}
-          className="w-full rounded-[8px] border border-border bg-surface px-2 py-1.5 font-mono text-[12.5px] text-text-primary outline-none focus:border-accent-bright/60"
+          className="w-full rounded-[8px] border border-border bg-surface px-2 py-1.5 text-body text-text-primary outline-none focus:border-accent-bright/60"
         />
-        {renameError !== null ? <p className="text-[11px] text-error">{renameError}</p> : null}
+        {renameError !== null ? <p className="text-small text-error">{renameError}</p> : null}
       </Field>
 
       <VariantFields node={node} onPatch={onPatch} />
@@ -212,12 +212,12 @@ export function Inspector({
       <Field label="Depends on (edit via canvas edges)">
         <div className="flex min-h-[26px] flex-wrap gap-1">
           {(node.base.depends_on ?? []).length === 0 ? (
-            <span className="text-[11.5px] text-text-tertiary">no dependencies</span>
+            <span className="text-small text-text-tertiary">no dependencies</span>
           ) : (
             (node.base.depends_on ?? []).map(dep => (
               <span
                 key={dep}
-                className="rounded bg-surface-inset px-1.5 py-0.5 font-mono text-[10.5px] text-text-secondary"
+                className="rounded bg-surface-inset px-1.5 py-0.5 text-mini text-text-secondary"
               >
                 {dep}
               </span>

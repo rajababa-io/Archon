@@ -75,20 +75,18 @@ export function ChatRunsPanel({
   const visible = expanded ? listed : listed.slice(0, COLLAPSED_ROWS);
 
   return (
-    <div className="max-h-[55vh] shrink-0 overflow-y-auto border-t border-border bg-surface-inset/40 px-6 py-2">
+    <div className="max-h-[55vh] shrink-0 overflow-y-auto border-t border-border bg-surface-inset/40 px-4.75 py-1.25">
       <div className="mb-1.5 flex items-center gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-text-secondary">
-          From this chat
-        </span>
+        <span className="text-mini font-medium text-text-secondary">From this chat</span>
         {runs.length > 0 ? (
-          <span className="font-mono text-[11px] tabular-nums text-text-tertiary">
+          <span className="text-small tabular-nums text-text-tertiary">
             {runs.length.toString()}
           </span>
         ) : null}
       </div>
 
       {error !== undefined ? (
-        <p className="font-mono text-[11px] text-error">
+        <p className="text-small text-error">
           Couldn&apos;t load this chat&apos;s runs: {error.message}
         </p>
       ) : (
@@ -111,7 +109,7 @@ export function ChatRunsPanel({
               onClick={() => {
                 setExpanded(v => !v);
               }}
-              className="mt-1 font-mono text-[11px] text-text-tertiary transition-colors hover:text-text-primary"
+              className="mt-1 text-small text-text-tertiary transition-colors hover:text-text-primary"
             >
               {expanded ? 'Show fewer' : `Show all ${listed.length.toString()}`}
             </button>
@@ -130,18 +128,16 @@ function ChatApprovalCard({ run }: { run: Run }): ReactElement {
     <article className="mb-1.5 rounded border border-warning/40 bg-warning/[0.05] p-3">
       <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
         <span aria-hidden className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-warning" />
-        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-warning">
-          Waiting for approval
-        </span>
+        <span className="shrink-0 text-mini font-medium text-warning">Waiting for approval</span>
         <RunOutcomeBadge outcome={run.outcome} />
-        <span className="text-[13px] font-medium text-text-primary">{run.workflow}</span>
-        <span className="font-mono text-[10px] text-text-tertiary">{shortRunId(run.id)}</span>
+        <span className="text-body font-medium text-text-primary">{run.workflow}</span>
+        <span className="text-mini text-text-tertiary">{shortRunId(run.id)}</span>
         <button
           type="button"
           onClick={() => {
             if (run.projectId !== null) navigate(`/console/p/${run.projectId}/r/${run.id}`);
           }}
-          className="ml-auto shrink-0 font-mono text-[11px] text-text-tertiary transition-colors hover:text-text-primary"
+          className="ml-auto shrink-0 text-small text-text-tertiary transition-colors hover:text-text-primary"
         >
           Open logs →
         </button>
@@ -168,27 +164,23 @@ function ChatRunRow({ run, projectId }: { run: Run; projectId: string }): ReactE
     <Link
       to={`/console/p/${projectId}/r/${run.id}`}
       title="Open run"
-      className="flex items-center gap-2.5 rounded border border-border/50 bg-surface px-2.5 py-1.5 text-left transition-colors hover:border-border-bright hover:bg-surface-hover"
+      className="flex items-center gap-2 rounded border border-border/50 bg-surface px-2.5 py-1.5 text-left transition-colors hover:border-border-bright hover:bg-surface-hover"
     >
       <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${statusDotClass[run.status]}`} />
-      <span className="shrink-0 text-[12.5px] font-medium text-text-primary">{run.workflow}</span>
-      <span className="shrink-0 font-mono text-[10px] text-text-tertiary">
-        {shortRunId(run.id)}
-      </span>
-      <span className="shrink-0 font-mono text-[11px] text-text-secondary">
-        {runStatusLabel(run)}
-      </span>
+      <span className="shrink-0 text-body font-medium text-text-primary">{run.workflow}</span>
+      <span className="shrink-0 text-mini text-text-tertiary">{shortRunId(run.id)}</span>
+      <span className="shrink-0 text-small text-text-secondary">{runStatusLabel(run)}</span>
       <RunOutcomeBadge outcome={run.outcome} />
       {live && nodes.length > 0 ? (
-        <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-text-tertiary">
+        <span className="min-w-0 flex-1 truncate text-small text-text-tertiary">
           {nodes.length === 1 ? 'node' : 'nodes'}: {nodes.join(', ')}
         </span>
       ) : (
-        <span className="min-w-0 flex-1 truncate text-[12px] text-text-tertiary">
+        <span className="min-w-0 flex-1 truncate text-body text-text-tertiary">
           {run.userMessage}
         </span>
       )}
-      <span className="shrink-0 font-mono text-[11px] tabular-nums text-text-tertiary">
+      <span className="shrink-0 text-small tabular-nums text-text-tertiary">
         {live ? formatElapsed(elapsedSince(run.startedAt)) : relativeTime(run.startedAt)}
       </span>
     </Link>

@@ -68,7 +68,7 @@ export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): Re
               writeProjectView(projectId, key);
             }}
             aria-current={isActive ? 'page' : undefined}
-            className={`relative rounded px-2 py-1 text-[11px] font-medium uppercase tracking-wider transition-colors ${
+            className={`relative rounded px-2 py-1 text-small font-medium transition-colors ${
               isActive
                 ? 'bg-surface-elevated text-text-primary'
                 : 'text-text-tertiary hover:text-text-primary'
@@ -79,9 +79,7 @@ export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): Re
                 zero, so a quiet tab stays quiet — a `0` beside every tab is
                 noise, and this row is read constantly. */}
             {count !== null ? (
-              <span className="ml-1.5 font-mono text-[10.5px] font-normal tabular-nums opacity-70">
-                {count}
-              </span>
+              <span className="ml-1.5 text-mini font-normal tabular-nums opacity-70">{count}</span>
             ) : null}
             {isActive ? (
               <span

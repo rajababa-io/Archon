@@ -68,36 +68,39 @@ export function DeployOverlay(): ReactElement | null {
       }`}
     >
       <div
-        className={`pointer-events-auto w-full max-w-md rounded-lg border px-5 py-4 shadow-2xl ${
+        className={`pointer-events-auto w-full max-w-md rounded-lg border px-4 py-2.5 shadow-2xl ${
           blocking ? 'border-error/50 bg-surface' : 'border-border bg-surface'
         }`}
       >
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
           <span
             aria-hidden="true"
             className="inline-block size-3 shrink-0 animate-pulse rounded-full bg-[color:var(--running)]"
           />
           <h2
             id="deploy-overlay-title"
-            className="min-w-0 flex-1 text-lg font-semibold text-text-primary"
+            className="min-w-0 flex-1 text-title font-semibold text-text-primary"
           >
             {interruption.title}
           </h2>
           {elapsed !== null ? (
-            <span className="shrink-0 tabular-nums text-sm text-text-tertiary">{elapsed}</span>
+            <span className="shrink-0 tabular-nums text-large text-text-tertiary">{elapsed}</span>
           ) : null}
         </div>
-        <p id="deploy-overlay-body" className="mt-2.5 text-sm leading-relaxed text-text-secondary">
+        <p
+          id="deploy-overlay-body"
+          className="mt-2.5 text-large leading-relaxed text-text-secondary"
+        >
           {interruption.body}
         </p>
         {interruption.stillWorks !== null ? (
-          <p className="mt-2 text-sm leading-relaxed text-text-tertiary">
+          <p className="mt-2 text-large leading-relaxed text-text-tertiary">
             {interruption.stillWorks}
           </p>
         ) : null}
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-2 flex items-center gap-2.25">
           {view.sha !== null ? (
-            <code className="tabular-nums text-xs text-text-tertiary">{view.sha}</code>
+            <code className="tabular-nums text-small text-text-tertiary">{view.sha}</code>
           ) : null}
           <span className="flex-1" />
           {blocking ? null : (
@@ -106,7 +109,7 @@ export function DeployOverlay(): ReactElement | null {
               onClick={() => {
                 setDismissed(dismissKey);
               }}
-              className="rounded border border-border px-3 py-1.5 text-sm text-text-secondary"
+              className="rounded border border-border px-3 py-1.5 text-large text-text-secondary"
             >
               Keep reading
             </button>

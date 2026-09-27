@@ -5,7 +5,7 @@ import { openInIde, useIdeEnv } from '../lib/health';
 import { setIdentity, useProjectIdentity } from '../lib/project-identity';
 import { pushIdentity } from '../lib/presentation-sync';
 import { ProjectCountCells } from './ProjectCountCells';
-import { RowMenu } from './RowMenu';
+import { MenuItem, MenuSeparator, RowMenu } from './RowMenu';
 import { projectLabel, useDisplayName, setDisplayName } from '../lib/display-name';
 import { formatProjectLocator } from '../lib/format';
 import type { Project } from '../primitives/project';
@@ -41,9 +41,6 @@ function DotsIcon({ size = 17 }: { size?: number }): ReactElement {
  * gradient strip, gradient monogram, elevated background, and a LIVE pulse.
  * Double-click the title to rename; the path stays as a stable subtitle.
  */
-const MENU_ITEM =
-  'flex w-full items-center gap-2.5 rounded-lg px-[11px] py-[9px] text-left text-[13px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary';
-
 export function ProjectRow({
   project,
   selected,
@@ -169,9 +166,7 @@ export function ProjectRow({
           handle meant the one thing telling the rows apart disappeared exactly
           when you pointed at one. */}
         {removing ? (
-          <span className="shrink-0 font-mono text-[10px] font-semibold uppercase tracking-[0.05em] text-text-tertiary">
-            removing…
-          </span>
+          <span className="shrink-0 text-mini font-medium text-text-tertiary">removing…</span>
         ) : null}
         {onDragBegin !== undefined ? (
           <span
@@ -269,82 +264,56 @@ export function ProjectRow({
                 anchor={rowEl}
                 open={menuOpen}
                 onClose={closeMenu}
-                width={196}
+                width={220}
                 label={`Actions for ${displayName}`}
               >
                 {/* The prototype's order: identity, then name, then the two things you
                     reach for occasionally, then the destructive one behind a rule. */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={e => {
-                    e.stopPropagation();
+                <MenuItem
+                  label="Change icon and color…"
+                  onSelect={() => {
                     setMenuOpen(false);
-                    // rowEl, not closest('.rail-row'): RowMenu portals to the
-                    // body, so this button is not inside the row it belongs to
-                    // and the walk returned null every time — which read as
-                    // "closed" and made the item do nothing at all.
+                    // Not closest('.rail-row'): RowMenu portals to the body, so
+                    // this item is not inside the row it belongs to.
                     setPickerOpen(true);
                   }}
-                  className={MENU_ITEM}
-                >
-                  Change icon and color…
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={e => {
-                    e.stopPropagation();
+                />
+                <MenuItem
+                  label="Rename project"
+                  onSelect={() => {
                     setMenuOpen(false);
                     setEditing(true);
                   }}
-                  className={MENU_ITEM}
-                >
-                  Rename project
-                </button>
-                <div className="my-1 h-px bg-border" />
+                />
+                <MenuSeparator />
                 {onEditEnv !== undefined ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={e => {
-                      e.stopPropagation();
+                  <MenuItem
+                    label="Environment variables…"
+                    onSelect={() => {
                       setMenuOpen(false);
                       onEditEnv();
                     }}
-                    className={MENU_ITEM}
-                  >
-                    Environment variables…
-                  </button>
+                  />
                 ) : null}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={e => {
-                    e.stopPropagation();
+                <MenuItem
+                  label="Open in editor"
+                  onSelect={() => {
                     setMenuOpen(false);
                     openInIde(project.path, ideEnv);
                   }}
-                  className={MENU_ITEM}
-                >
-                  Open in editor
-                </button>
-                <div className="my-1 h-px bg-border" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={e => {
-                    e.stopPropagation();
+                />
+                <MenuSeparator />
+                <MenuItem
+                  label="Remove project"
+                  danger
+                  onSelect={() => {
                     setMenuOpen(false);
                     const confirmed = window.confirm(
                       `Remove project "${displayName}"?\n\nLocal files and worktrees are not deleted.`
                     );
                     if (confirmed) void requestRemoval();
                   }}
-                  className="flex w-full items-center gap-2.5 rounded-lg px-[11px] py-[9px] text-left text-[13px] font-semibold text-error transition-colors hover:bg-error/10"
-                >
-                  Remove project
-                </button>
+                />
               </RowMenu>
             </div>
           ) : null}
@@ -359,14 +328,14 @@ export function ProjectRow({
           onKeyDown={event => {
             event.stopPropagation();
           }}
-          className="mx-2.5 mb-1 rounded border border-error/40 bg-error/10 px-2 py-1.5 font-mono text-[10px] text-error [overflow-wrap:anywhere]"
+          className="mx-2.5 mb-1 rounded border border-error/40 bg-error/10 px-2 py-1.5 text-mini text-error [overflow-wrap:anywhere]"
         >
           <p>{removeError}</p>
           <button
             type="button"
             onClick={() => void requestRemoval()}
             disabled={removing}
-            className="mt-1 font-semibold underline underline-offset-2 disabled:cursor-wait disabled:opacity-50"
+            className="mt-1 font-medium underline underline-offset-2 disabled:cursor-wait disabled:opacity-50"
           >
             Retry removal
           </button>

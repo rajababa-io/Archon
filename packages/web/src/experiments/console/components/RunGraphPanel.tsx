@@ -199,15 +199,11 @@ export function RunGraphPanel({
   }, [rawNodes, events]);
 
   if (error !== undefined) {
-    return (
-      <div className="p-6 font-mono text-[12px] text-error">
-        Could not load graph: {error.message}
-      </div>
-    );
+    return <div className="p-6 text-body text-error">Could not load graph: {error.message}</div>;
   }
 
   if (laid === null) {
-    return <div className="p-6 text-[12px] text-text-tertiary">Loading graph…</div>;
+    return <div className="p-6 text-body text-text-tertiary">Loading graph…</div>;
   }
 
   const { nodes, edges, width, height } = laid;
@@ -225,7 +221,7 @@ export function RunGraphPanel({
           'radial-gradient(circle at 1px 1px, color-mix(in oklch, white, transparent 95%) 1px, transparent 0) 0 0 / 26px 26px',
       }}
     >
-      <div className="relative mt-7" style={svgStyle}>
+      <div className="relative mt-4.5" style={svgStyle}>
         <svg
           className="absolute inset-0 overflow-visible"
           width={svgStyle.width}
@@ -280,19 +276,19 @@ function GraphNode({ node, onClick }: GraphNodeProps): ReactElement {
       type="button"
       onClick={onClick}
       title={`${node.id} · ${node.kind} · ${node.status}`}
-      className={`absolute flex items-center gap-2.5 overflow-hidden rounded-[9px] border px-3.5 text-left transition-colors hover:brightness-110 ${
+      className={`absolute flex items-center gap-2 overflow-hidden rounded-lg border px-2.75 text-left transition-colors hover:brightness-110 ${
         running ? 'animate-pulse' : ''
       } ${dimmed ? 'opacity-60' : ''}`}
       style={style}
     >
       <span
         aria-hidden
-        className={`shrink-0 font-mono text-[15px] font-bold leading-none ${statusGlyphClass(node.status)}`}
+        className={`shrink-0 text-large font-medium leading-none ${statusGlyphClass(node.status)}`}
       >
         {kindGlyph(node.kind)}
       </span>
       <span
-        className={`min-w-0 flex-1 truncate font-mono text-[13px] font-semibold ${
+        className={`min-w-0 flex-1 truncate text-body font-medium ${
           failed ? 'text-error' : dimmed ? 'text-text-secondary' : 'text-text-primary'
         }`}
       >

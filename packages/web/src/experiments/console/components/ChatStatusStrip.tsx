@@ -134,7 +134,7 @@ export function ChatStatusStrip({
 
   return (
     <div className="mt-1.5 flex flex-col items-start gap-1">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2.25">
         <button
           type="button"
           onClick={onToggle}
@@ -148,7 +148,7 @@ export function ChatStatusStrip({
           }
           aria-expanded={trace.length === 0 ? undefined : expanded}
           aria-live="polite"
-          className="flex w-fit items-center gap-2 rounded-full border border-border bg-surface-inset px-3 py-1.5 text-[length:var(--text-small)] text-text-secondary transition-colors enabled:hover:border-border-bright enabled:hover:text-text-primary disabled:cursor-default"
+          className="flex w-fit items-center gap-2 rounded-full border border-border bg-surface-inset px-3 py-1.5 text-small text-text-secondary transition-colors enabled:hover:border-border-bright enabled:hover:text-text-primary disabled:cursor-default"
         >
           {/* The rail's own mark, not a second one that looks like it. Working
             throbs and radiates; awaiting is an open ring; idle is a quiet dot.
@@ -165,20 +165,13 @@ export function ChatStatusStrip({
             {label}
           </span>
           {elapsed !== null ? (
-            <span className="font-mono text-[length:var(--text-micro)] text-text-tertiary tabular-nums">
-              {elapsed}
-            </span>
+            <span className="text-mini text-text-tertiary tabular-nums">{elapsed}</span>
           ) : null}
           {ago !== null ? (
-            <span className="font-mono text-[length:var(--text-micro)] text-text-tertiary tabular-nums">
-              {ago}
-            </span>
+            <span className="text-mini text-text-tertiary tabular-nums">{ago}</span>
           ) : null}
           {trace.length > 0 ? (
-            <span
-              aria-hidden
-              className="font-mono text-[length:var(--text-micro)] text-text-tertiary"
-            >
+            <span aria-hidden className="text-mini text-text-tertiary">
               {expanded ? '▾ hide' : '▸ details'}
             </span>
           ) : null}
@@ -187,7 +180,7 @@ export function ChatStatusStrip({
       </div>
 
       {expanded && trace.length > 0 ? (
-        <ol className="ml-3 flex flex-col gap-[0.1875rem] border-l border-border pl-3 font-mono text-[length:var(--text-small)]">
+        <ol className="ml-3 flex flex-col gap-[0.1875rem] border-l border-border pl-3 text-small">
           {hidden > 0 ? (
             <li className="text-text-tertiary">
               + {hidden} earlier {hidden === 1 ? 'step' : 'steps'}

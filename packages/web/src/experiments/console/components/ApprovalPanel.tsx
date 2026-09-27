@@ -135,15 +135,11 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
           An approval without a message used to render as two bare buttons —
           Approve and Reject and no statement of what you were approving. The
           heading is the one thing that is always true about this panel. */}
-      <p className="mb-1 text-[12px] font-semibold uppercase tracking-[0.12em] text-warning">
-        Approval needed
-      </p>
+      <p className="mb-1 text-body font-medium text-warning">Approval needed</p>
       {run.approval?.message.length ? (
-        <p className="mb-2 text-[12.5px] leading-[1.45] text-text-secondary">
-          {run.approval.message}
-        </p>
+        <p className="mb-2 text-body leading-[1.45] text-text-secondary">{run.approval.message}</p>
       ) : (
-        <p className="mb-2 text-[12.5px] leading-[1.45] text-text-tertiary">
+        <p className="mb-2 text-body leading-[1.45] text-text-tertiary">
           The run is paused and will not continue until you answer.
         </p>
       )}
@@ -165,14 +161,14 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
             }
             disabled={busy}
             autoFocus
-            className="min-w-0 flex-1 rounded border border-border bg-surface-inset px-3 py-1.5 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-border-bright focus:outline-none disabled:opacity-50"
+            className="min-w-0 flex-1 rounded border border-border bg-surface-inset px-3 py-1.5 text-body text-text-primary placeholder:text-text-tertiary focus:border-border-bright focus:outline-none disabled:opacity-50"
           />
           <button
             type="button"
             data-keymap-approve
             onClick={() => void respond('approve', comment)}
             disabled={busy}
-            className="flex shrink-0 items-center gap-1 rounded border border-success/40 bg-success/15 px-3 text-[12px] font-medium text-success transition-colors hover:bg-success/25 disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1 rounded border border-success/40 bg-success/15 px-3 text-body font-medium text-success transition-colors hover:bg-success/25 disabled:opacity-50"
             title={
               signalBearing && comment.trim().length === 0
                 ? 'Accept & complete · Enter'
@@ -180,7 +176,7 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
             }
           >
             {signalBearing && comment.trim().length === 0 ? 'Accept & complete' : 'Continue'}
-            <span aria-hidden className="font-mono text-[10px] opacity-70">
+            <span aria-hidden className="text-mini opacity-70">
               ↵
             </span>
           </button>
@@ -194,7 +190,7 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
                 setError(null);
               }}
               disabled={busy}
-              className="shrink-0 rounded border border-error/30 px-3 text-[12px] text-error transition-colors hover:bg-error/10 disabled:opacity-40"
+              className="shrink-0 rounded border border-error/30 px-3 text-body text-error transition-colors hover:bg-error/10 disabled:opacity-40"
               title={`${decisionLabel(d.id, d.label)} this run`}
             >
               {decisionLabel(d.id, d.label)}
@@ -202,8 +198,8 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
-          <label className="font-mono text-[10px] uppercase tracking-[0.14em] text-error">
+        <div className="flex flex-col gap-x-2 gap-y-1.25">
+          <label className="text-mini text-error">
             {decisionLabel(mode, secondaryDecisions.find(d => d.id === mode)?.label)} — text
             required
           </label>
@@ -218,12 +214,10 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
             rows={3}
             disabled={busy}
             autoFocus
-            className="w-full resize-none rounded border border-error/30 bg-surface-inset px-3 py-2 text-[13px] text-text-primary placeholder:text-text-tertiary focus:border-error/60 focus:outline-none disabled:opacity-50"
+            className="w-full resize-none rounded border border-error/30 bg-surface-inset px-3 py-1.25 text-body text-text-primary placeholder:text-text-tertiary focus:border-error/60 focus:outline-none disabled:opacity-50"
           />
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-[10px] text-text-tertiary">
-              ⌘↵ confirm · esc cancel
-            </span>
+            <span className="text-mini text-text-tertiary">⌘↵ confirm · esc cancel</span>
             <div className="flex items-center gap-2">
               <button
                 type="button"
@@ -233,7 +227,7 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
                   setError(null);
                 }}
                 disabled={busy}
-                className="rounded px-3 py-1 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
+                className="rounded px-3 py-1 text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -243,12 +237,12 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
                   if (text.trim().length > 0) void respond(mode, text);
                 }}
                 disabled={busy || text.trim().length === 0}
-                className="flex items-center gap-1 rounded border border-error/40 bg-error/15 px-3 py-1 text-[12px] font-medium text-error transition-colors hover:bg-error/25 disabled:opacity-40"
+                className="flex items-center gap-1 rounded border border-error/40 bg-error/15 px-3 py-1 text-body font-medium text-error transition-colors hover:bg-error/25 disabled:opacity-40"
               >
                 {busy
                   ? 'Sending…'
                   : `${decisionLabel(mode, secondaryDecisions.find(d => d.id === mode)?.label)} run`}
-                <span aria-hidden className="font-mono text-[10px] opacity-70">
+                <span aria-hidden className="text-mini opacity-70">
                   ⌘↵
                 </span>
               </button>
@@ -257,7 +251,7 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
         </div>
       )}
 
-      {error !== null ? <p className="mt-1 font-mono text-[11px] text-error">{error}</p> : null}
+      {error !== null ? <p className="mt-1 text-small text-error">{error}</p> : null}
     </div>
   );
 }

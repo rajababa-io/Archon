@@ -362,7 +362,7 @@ export function BuilderPage({
                 onClick={(): void => {
                   setRightTab(tab);
                 }}
-                className={`relative px-3 py-1.5 font-mono text-[10.5px] font-bold uppercase tracking-[0.12em] transition-colors ${
+                className={`relative px-3 py-1.5 text-mini font-medium transition-colors ${
                   rightTab === tab
                     ? 'text-text-primary'
                     : 'text-text-tertiary hover:text-text-secondary'

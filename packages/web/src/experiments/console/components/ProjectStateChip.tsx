@@ -45,7 +45,7 @@ export function ProjectStateChip({ projectId }: { projectId: string }): ReactEle
   return (
     <span
       title={state.why}
-      className="inline-flex shrink-0 items-center gap-[6px] text-[11.5px] font-medium"
+      className="inline-flex shrink-0 items-center gap-[6px] text-small font-medium"
     >
       <span aria-hidden className={`chat-status is-${state.status}`}>
         <i />

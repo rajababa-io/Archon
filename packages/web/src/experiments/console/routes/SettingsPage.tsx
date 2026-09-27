@@ -20,11 +20,11 @@ import { AccountPanel } from '../components/AccountPanel';
 export function SettingsPage(): ReactElement {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="px-10 pt-[22px]">
-        <h1 className="text-[22px] font-extrabold tracking-[-0.4px] text-text-primary">Settings</h1>
+      <header className="px-7.75 pt-[13.5px]">
+        <h1 className="text-display font-semibold text-text-primary">Settings</h1>
       </header>
-      <div className="flex-1 overflow-y-auto px-10 pb-14 pt-5">
-        <div className="mx-auto flex max-w-[680px] flex-col gap-5">
+      <div className="flex-1 overflow-y-auto px-7.75 pb-8.75 pt-3">
+        <div className="mx-auto flex max-w-[680px] flex-col gap-x-3.75 gap-y-3">
           <ModelTiersPanel />
           <AliasesPanel />
           <AgentsPanel />

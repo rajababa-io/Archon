@@ -106,7 +106,7 @@ export function ActiveRunCard({
             }
           : undefined
       }
-      className={`group relative overflow-hidden rounded-[12px] border transition-colors hover:bg-surface-hover ${
+      className={`group relative overflow-hidden rounded-lg border transition-colors hover:bg-surface-hover ${
         run.status === 'running' ? 'bg-warning/[0.04]' : 'bg-surface'
       } ${selected ? 'ring-2 ring-accent-bright/40' : ''} ${
         canOpen ? 'cursor-pointer focus-visible:outline-none' : ''
@@ -123,9 +123,9 @@ export function ActiveRunCard({
       }}
     >
       <StatusStrip status={run.status} />
-      <div className="pl-4 pr-4 py-3">
+      <div className="pl-3 pr-3 py-1.75">
         {/* Header */}
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div className="flex flex-wrap items-center gap-x-2.25 gap-y-1">
           {run.status === 'running' && !stalled ? (
             <LiveDot />
           ) : stalled ? (
@@ -137,7 +137,7 @@ export function ActiveRunCard({
             />
           )}
           <span
-            className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${stalled ? STALLED_TEXT_CLASS : statusTextClass[run.status]}`}
+            className={`shrink-0 text-mini font-medium ${stalled ? STALLED_TEXT_CLASS : statusTextClass[run.status]}`}
             title={
               stalled
                 ? 'No activity for far longer than this workflow normally takes. The row still says running; nothing has been changed. Abandon it from the run page.'
@@ -148,22 +148,22 @@ export function ActiveRunCard({
           </span>
           <RunOutcomeBadge outcome={run.outcome} />
           <span className="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden />
-          <span className="text-sm font-medium text-text-primary">{run.workflow}</span>
-          <span className="font-mono text-[11px] text-text-tertiary">{shortRunId(run.id)}</span>
+          <span className="text-large font-medium text-text-primary">{run.workflow}</span>
+          <span className="text-small text-text-tertiary">{shortRunId(run.id)}</span>
           {showProject && run.projectName !== null ? (
-            <span className="truncate text-[11px] text-text-secondary">· {run.projectName}</span>
+            <span className="truncate text-small text-text-secondary">· {run.projectName}</span>
           ) : null}
           <div className="ml-auto flex items-center gap-2">
             <OriginBadge origin={run.origin} />
             {typeof run.costUsd === 'number' ? (
               <span
-                className="font-mono text-[11px] tabular-nums text-text-secondary"
+                className="text-small tabular-nums text-text-secondary"
                 title="Total agent cost"
               >
                 {formatCost(run.costUsd)}
               </span>
             ) : null}
-            <span className="font-mono text-[11px] tabular-nums text-text-tertiary">{elapsed}</span>
+            <span className="text-small tabular-nums text-text-tertiary">{elapsed}</span>
             {canOpenIde && run.workingPath !== null ? (
               <button
                 type="button"
@@ -175,7 +175,7 @@ export function ActiveRunCard({
                 aria-label="Open in IDE"
                 className="rounded p-1 text-text-tertiary opacity-0 transition-all hover:bg-surface-hover hover:text-text-primary group-hover:opacity-100"
               >
-                <span aria-hidden className="font-mono text-[12px] leading-none">
+                <span aria-hidden className="text-body leading-none">
                   ↗
                 </span>
               </button>
@@ -186,27 +186,27 @@ export function ActiveRunCard({
         {/* Provenance + activity detail: the triggering input (when present, truncated —
             full text on hover), plus live node/tool rows while running. */}
         {showDetailGrid ? (
-          <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[12px]">
+          <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.25 gap-y-0.5 text-body">
             {run.userMessage !== '' ? (
               <>
-                <span className="font-mono text-text-tertiary">input</span>
-                <span className="truncate font-mono text-text-secondary" title={run.userMessage}>
+                <span className="text-text-tertiary">input</span>
+                <span className="truncate text-text-secondary" title={run.userMessage}>
                   {run.userMessage}
                 </span>
               </>
             ) : null}
             {run.status === 'running' && run.activeNodes.length > 0 ? (
               <>
-                <span className="font-mono text-text-tertiary">
+                <span className="text-text-tertiary">
                   {run.activeNodes.length === 1 ? 'node' : 'nodes'}
                 </span>
-                <span className="font-mono text-text-primary">{run.activeNodes.join(', ')}</span>
+                <span className="text-text-primary">{run.activeNodes.join(', ')}</span>
               </>
             ) : null}
             {run.status === 'running' && hasValue(run.lastTool) ? (
               <>
-                <span className="font-mono text-text-tertiary">tool</span>
-                <span className="font-mono text-text-primary">
+                <span className="text-text-tertiary">tool</span>
+                <span className="text-text-primary">
                   {run.lastTool}
                   <span aria-hidden className="ml-1 inline-block animate-pulse">
                     ▏
@@ -218,21 +218,21 @@ export function ActiveRunCard({
         ) : null}
 
         {run.status === 'paused' && run.wait != null ? (
-          <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 rounded border border-warning/25 bg-warning/[0.05] px-3 py-2 text-[12px]">
-            <span className="font-mono text-text-tertiary">node</span>
-            <span className="font-mono text-text-primary">{run.wait.nodeId}</span>
+          <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-2.25 gap-y-0.5 rounded border border-warning/25 bg-warning/[0.05] px-3 py-1.25 text-body">
+            <span className="text-text-tertiary">node</span>
+            <span className="text-text-primary">{run.wait.nodeId}</span>
             {run.wait.kind === 'event' && run.wait.event !== undefined ? (
               <>
-                <span className="font-mono text-text-tertiary">event</span>
-                <span className="font-mono text-text-primary">{run.wait.event}</span>
+                <span className="text-text-tertiary">event</span>
+                <span className="text-text-primary">{run.wait.event}</span>
               </>
             ) : null}
             {run.wait.kind === 'attention' ? (
               <>
-                <span className="font-mono text-text-tertiary">action</span>
+                <span className="text-text-tertiary">action</span>
                 <span className="text-text-secondary">{run.wait.message}</span>
-                <span className="font-mono text-text-tertiary">then</span>
-                <span className="flex flex-wrap items-center gap-2">
+                <span className="text-text-tertiary">then</span>
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1.25">
                   <button
                     type="button"
                     onClick={event => {
@@ -240,7 +240,7 @@ export function ActiveRunCard({
                       void resolveAttention('resume');
                     }}
                     disabled={attentionBusy !== null}
-                    className="rounded bg-warning/15 px-2 py-1 font-semibold text-warning hover:bg-warning/25 disabled:opacity-50"
+                    className="rounded bg-warning/15 px-2 py-1 font-medium text-warning hover:bg-warning/25 disabled:opacity-50"
                   >
                     {attentionBusy === 'resume' ? 'Resuming…' : 'Resume'}
                   </button>
@@ -256,16 +256,16 @@ export function ActiveRunCard({
                     {attentionBusy === 'abandon' ? 'Abandoning…' : 'Abandon'}
                   </button>
                   {attentionError !== null ? (
-                    <span className="font-mono text-error">{attentionError}</span>
+                    <span className="text-error">{attentionError}</span>
                   ) : null}
                 </span>
               </>
             ) : (
               <>
-                <span className="font-mono text-text-tertiary">
+                <span className="text-text-tertiary">
                   {run.wait.kind === 'event' ? 'deadline' : 'resume'}
                 </span>
-                <span className="font-mono text-text-secondary">
+                <span className="text-text-secondary">
                   {new Date(run.wait.resumeAt).toLocaleString()}
                 </span>
               </>
@@ -279,7 +279,7 @@ export function ActiveRunCard({
             `message` is usually just a pointer ("answer the questions above"). */}
         {run.status === 'paused' && run.approval !== null && run.approval !== undefined ? (
           inputPromoted ? (
-            <div className="mt-2 flex items-center gap-2 rounded border border-warning/25 bg-warning/[0.05] px-3 py-2 text-[12px] text-warning">
+            <div className="mt-2 flex items-center gap-2 rounded border border-warning/25 bg-warning/[0.05] px-3 py-1.25 text-body text-warning">
               <span aria-hidden className="leading-none">
                 ⚠
               </span>
@@ -297,7 +297,7 @@ export function ActiveRunCard({
             DB for the second or so between approve/reject and the executor
             flipping it to running. Show a hint instead of stale gate buttons. */}
         {run.status === 'paused' && run.gateResolved !== null && run.gateResolved !== undefined ? (
-          <div className="mt-2 flex items-center gap-2 rounded border border-border bg-surface-hover/40 px-3 py-2 text-[12px] text-text-secondary">
+          <div className="mt-2 flex items-center gap-2 rounded border border-border bg-surface-hover/40 px-3 py-1.25 text-body text-text-secondary">
             <span aria-hidden className="inline-block animate-pulse leading-none">
               ▸
             </span>

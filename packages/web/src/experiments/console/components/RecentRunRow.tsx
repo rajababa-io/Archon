@@ -83,14 +83,14 @@ export function RecentRunRow({
             }
           : undefined
       }
-      className={`group grid items-center gap-[18px] border-b border-border/40 px-[18px] py-[13px] transition-colors last:border-b-0 hover:bg-surface-hover ${gridCols} ${
+      className={`group grid items-center gap-x-[13.5px] gap-y-[11px] border-b border-border/40 px-[14px] py-[8px] transition-colors last:border-b-0 hover:bg-surface-hover ${gridCols} ${
         selected ? 'bg-surface-hover ring-2 ring-inset ring-accent-bright/40' : ''
       } ${canOpen ? 'cursor-pointer' : ''}`}
     >
       {/* status: dot/glyph + label */}
       <span className="flex items-center gap-[9px]">
         {run.status === 'failed' ? (
-          <span aria-hidden className={`text-[12px] leading-none ${statusTextClass.failed}`}>
+          <span aria-hidden className={`text-body leading-none ${statusTextClass.failed}`}>
             {glyph}
           </span>
         ) : (
@@ -103,49 +103,40 @@ export function RecentRunRow({
             }`}
           />
         )}
-        <span
-          className={`font-mono text-[11px] font-semibold uppercase tracking-[0.05em] ${statusTextClass[run.status]}`}
-        >
+        <span className={`text-small font-medium ${statusTextClass[run.status]}`}>
           {run.status}
         </span>
         <RunOutcomeBadge outcome={run.outcome} />
       </span>
 
       {/* body: mono workflow name + muted description */}
-      <span className="flex min-w-0 items-baseline gap-2.5">
-        <span className="shrink-0 truncate font-mono text-[13px] font-bold text-text-primary">
+      <span className="flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 truncate text-body font-medium text-text-primary">
           {run.workflow}
         </span>
         {run.parentRunId ? (
           <span
-            className="shrink-0 rounded-[5px] border border-border/60 px-1.5 py-px font-mono text-[10px] font-semibold uppercase tracking-[0.04em] text-text-tertiary"
+            className="shrink-0 rounded-[5px] border border-border/60 px-1.5 py-px text-mini font-medium text-text-tertiary"
             title={`Sub-run of ${shortRunId(run.parentRunId)}`}
           >
             ↳ child
           </span>
         ) : null}
         {run.userMessage !== '' ? (
-          <span
-            className="min-w-0 truncate text-[12.5px] text-text-tertiary"
-            title={run.userMessage}
-          >
+          <span className="min-w-0 truncate text-body text-text-tertiary" title={run.userMessage}>
             {run.userMessage}
           </span>
         ) : null}
       </span>
 
       {showProject ? (
-        <span className="truncate text-[12px] text-text-secondary">{run.projectName ?? ''}</span>
+        <span className="truncate text-body text-text-secondary">{run.projectName ?? ''}</span>
       ) : null}
 
-      <span className="text-right font-mono text-[12px] text-text-tertiary">
-        {shortRunId(run.id)}
-      </span>
-      <span className="text-right font-mono text-[12px] tabular-nums text-text-secondary">
-        {elapsed}
-      </span>
+      <span className="text-right text-body text-text-tertiary">{shortRunId(run.id)}</span>
+      <span className="text-right text-body tabular-nums text-text-secondary">{elapsed}</span>
       <span
-        className="text-right font-mono text-[12px] tabular-nums text-text-primary"
+        className="text-right text-body tabular-nums text-text-primary"
         title={typeof run.costUsd === 'number' ? 'Total agent cost' : undefined}
       >
         {typeof run.costUsd === 'number' ? formatCost(run.costUsd) : ''}
@@ -168,7 +159,7 @@ export function RecentRunRow({
               aria-label="Rerun"
               className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
-              <span aria-hidden className="text-[12px] leading-none">
+              <span aria-hidden className="text-body leading-none">
                 ↻
               </span>
             </button>
@@ -184,7 +175,7 @@ export function RecentRunRow({
               aria-label="Open in IDE"
               className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
-              <span aria-hidden className="font-mono text-[12px] leading-none">
+              <span aria-hidden className="text-body leading-none">
                 ↗
               </span>
             </button>
@@ -198,12 +189,12 @@ export function RecentRunRow({
           }}
           title={`Copy CLI command: archon workflow get ${shortRunId(run.id)}`}
           aria-label="Copy CLI command"
-          className="inline-flex items-center gap-1.5 rounded-[7px] border bg-surface-elevated px-2.5 py-[5px] font-mono text-[11px] font-semibold text-text-secondary transition-colors hover:border-accent-bright/50 hover:text-text-primary"
+          className="inline-flex items-center gap-1.5 rounded-[7px] border bg-surface-elevated px-2.5 py-[5px] font-mono text-small font-medium text-text-secondary transition-colors hover:border-accent-bright/50 hover:text-text-primary"
           // Inline because the console scope's wildcard border-color rule
           // repaints Tailwind border utilities (see theme.css).
           style={{ borderColor: 'var(--border-bright)' }}
         >
-          <span aria-hidden className="text-[10px] leading-none">
+          <span aria-hidden className="text-mini leading-none">
             ❯_
           </span>
           CLI

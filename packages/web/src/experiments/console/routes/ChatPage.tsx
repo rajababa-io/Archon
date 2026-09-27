@@ -913,7 +913,7 @@ export function ChatPage(): ReactElement {
               type="button"
               onClick={scrollToBottom}
               aria-label="Jump to bottom"
-              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface-elevated px-3 py-1 text-[11px] text-text-secondary shadow-md transition-colors hover:text-text-primary"
+              className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface-elevated px-3 py-1 text-small text-text-secondary shadow-md transition-colors hover:text-text-primary"
             >
               <span aria-hidden>↓</span>
               Jump to bottom
@@ -926,7 +926,7 @@ export function ChatPage(): ReactElement {
         ) : null}
 
         {error !== null || loadError !== undefined ? (
-          <div className="shrink-0 border-t border-error/30 bg-error/[0.06] px-6 py-2 font-mono text-[11px] text-error">
+          <div className="shrink-0 border-t border-error/30 bg-error/[0.06] px-4.75 py-1.25 text-small text-error">
             {error ?? `Failed to load chat: ${loadError?.message ?? 'unknown error'}`}
           </div>
         ) : null}
@@ -934,7 +934,7 @@ export function ChatPage(): ReactElement {
         {turn.notice !== null ? (
           <div
             role="status"
-            className="shrink-0 border-t border-border bg-surface px-6 py-2 font-mono text-[11px] text-text-secondary"
+            className="shrink-0 border-t border-border bg-surface px-4.75 py-1.25 text-small text-text-secondary"
           >
             {turn.notice}
           </div>

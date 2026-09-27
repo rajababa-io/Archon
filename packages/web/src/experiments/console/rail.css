@@ -107,8 +107,7 @@
   width: 26px;
   flex: 0 0 auto;
   text-align: right;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   font-variant-numeric: tabular-nums;
 }
 .rail-counts .cell.live {
@@ -170,8 +169,7 @@
   align-items: center;
   gap: 3px;
   flex: 0 0 auto;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   font-variant-numeric: tabular-nums;
 }
 .rail-cnt svg {
@@ -359,7 +357,6 @@
 .cust-lab {
   font-size: var(--text-body);
   color: var(--text-tertiary);
-  letter-spacing: 0.02em;
 }
 .cust-hex {
   font-family: ui-monospace, Menlo, monospace;
@@ -470,9 +467,9 @@
   color: var(--text-tertiary);
 }
 .pick-count {
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   color: var(--text-tertiary);
-  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 .pick-grid {
   display: grid;
@@ -484,7 +481,7 @@
 }
 .pick-grid.is-emoji {
   grid-template-columns: repeat(10, 1fr);
-  font-size: 18px;
+  font-size: var(--text-title);
 }
 .pick-grid button {
   aspect-ratio: 1;
@@ -588,8 +585,11 @@
   gap: 7px;
   padding: 2px 8px 7px;
 }
-/* A chat row is taller than a rail row because it carries two lines. It still
-   pins its height rather than letting the contents decide — see .rail-row.
+/* A chat row is taller than a rail row: two lines of title, then the time.
+   Every row is that height whether its title needs one line or two, so the
+   list stays an even grid at any width — resizing the rail rewraps titles
+   but never makes rows jump. Only a handful of chats run at once, so the
+   space goes on reading the title rather than on fitting more rows.
 
    The left gutter is 26px, not the rail's 17px. Two marks live in that column
    — the drag grip on hover, and the status dot — and at 17px the grip's right
@@ -598,8 +598,10 @@
    things and they have to read as two objects. 26px leaves 10px between
    them. */
 .chatlist .rail-row {
-  height: auto;
-  min-height: calc(17px + 2 * var(--row-y));
+  /* Two title lines + the stamp line + the stamp's 2px + 12px of padding,
+     from the same tokens that size them — so a one-line title leaves its
+     spare line at the bottom, under the time, and the row never changes. */
+  height: calc(2 * 1.35 * var(--text-body) + 1.4 * var(--text-mini) + 14px);
   padding: 6px 8px 6px 26px;
   align-items: flex-start;
 }
@@ -642,9 +644,14 @@
    rather than a second copy of the vocabulary. */
 .chat-stamp {
   display: block;
+  /* One line, always — a wrapped stamp would make its row taller than the rest. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-transform: lowercase;
   margin-top: 2px;
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
+  line-height: 1.4;
   color: var(--text-tertiary);
   letter-spacing: 0.3px;
   font-variant-numeric: tabular-nums;
@@ -661,7 +668,7 @@
   margin-bottom: 6px;
   border: 1px dashed var(--border-bright);
   border-radius: var(--radius-control, 6px);
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   color: var(--text-tertiary);
   transition:
     color 0.11s,
@@ -857,20 +864,16 @@
 
 /* Owner section label.
    The account a run of projects belongs to, in the console's section voice:
-   mono, uppercase, micro, tertiary — the same register as WHERE THIS PROJECT
-   IS and NEEDS YOU on the Overview, so it reads as a label rather than as
-   another row you could click. Indented to the icon column so the project
+   small, medium weight, tertiary, as written — so it reads as a label rather
+   than as another row you could click. Indented to the icon column so the project
    names below start where the label does. */
 .rail-owner {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 10px 7px 3px 17px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--text-small);
+  font-weight: 500;
   color: var(--text-tertiary);
   line-height: 1;
   user-select: none;

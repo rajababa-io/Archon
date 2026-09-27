@@ -234,7 +234,7 @@ function Viewer({ node, path }: { node: MockNode | null; path: string }): ReactE
 
   if (node === null || node.kind === 'dir') {
     return (
-      <div className="flex h-full items-center justify-center text-[12px] text-text-tertiary">
+      <div className="flex h-full items-center justify-center text-body text-text-tertiary">
         Pick a file
       </div>
     );
@@ -243,7 +243,7 @@ function Viewer({ node, path }: { node: MockNode | null; path: string }): ReactE
     return (
       <div className="flex h-full flex-col">
         <ViewerHeader path={path} node={node} />
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-text-tertiary">
+        <div className="flex flex-1 items-center justify-center px-4.75 text-center text-body text-text-tertiary">
           No fixture content for this file — the mock only carries three real bodies.
         </div>
       </div>
@@ -253,10 +253,10 @@ function Viewer({ node, path }: { node: MockNode | null; path: string }): ReactE
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ViewerHeader path={path} node={node} />
-      <div className="flex min-h-0 flex-1 overflow-auto font-mono text-[12px]">
+      <div className="flex min-h-0 flex-1 overflow-auto font-mono text-body">
         <div
           aria-hidden
-          className="shrink-0 select-none border-r border-border bg-surface-inset px-2.5 py-3 text-right leading-[20px] tabular-nums text-text-tertiary"
+          className="shrink-0 select-none border-r border-border bg-surface-inset px-2.5 py-1.75 text-right leading-[20px] tabular-nums text-text-tertiary"
         >
           {lineNumbers.map(n => (
             <div key={n}>{n}</div>
@@ -280,11 +280,11 @@ function ViewerHeader({ path, node }: { path: string; node: MockNode }): ReactEl
   return (
     <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5">
       <FileIcon className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
-      <span className="min-w-0 truncate font-mono text-[11px]">
+      <span className="min-w-0 truncate text-small">
         <span className="text-text-tertiary">{dir}</span>
         <span className="text-text-primary">{node.name}</span>
       </span>
-      <span className="ml-auto shrink-0 font-mono text-[10px] uppercase tracking-[0.14em] text-text-tertiary">
+      <span className="ml-auto shrink-0 text-mini text-text-tertiary">
         read-only · {formatSize(node.size)}
       </span>
     </header>
@@ -325,7 +325,7 @@ function Tree({
                 else onSelect(path);
               }}
               style={{ paddingLeft: `${String(6 + depth * 12)}px` }}
-              className={`flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-[12px] transition-colors ${
+              className={`flex w-full items-center gap-1.5 py-[3px] pr-2 text-left text-body transition-colors ${
                 isSelected
                   ? 'bg-surface-elevated text-text-primary'
                   : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -356,7 +356,7 @@ function Tree({
               node.children.length === 0 ? (
                 <div
                   style={{ paddingLeft: `${String(6 + (depth + 1) * 12 + 18)}px` }}
-                  className="py-[3px] text-[11px] italic text-text-tertiary"
+                  className="py-[3px] text-small italic text-text-tertiary"
                 >
                   not expanded in this mock
                 </div>
@@ -418,7 +418,7 @@ function useTreeState(): {
 function OptionSplit(): ReactElement {
   const { expanded, toggle, selected, select } = useTreeState();
   return (
-    <div className="flex h-[520px] overflow-hidden rounded-[9px] border border-border bg-surface">
+    <div className="flex h-[520px] overflow-hidden rounded-lg border border-border bg-surface">
       <div className="w-[260px] shrink-0 overflow-auto border-r border-border bg-surface-inset py-1">
         <Tree
           nodes={TREE}
@@ -454,8 +454,8 @@ function OptionDrill(): ReactElement {
   const rows = childrenAt(dir);
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-[9px] border border-border bg-surface">
-      <header className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-2 font-mono text-[11px]">
+    <div className="flex h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-surface">
+      <header className="flex shrink-0 items-center gap-1 border-b border-border px-3 py-1.25 text-small">
         <button
           type="button"
           onClick={(): void => {
@@ -497,7 +497,7 @@ function OptionDrill(): ReactElement {
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           {rows.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-[12px] italic text-text-tertiary">
+            <div className="flex h-full items-center justify-center text-body italic text-text-tertiary">
               not expanded in this mock
             </div>
           ) : (
@@ -511,20 +511,20 @@ function OptionDrill(): ReactElement {
                     if (node.kind === 'dir') setDir(path);
                     else setOpenFile(path);
                   }}
-                  className="flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left transition-colors hover:bg-surface-hover"
+                  className="flex w-full items-center gap-2 border-b border-border/50 px-3 py-1.25 text-left transition-colors hover:bg-surface-hover"
                 >
                   {node.kind === 'dir' ? (
                     <Folder className="h-4 w-4 shrink-0 text-accent-bright/70" />
                   ) : (
                     <FileIcon className="h-4 w-4 shrink-0 text-text-tertiary" />
                   )}
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-text-primary">
+                  <span className="min-w-0 flex-1 truncate text-body text-text-primary">
                     {node.name}
                   </span>
-                  <span className="shrink-0 font-mono text-[10.5px] tabular-nums text-text-tertiary">
+                  <span className="shrink-0 text-mini tabular-nums text-text-tertiary">
                     {formatSize(node.size)}
                   </span>
-                  <span className="w-16 shrink-0 text-right text-[10.5px] text-text-tertiary">
+                  <span className="w-16 shrink-0 text-right text-mini text-text-tertiary">
                     {node.modified ?? ''}
                   </span>
                 </button>
@@ -559,7 +559,7 @@ function OptionPalette(): ReactElement {
   }, [query]);
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-[9px] border border-border bg-surface">
+    <div className="flex h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-surface">
       <div className="shrink-0 border-b border-border bg-surface-inset p-3">
         <div className="flex items-center gap-2 rounded-[7px] border border-border-bright bg-surface px-2.5 py-1.5">
           <Search className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
@@ -569,17 +569,15 @@ function OptionPalette(): ReactElement {
               setQuery(e.target.value);
             }}
             placeholder="Find a file by path…  (⌘P)"
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12px] text-text-primary outline-none placeholder:text-text-tertiary"
+            className="min-w-0 flex-1 bg-transparent font-mono text-body text-text-primary outline-none placeholder:text-text-tertiary"
           />
         </div>
         <div className="mt-2 max-h-[150px] overflow-auto">
           {query.trim() === '' ? (
-            <div className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-text-tertiary">
-              Recent
-            </div>
+            <div className="px-1 pb-1 text-mini font-medium text-text-tertiary">Recent</div>
           ) : null}
           {matches.length === 0 ? (
-            <div className="px-1 py-2 text-[11.5px] text-text-tertiary">No match</div>
+            <div className="px-1 py-1.25 text-small text-text-tertiary">No match</div>
           ) : (
             matches.map(entry => (
               <button
@@ -593,7 +591,7 @@ function OptionPalette(): ReactElement {
                 }`}
               >
                 <FileIcon className="h-3 w-3 shrink-0 text-text-tertiary" />
-                <span className="min-w-0 truncate font-mono text-[11.5px]">
+                <span className="min-w-0 truncate font-mono text-small">
                   <span className="text-text-primary">
                     {entry.path.slice(entry.path.lastIndexOf('/') + 1)}
                   </span>
@@ -657,13 +655,13 @@ const OPTIONS: readonly {
 function MockTabs(): ReactElement {
   const tabs = ['Overview', 'Runs', 'Chat', 'Issues', 'Files'];
   return (
-    <div className="flex items-center gap-1 rounded-[9px] border border-border bg-surface px-2 py-1.5">
+    <div className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5">
       {tabs.map(label => {
         const isActive = label === 'Files';
         return (
           <span
             key={label}
-            className={`relative rounded px-2 py-1 text-[11px] font-medium uppercase tracking-wider ${
+            className={`relative rounded px-2 py-1 text-small font-medium ${
               isActive ? 'bg-surface-elevated text-text-primary' : 'text-text-tertiary'
             }`}
           >
@@ -686,10 +684,10 @@ export function FilesMock(): ReactElement {
   const active = OPTIONS.find(o => o.key === option) ?? OPTIONS[0];
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-x-2.25 gap-y-1.75">
       <MockTabs />
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-x-2 gap-y-1.25">
         {OPTIONS.map(({ key, label }) => (
           <button
             key={key}
@@ -697,7 +695,7 @@ export function FilesMock(): ReactElement {
             onClick={(): void => {
               setOption(key);
             }}
-            className={`rounded border px-2.5 py-1 font-mono text-[11.5px] transition-colors ${
+            className={`rounded border px-2.5 py-1 text-small transition-colors ${
               key === option
                 ? 'border-accent-bright/60 bg-surface-elevated text-text-primary'
                 : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'
@@ -712,12 +710,12 @@ export function FilesMock(): ReactElement {
       {option === 'drill' ? <OptionDrill /> : null}
       {option === 'palette' ? <OptionPalette /> : null}
 
-      <div className="rounded-[9px] border border-border bg-surface-inset p-3">
-        <p className="text-[12px] leading-relaxed text-text-secondary">{active?.blurb}</p>
-        <p className="mt-1.5 text-[11px] leading-relaxed text-text-tertiary">{active?.cost}</p>
+      <div className="rounded-lg border border-border bg-surface-inset p-3">
+        <p className="text-body leading-relaxed text-text-secondary">{active?.blurb}</p>
+        <p className="mt-1.5 text-small leading-relaxed text-text-tertiary">{active?.cost}</p>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-text-tertiary">
+      <p className="text-small leading-relaxed text-text-tertiary">
         Fixture-backed — no file API exists yet, and only three files carry real bodies. The viewer
         is the console&rsquo;s existing highlight.js path, so what you see here is the
         zero-new-dependency option rendering for real. Folders marked &ldquo;not expanded in this

@@ -35,10 +35,8 @@ export function IssueList({ issues, onSelectNode }: IssueListProps): ReactElemen
   return (
     <div className="flex min-h-0 flex-col">
       <header className="flex items-baseline justify-between border-b border-border px-3 py-1.5">
-        <span className="font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-text-tertiary">
-          Validation
-        </span>
-        <span className="font-mono text-[10.5px] text-text-tertiary">
+        <span className="text-mini font-medium text-text-tertiary">Validation</span>
+        <span className="text-mini text-text-tertiary">
           {issues.length === 0
             ? 'clean'
             : `${String(issues.length)} issue${issues.length === 1 ? '' : 's'}`}
@@ -46,29 +44,25 @@ export function IssueList({ issues, onSelectNode }: IssueListProps): ReactElemen
       </header>
 
       {errorCount > 0 ? (
-        <div className="border-b border-error/30 bg-error/10 px-3 py-1.5 text-[11.5px] text-error">
+        <div className="border-b border-error/30 bg-error/10 px-3 py-1.5 text-small text-error">
           {errorCount === 1 ? '1 error blocks save' : `${String(errorCount)} errors block save`}
         </div>
       ) : null}
 
       <ul className="min-h-0 flex-1 overflow-y-auto">
         {sorted.length === 0 ? (
-          <li className="px-3 py-2 text-[11.5px] text-text-tertiary">No issues.</li>
+          <li className="px-3 py-1.25 text-small text-text-tertiary">No issues.</li>
         ) : (
           sorted.map(issue => {
             const nodeId = issue.path.nodeId;
             const body = (
               <>
-                <span
-                  className={`font-mono text-[9.5px] font-bold uppercase ${severityClass(issue.severity)}`}
-                >
+                <span className={`text-mini font-medium ${severityClass(issue.severity)}`}>
                   {issue.severity}
                 </span>
-                <span className="min-w-0 flex-1 text-[11.5px] leading-snug text-text-secondary">
+                <span className="min-w-0 flex-1 text-small leading-snug text-text-secondary">
                   {nodeId !== undefined ? (
-                    <span className="mr-1 font-mono text-[10.5px] text-text-primary">
-                      {nodeId}:
-                    </span>
+                    <span className="mr-1 text-mini text-text-primary">{nodeId}:</span>
                   ) : null}
                   {issue.message}
                 </span>

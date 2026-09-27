@@ -25,7 +25,7 @@ import {
   useState,
 } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
-import { Settings, PenTool, type LucideIcon } from 'lucide-react';
+import { Settings, Workflow, type LucideIcon } from 'lucide-react';
 import { ProjectRow } from './ProjectRow';
 import { ProjectCountHeader } from './ProjectCountCells';
 import type { RunCounts } from '../skills';
@@ -106,39 +106,41 @@ const RAIL_WIDTH: PaneBounds = {
 };
 
 const RAIL_NAV_LINK_CLASS =
-  'flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left text-[13px] font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary';
+  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary';
 
-/** A row in the rail's bottom nav menu (Builder / Settings / Workflows / Old UI). */
+/** A row in the rail's bottom nav menu (Workflows / Settings). */
 function RailNavLink({
   to,
   icon: Icon,
   label,
   title,
-  badge,
+  activeFor = [to],
 }: {
   to: string;
   icon: LucideIcon;
   label: string;
   title?: string;
-  /** Optional pill after the label (rail-header "console" pill styling). */
-  badge?: string;
+  /** Path prefixes this item is the current place for; defaults to its own. */
+  activeFor?: readonly string[];
 }): ReactElement {
+  const { pathname } = useLocation();
+  const active = activeFor.some(p => pathname === p || pathname.startsWith(`${p}/`));
   return (
-    <Link to={to} title={title} className={RAIL_NAV_LINK_CLASS}>
+    <Link
+      to={to}
+      title={title}
+      aria-current={active ? 'page' : undefined}
+      className={`${RAIL_NAV_LINK_CLASS}${active ? ' bg-surface-hover text-text-primary' : ''}`}
+    >
       <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
       <span className="truncate">{label}</span>
-      {badge !== undefined ? (
-        <span className="shrink-0 rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-text-tertiary">
-          {badge}
-        </span>
-      ) : null}
     </Link>
   );
 }
 
 /**
  * Left rail: header, search row, the global scope, then the projects grouped
- * by owner under mono section labels, and a drag handle on the right edge
+ * by owner under section labels, and a drag handle on the right edge
  * (232–440px, persisted).
  *
  * Note: ProjectRail mounts outside the inner `<Routes>` (sibling to the
@@ -363,7 +365,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
         }${peeking ? ' is-peeking' : ''}`}
       >
         {/* Header: brand + label + count + filter */}
-        <div className="px-3.5 pb-2.5 pt-4">
+        <div className="px-2.75 pb-1.5 pt-2.5">
           {/* The head is a ROW, on the same icon column as everything below it.
             Collapsed, the toggle is the only thing left and it has not moved —
             which is what makes the panel read as sliding rather than jumping.
@@ -385,7 +387,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
               {/* leading pinned to the row's 17px content box. .rail-row has a
                   fixed height so hovering cannot make the rail jump, and the
                   wordmark's default 1.5 line-height overflowed it by 4px. */}
-              <span className="rail-hide brand-text text-base font-semibold leading-[17px] tracking-tight">
+              <span className="rail-hide brand-text text-large font-medium leading-[17px] tracking-tight">
                 Archon
               </span>
             </button>
@@ -399,7 +401,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
             </span>
             <span className="rail-hide rail-text">Search</span>
             <span
-              className="rail-hide shrink-0 rounded border px-[5px] py-px font-mono text-[10.5px] text-text-tertiary"
+              className="rail-hide shrink-0 rounded border px-[5px] py-px text-mini text-text-tertiary"
               style={{ borderColor: 'var(--border-bright)' }}
             >
               ⌘K
@@ -430,7 +432,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
         {/* Grouped project list */}
         <div
           ref={scrollerRef}
-          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-3 pt-1"
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-1.75 pt-1"
           onDragOver={e => {
             if (dragId === null) return;
             e.preventDefault();
@@ -449,7 +451,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
           {error !== undefined ? (
             <span
               title={error.message}
-              className="mx-2 rounded border border-error/40 bg-error/10 px-2 py-1 font-mono text-[10px] text-error"
+              className="mx-2 rounded border border-error/40 bg-error/10 px-2 py-1 text-mini text-error"
             >
               {error.message}
             </span>
@@ -554,7 +556,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
             </Fragment>
           ))}
           {flat.length === 0 && error === undefined ? (
-            <div className="px-3 py-6 text-center text-[12.5px] text-text-tertiary">
+            <div className="px-3 py-3.75 text-center text-body text-text-tertiary">
               No projects match “{query}”.
             </div>
           ) : null}
@@ -567,9 +569,9 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
             onClick={onAddProject}
             title="Add project"
             aria-label="Add project"
-            className="flex w-full items-center gap-2.5 rounded-[10px] border border-border bg-surface px-3 py-2.5 text-left text-[13px] font-semibold text-text-secondary transition-colors hover:border-accent-bright/50 hover:bg-surface-hover hover:text-text-primary"
+            className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-body font-medium text-text-secondary transition-colors hover:border-accent-bright/50 hover:bg-surface-hover hover:text-text-primary"
           >
-            <span aria-hidden="true" className="text-base leading-none text-accent-bright">
+            <span aria-hidden="true" className="text-large leading-none text-accent-bright">
               +
             </span>
             <span className="rail-hide">Add project</span>
@@ -577,13 +579,13 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
         </div>
 
         {/* Nav menu — under Add project, separated from it by the border-t divider. */}
-        <div className="flex flex-col gap-0.5 border-t border-border px-2.5 py-2">
+        <div className="flex flex-col gap-0.5 border-t border-border px-2.5 py-1.25">
           <RailNavLink
-            to="/console/builder"
-            icon={PenTool}
-            label="Workflow Builder"
-            title="Visual workflow builder (beta)"
-            badge="beta"
+            to="/console/workflows"
+            icon={Workflow}
+            label="Workflows"
+            title="Every workflow — open one in the builder"
+            activeFor={['/console/workflows', '/console/builder']}
           />
           <RailNavLink
             to="/console/settings"

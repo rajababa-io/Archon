@@ -368,7 +368,7 @@ export function RunDetailPage(): ReactElement {
 
   if (runId === undefined) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">
+      <div className="flex h-full items-center justify-center text-large text-text-tertiary">
         Invalid run URL.
       </div>
     );
@@ -381,9 +381,9 @@ export function RunDetailPage(): ReactElement {
     return (
       <>
         <RunErrorBar projectId={projectId} runId={runId} />
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 text-center">
-          <p className="text-sm text-text-primary">Could not load run.</p>
-          <p className="font-mono text-[11px] text-text-tertiary">{detailError.message}</p>
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-x-2 gap-y-1.25 text-center">
+          <p className="text-large text-text-primary">Could not load run.</p>
+          <p className="text-small text-text-tertiary">{detailError.message}</p>
         </div>
       </>
     );
@@ -391,7 +391,7 @@ export function RunDetailPage(): ReactElement {
 
   if (detail === undefined || detail === null) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-text-tertiary">
+      <div className="flex h-full items-center justify-center text-large text-text-tertiary">
         Loading run…
       </div>
     );
@@ -457,10 +457,10 @@ export function RunDetailPage(): ReactElement {
                 onScrollEnd={handleScrollEnd}
                 className="h-full overflow-y-auto"
               >
-                <div ref={contentRef} className="w-full px-6">
-                  <div className="sticky top-0 z-10 -mx-6 bg-surface px-6">{toolbar}</div>
+                <div ref={contentRef} className="w-full px-4.75">
+                  <div className="sticky top-0 z-10 -mx-6 bg-surface px-4.75">{toolbar}</div>
 
-                  <div className="py-4">
+                  <div className="py-2.5">
                     <RunStartedLine run={run} />
 
                     <div className="mt-2">
@@ -479,13 +479,13 @@ export function RunDetailPage(): ReactElement {
                     {run.status === 'paused' &&
                     run.approval !== null &&
                     run.approval !== undefined ? (
-                      <div className="mt-6 rounded border border-warning/30 bg-warning/[0.04] p-4">
+                      <div className="mt-4 rounded border border-warning/30 bg-warning/[0.04] p-4">
                         <div className="mb-2 flex items-center gap-2">
                           <span
                             aria-hidden
                             className="h-2 w-2 animate-pulse rounded-full bg-warning"
                           />
-                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-warning">
+                          <span className="text-small font-medium text-warning">
                             Waiting for approval
                           </span>
                         </div>
@@ -503,7 +503,7 @@ export function RunDetailPage(): ReactElement {
                   type="button"
                   onClick={scrollToBottom}
                   aria-label="Jump to bottom"
-                  className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface-elevated px-3 py-1 text-[11px] text-text-secondary shadow-md transition-colors hover:text-text-primary"
+                  className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full border border-border bg-surface-elevated px-3 py-1 text-small text-text-secondary shadow-md transition-colors hover:text-text-primary"
                 >
                   <span aria-hidden>↓</span>
                   Jump to bottom
@@ -512,7 +512,7 @@ export function RunDetailPage(): ReactElement {
             </div>
           ) : view === 'graph' ? (
             <>
-              <div className="px-6">{toolbar}</div>
+              <div className="px-4.75">{toolbar}</div>
               {project !== undefined && project !== null ? (
                 <RunGraphPanel
                   workflowName={run.workflow}
@@ -525,7 +525,7 @@ export function RunDetailPage(): ReactElement {
                   }}
                 />
               ) : (
-                <div className="p-6 text-[12px] text-text-tertiary">
+                <div className="p-6 text-body text-text-tertiary">
                   {projectId === undefined
                     ? 'This run has no project. Its logs and artifacts are available in the other views.'
                     : projectError
@@ -536,7 +536,7 @@ export function RunDetailPage(): ReactElement {
             </>
           ) : (
             <>
-              <div className="px-6">{toolbar}</div>
+              <div className="px-4.75">{toolbar}</div>
               <ArtifactPanel runId={runId} />
             </>
           )}
@@ -564,18 +564,16 @@ function RunErrorBar({
   runId: string;
 }): ReactElement {
   return (
-    <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface-elevated px-6 py-2.5">
+    <header className="flex shrink-0 items-center gap-2.25 border-b border-border bg-surface-elevated px-4.75 py-1.5">
       <Link
         to={projectId === undefined ? '/console' : `/console/p/${projectId}`}
-        className="rounded-[7px] border px-2 py-[3px] font-mono text-[11px] font-semibold text-text-secondary transition-colors hover:text-text-primary"
+        className="rounded-[7px] border px-2 py-[3px] text-small font-medium text-text-secondary transition-colors hover:text-text-primary"
         style={{ borderColor: 'var(--border-bright)' }}
       >
         <span aria-hidden>←</span> Runs
       </Link>
-      <span className="font-mono text-[12px] text-text-tertiary">{shortRunId(runId)}</span>
-      <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-error">
-        Could not load
-      </span>
+      <span className="text-body text-text-tertiary">{shortRunId(runId)}</span>
+      <span className="text-small font-medium text-error">Could not load</span>
     </header>
   );
 }

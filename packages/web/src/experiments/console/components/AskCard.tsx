@@ -46,7 +46,7 @@ interface AskCardProps {
  * you still have questions to answer.
  */
 const PRIMARY_BUTTON =
-  'rounded-md px-3.5 py-1.5 font-mono text-[11.5px] font-semibold tracking-[0.06em] transition-[filter] enabled:hover:brightness-110 disabled:cursor-not-allowed';
+  'rounded-md px-2.75 py-1.5 text-small font-medium transition-[filter] enabled:hover:brightness-110 disabled:cursor-not-allowed';
 
 function primaryStyle(disabled: boolean): CSSProperties {
   return disabled
@@ -74,7 +74,7 @@ const UNWRAP = ({ children }: { children?: React.ReactNode }): ReactElement => <
 
 const INLINE_MD: Components = {
   code: ({ children }) => (
-    <code className="rounded bg-surface-inset px-1 py-[1px] font-mono text-[0.86em] text-text-primary">
+    <code className="rounded bg-surface-inset px-1 py-[1px] text-[0.86em] text-text-primary">
       {children}
     </code>
   ),
@@ -271,14 +271,14 @@ export function AskCard({ spec, onAnswer }: AskCardProps): ReactElement {
       // stealing keys from the rest of the page.
       tabIndex={0}
       onKeyDown={onKeyDown}
-      className="my-2 overflow-hidden rounded-[10px] border bg-surface outline-none focus-visible:border-accent-bright"
+      className="my-2 overflow-hidden rounded-lg border bg-surface outline-none focus-visible:border-accent-bright"
       style={{ borderColor: 'var(--border-bright)' }}
     >
       <header
-        className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b bg-surface-inset px-3.5 py-2.5"
+        className="flex flex-wrap items-center gap-x-2.25 gap-y-1.25 border-b bg-surface-inset px-2.75 py-1.5"
         style={{ borderColor: 'var(--border)' }}
       >
-        <span className="font-mono text-[10.5px] font-semibold tracking-[0.18em] uppercase text-text-secondary">
+        <span className="text-mini font-medium text-text-secondary">
           {sent ? (
             <>
               Answered · <span className="text-text-primary">{total}</span> question
@@ -292,13 +292,13 @@ export function AskCard({ spec, onAnswer }: AskCardProps): ReactElement {
           )}
         </span>
         {question.chip !== undefined ? (
-          <span className="rounded bg-surface-bright px-[7px] py-[2px] font-mono text-[11px] text-text-secondary">
+          <span className="rounded bg-surface-bright px-[7px] py-[2px] text-small text-text-secondary">
             {question.chip}
           </span>
         ) : null}
 
         {total > 1 ? (
-          <div className="ml-auto flex items-center gap-2.5">
+          <div className="ml-auto flex items-center gap-2">
             <div className="flex items-center gap-[5px]">
               {questions.map((q, i) => {
                 const done = (answers[i] ?? []).some(v => v.trim().length > 0);
@@ -370,15 +370,15 @@ export function AskCard({ spec, onAnswer }: AskCardProps): ReactElement {
           files={files}
           error={fileError}
           onRemove={removeFile}
-          className="px-4 pb-3"
+          className="px-3 pb-1.75"
         />
       )}
 
       <footer
-        className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t bg-surface-inset px-3.5 py-2.5"
+        className="flex flex-wrap items-center gap-x-2.5 gap-y-1.25 border-t bg-surface-inset px-2.75 py-1.5"
         style={{ borderColor: 'var(--border)' }}
       >
-        <span className="flex items-center gap-2 font-mono text-[11px] text-text-secondary">
+        <span className="flex items-center gap-2 text-small text-text-secondary">
           {answered} of {total} answered
           <span className="h-1 w-24 overflow-hidden rounded-sm bg-surface-bright">
             <span
@@ -387,9 +387,9 @@ export function AskCard({ spec, onAnswer }: AskCardProps): ReactElement {
             />
           </span>
         </span>
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2.25">
           {readOnly ? null : (
-            <span className="font-mono text-[11px] text-text-tertiary">
+            <span className="text-small text-text-tertiary">
               {`A–${KEYS[question.options.length] ?? 'A'}`}
               {total > 1 ? ' · ←/→ to page' : ''}
             </span>
@@ -448,26 +448,24 @@ function QuestionBlock({
 
   return (
     <div>
-      <div className="px-4 pt-3.5">
+      <div className="px-3 pt-2.25">
         {question.multi === true ? (
-          <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.18em] uppercase text-text-tertiary">
-            Choose any that apply
-          </div>
+          <div className="mb-2 text-mini font-medium text-text-tertiary">Choose any that apply</div>
         ) : null}
         {question.evidence !== undefined ? (
           <div
-            className="mb-3 border-l-2 pl-3 text-[13px] leading-[1.6] text-text-secondary"
+            className="mb-2 border-l-2 pl-3 text-body leading-[1.6] text-text-secondary"
             style={{ borderColor: 'var(--border-bright)' }}
           >
             <Inline text={question.evidence} />
           </div>
         ) : null}
-        <div className="mb-3 text-[15px] leading-[1.4] font-semibold text-text-primary">
+        <div className="mb-2 text-large leading-[1.4] font-medium text-text-primary">
           <Inline text={question.title} />
         </div>
       </div>
 
-      <div className="flex flex-col gap-2 px-4 pb-3.5">
+      <div className="flex flex-col px-3 pb-2.25">
         {question.options.map((option, i) => (
           <OptionRow
             key={option.label + String(i)}
@@ -486,12 +484,12 @@ function QuestionBlock({
 
         {question.allowOwn === false || readOnly ? null : ownOpen ? (
           <div
-            className="grid grid-cols-[30px_1fr] items-start gap-x-3 gap-y-[3px] rounded-lg border px-3.5 py-3"
+            className="mt-1.5 grid grid-cols-[22px_1fr] items-start gap-x-2.5 gap-y-px rounded-lg border px-1 py-2"
             style={{ borderColor: 'var(--accent)' }}
           >
             <Keycap slot={ownSlot} tone="chosen" />
-            <span className="text-[14.5px] font-semibold text-text-primary">Your own answer</span>
-            <div className="col-start-2 mt-2 flex flex-col gap-2">
+            <span className="text-body font-medium text-text-primary">Your own answer</span>
+            <div className="col-start-2 mt-2 flex flex-col gap-x-2 gap-y-1.25">
               <textarea
                 ref={ownRef}
                 value={ownDraft}
@@ -508,10 +506,10 @@ function QuestionBlock({
                   if (e.clipboardData.getData('text/plain').length === 0) e.preventDefault();
                 }}
                 placeholder="Type your answer…"
-                className="min-h-[62px] w-full resize-y rounded-md border bg-surface-inset px-3 py-2 text-[13.5px] leading-[1.5] text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent-bright"
+                className="min-h-[62px] w-full resize-y rounded-md border bg-surface-inset px-3 py-1.25 text-body leading-[1.5] text-text-primary outline-none placeholder:text-text-tertiary focus:border-accent-bright"
                 style={{ borderColor: 'var(--border-bright)' }}
               />
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   disabled={ownDraft.trim().length === 0}
@@ -526,7 +524,7 @@ function QuestionBlock({
                 <button
                   type="button"
                   onClick={onCancelOwn}
-                  className="rounded-md border px-3 py-1.5 font-mono text-[11.5px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                  className="rounded-md border px-3 py-1.5 text-small text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
                   style={{ borderColor: 'var(--border-bright)' }}
                 >
                   Cancel
@@ -539,7 +537,7 @@ function QuestionBlock({
                   aria-label="Attach files"
                   title="Attach files"
                   disabled={attachCount >= MAX_FILES}
-                  className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-[11.5px] text-text-secondary transition-colors enabled:hover:bg-surface-hover enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-small text-text-secondary transition-colors enabled:hover:bg-surface-hover enabled:hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
                   style={{ borderColor: 'var(--border-bright)' }}
                 >
                   <Paperclip className="h-4 w-4" />
@@ -557,7 +555,7 @@ function QuestionBlock({
                     e.target.value = '';
                   }}
                 />
-                <span className="font-mono text-[11px] text-text-tertiary">⌘↵ to save</span>
+                <span className="text-small text-text-tertiary">⌘↵ to save</span>
               </div>
             </div>
           </div>
@@ -590,7 +588,7 @@ function PagerButton({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="rounded-[5px] border px-2 py-[3px] font-mono text-[11px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+      className="rounded-[5px] border px-2 py-[3px] text-small text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
       style={{ borderColor: 'var(--border-bright)' }}
     >
       {label}
@@ -598,31 +596,13 @@ function PagerButton({
   );
 }
 
-function Keycap({
-  slot,
-  tone,
-}: {
-  slot: string;
-  tone: 'plain' | 'recommended' | 'chosen';
-}): ReactElement {
-  const toneClass =
-    tone === 'recommended'
-      ? 'text-success'
-      : tone === 'chosen'
-        ? 'text-accent-bright'
-        : 'text-text-secondary';
+function Keycap({ slot, tone }: { slot: string; tone: 'plain' | 'chosen' }): ReactElement {
+  const toneClass = tone === 'chosen' ? 'text-accent-bright' : 'text-text-secondary';
   return (
     <span
       aria-hidden
-      className={`flex h-[26px] w-[26px] items-center justify-center rounded-[5px] border border-b-2 bg-surface-inset font-mono text-[12px] font-semibold ${toneClass}`}
-      style={{
-        borderColor:
-          tone === 'recommended'
-            ? 'color-mix(in oklch, var(--success), transparent 45%)'
-            : tone === 'chosen'
-              ? 'var(--accent)'
-              : 'var(--border-bright)',
-      }}
+      className={`flex h-5 w-5 items-center justify-center rounded-[4px] border bg-surface-inset text-small font-medium ${toneClass}`}
+      style={{ borderColor: tone === 'chosen' ? 'var(--accent)' : 'var(--border-bright)' }}
     >
       {slot}
     </span>
@@ -650,18 +630,11 @@ function OptionRow({
   readOnly: boolean;
   onClick: () => void;
 }): ReactElement {
-  // Chosen wins over recommended: once the user has picked, the card should
-  // show what they decided, not keep arguing for the suggestion.
-  const borderColor = chosen
-    ? 'var(--accent)'
-    : recommended
-      ? 'color-mix(in oklch, var(--success), transparent 55%)'
-      : 'var(--border)';
-  const background = chosen
-    ? 'color-mix(in oklch, var(--accent), var(--surface-elevated) 90%)'
-    : recommended
-      ? 'color-mix(in oklch, var(--success), var(--surface-elevated) 94%)'
-      : 'var(--surface-elevated)';
+  // A plain row between dividers. The recommendation is the badge alone: a
+  // tinted block made the suggested answer the loudest thing on the card,
+  // louder than the question. Only a CHOSEN row is tinted — once the user has
+  // picked, the card shows what they decided.
+  const background = chosen ? 'color-mix(in oklch, var(--accent), var(--surface) 90%)' : undefined;
 
   return (
     <button
@@ -669,44 +642,35 @@ function OptionRow({
       disabled={readOnly}
       onClick={onClick}
       aria-pressed={chosen}
-      className={`grid w-full grid-cols-[30px_1fr] items-start gap-x-3 gap-y-[3px] rounded-lg border px-3.5 py-3 text-left transition-colors enabled:hover:brightness-110 disabled:cursor-default ${
+      className={`grid w-full grid-cols-[22px_1fr] items-start gap-x-2.5 gap-y-px border-b px-1 py-2 text-left transition-colors enabled:hover:bg-surface-hover disabled:cursor-default ${
         dashed && !chosen ? 'border-dashed' : ''
       }`}
-      style={{ borderColor, background }}
+      style={{ borderColor: 'var(--border)', background }}
     >
-      <Keycap slot={slot} tone={chosen ? 'chosen' : recommended ? 'recommended' : 'plain'} />
-      <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[14.5px] font-semibold text-text-primary">
+      <Keycap slot={slot} tone={chosen ? 'chosen' : 'plain'} />
+      <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body leading-5 font-medium text-text-primary">
         <Inline text={label} />
         {recommended && !chosen ? (
           <span
-            className="rounded-full border px-2 py-[2px] font-mono text-[9.5px] font-bold tracking-[0.14em] uppercase text-success"
+            className="rounded-full border px-2 py-[2px] text-mini font-medium text-success"
             style={{
               borderColor: 'color-mix(in oklch, var(--success), transparent 65%)',
-              // Plain surface, not a second success tint: the recommended row
-              // is already success-tinted, and tint-on-tint lifted the chip's
-              // background into the ink and left the label at 4.34:1.
-              background: 'var(--surface)',
             }}
           >
             ✦ Recommended
           </span>
         ) : null}
         {chosen ? (
-          <span className="ml-auto font-mono text-[11px] text-accent-bright">✓ Your answer</span>
+          <span className="ml-auto text-small text-accent-bright">✓ Your answer</span>
         ) : null}
       </span>
       {detail !== undefined ? (
-        <span className="col-start-2 text-[13px] leading-[1.55] text-text-secondary">
+        <span className="col-start-2 text-body leading-[1.45] text-text-secondary">
           <Inline text={detail} />
         </span>
       ) : null}
       {recommended && why !== undefined && !chosen ? (
-        <span
-          className="col-start-2 mt-1 flex gap-[7px] text-[12.5px] leading-[1.5]"
-          // 50%, not 35%: --text-primary is the mode's darkest/lightest ink, so a
-          // heavier mix is what pulls this line clear of AA in both modes.
-          style={{ color: 'color-mix(in oklch, var(--success), var(--text-primary) 50%)' }}
-        >
+        <span className="col-start-2 flex gap-[7px] text-body leading-[1.45] text-text-tertiary">
           <span aria-hidden className="opacity-80">
             ↳
           </span>

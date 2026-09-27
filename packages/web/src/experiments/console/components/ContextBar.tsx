@@ -50,7 +50,7 @@ export function ContextBar({ messages }: { messages: readonly Message[] }): Reac
     .join(' · ');
 
   return (
-    <span title={title} className="flex shrink-0 items-center gap-[7px] font-mono text-[10.5px]">
+    <span title={title} className="flex shrink-0 items-center gap-[7px] text-mini">
       {pct === null ? null : (
         <span
           aria-hidden

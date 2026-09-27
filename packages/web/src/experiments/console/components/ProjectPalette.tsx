@@ -138,7 +138,7 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
           aria-controls={listboxId}
           aria-autocomplete="list"
           aria-activedescendant={activeOptionId}
-          className="w-full border-b border-border bg-transparent px-4 py-3 text-[15px] text-text-primary placeholder:text-text-tertiary focus:outline-none"
+          className="w-full border-b border-border bg-transparent px-3 py-1.75 text-large text-text-primary placeholder:text-text-tertiary focus:outline-none"
         />
         <ul
           id={listboxId}
@@ -147,7 +147,7 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
           className="max-h-[50vh] overflow-y-auto py-1"
         >
           {matches.length === 0 ? (
-            <li className="px-4 py-3 text-[12px] text-text-tertiary">Nothing matches.</li>
+            <li className="px-3 py-1.75 text-body text-text-tertiary">Nothing matches.</li>
           ) : (
             matches.map((r, i) => {
               const selected = i === index;
@@ -165,7 +165,7 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
                     onMouseEnter={() => {
                       setIndex(i);
                     }}
-                    className={`relative flex w-full items-baseline gap-3 px-4 py-2 text-left transition-colors ${
+                    className={`relative flex w-full items-baseline gap-2.25 px-3 py-1.25 text-left transition-colors ${
                       selected ? 'bg-surface-hover' : 'hover:bg-surface-hover'
                     }`}
                   >
@@ -186,7 +186,7 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
             })
           )}
         </ul>
-        <footer className="flex items-center justify-between border-t border-border px-4 py-2 font-mono text-[10px] text-text-tertiary">
+        <footer className="flex items-center justify-between border-t border-border px-3 py-1.25 text-mini text-text-tertiary">
           <span>↑↓ move · ↵ open · esc cancel</span>
           <span>
             {matches.length} of {(projects?.length ?? 0) + (allChats?.chats.length ?? 0)}
@@ -198,17 +198,14 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
   );
 }
 
-const TAG =
-  'rounded-sm bg-surface-hover px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-text-tertiary';
+const TAG = 'rounded-sm bg-surface-hover px-1 py-0.5 text-mini text-text-tertiary';
 
 function ProjectRow({ project }: { project: Project }): ReactElement {
   return (
     <>
-      <span className="text-[13px] font-medium text-text-primary">{project.name}</span>
+      <span className="text-body font-medium text-text-primary">{project.name}</span>
       {project.kind === 'folder' ? <span className={TAG}>folder</span> : null}
-      <span className="truncate font-mono text-[10.5px] text-text-tertiary">
-        {formatProjectLocator(project)}
-      </span>
+      <span className="truncate text-mini text-text-tertiary">{formatProjectLocator(project)}</span>
     </>
   );
 }
@@ -219,12 +216,12 @@ function ChatRow({ row }: { row: Extract<PaletteResult, { kind: 'chat' }> }): Re
     <>
       <span className={TAG}>chat</span>
       <span
-        className={`truncate text-[13px] ${chat.completed ? 'text-text-tertiary' : 'text-text-primary'}`}
+        className={`truncate text-body ${chat.completed ? 'text-text-tertiary' : 'text-text-primary'}`}
       >
         {conversationLabel(chat)}
       </span>
       {chat.completed ? <span className={TAG}>closed</span> : null}
-      <span className="ml-auto shrink-0 truncate font-mono text-[10.5px] text-text-tertiary">
+      <span className="ml-auto shrink-0 truncate text-mini text-text-tertiary">
         {row.projectName ?? ''}
       </span>
     </>
