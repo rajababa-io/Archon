@@ -411,7 +411,11 @@ export function ChatPage(): ReactElement {
   // looking at. Pushed on the dashboard stream the moment a chat starts or
   // stops (see lib/sse.ts); the hook's own poll is the backstop for what a push
   // cannot reach, shared with every other reader of the same answer.
-  const { ids: liveIds, tools: liveTools, ciWaiting } = useLiveChats();
+  const { ids: liveIds, tools: liveTools, ciWaiting, ciWaitingSince } = useLiveChats();
+  // Only the CI alarm is read from it. The settings page owns the same cache
+  // key, so a saved change reaches this chip without a reload.
+  const { data: config } = useEntity(K.config, skill.getConfig);
+  const ciAlarmMinutes = config?.config.chats?.ciWaitAlarmMinutes;
 
   /**
    * Chats whose run is paused on an approval.
@@ -876,6 +880,10 @@ export function ChatPage(): ReactElement {
                     <ChatStatusStrip
                       status={status}
                       since={workingSince}
+                      ciSince={
+                        activeConvId === null ? null : (ciWaitingSince[activeConvId] ?? null)
+                      }
+                      ciAlarmMinutes={ciAlarmMinutes}
                       lastActivityAt={lastActivityAt}
                       trace={turnTrace}
                       /* What it is doing, from the server's own map rather

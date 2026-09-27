@@ -2,6 +2,7 @@
  * Zod schemas for configuration API endpoints.
  */
 import { z } from '@hono/zod-openapi';
+import { MAX_CI_WAIT_ALARM_MINUTES } from '@archon/core/config/chats';
 import { effortLevelSchema, rejectRetiredThinking } from '@archon/workflows/schemas/effort';
 
 /** Schema for the safe config subset returned to web clients (mirrors SafeConfig in config-types.ts). */
@@ -54,12 +55,16 @@ export const updateTiersBodySchema = z
  */
 const thresholdPercentSchema = z.number().int().min(1).max(99);
 
+/** Same reasoning: past the watch's own 24-hour expiry the alarm cannot show. */
+const ciWaitAlarmMinutesSchema = z.number().int().min(1).max(MAX_CI_WAIT_ALARM_MINUTES);
+
 /** The effective chat thresholds — resolved, so every field is present. */
 export const chatsConfigSchema = z
   .object({
     nudgeAtPercent: thresholdPercentSchema,
     handoffAtPercent: thresholdPercentSchema,
     autoHandoff: z.boolean(),
+    ciWaitAlarmMinutes: ciWaitAlarmMinutesSchema,
   })
   .openapi('ChatsConfig');
 
@@ -77,6 +82,7 @@ export const updateChatsBodySchema = z
     nudgeAtPercent: thresholdPercentSchema.optional(),
     handoffAtPercent: thresholdPercentSchema.optional(),
     autoHandoff: z.boolean().optional(),
+    ciWaitAlarmMinutes: ciWaitAlarmMinutesSchema.optional(),
   })
   .openapi('UpdateChatsBody');
 

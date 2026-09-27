@@ -40,6 +40,7 @@ describe('applyActivity', () => {
     ids: ['web-1'],
     tools: { 'web-1': { name: 'Read', input: {} } },
     ciWaiting: ['web-3'],
+    ciWaitingSince: {},
   };
 
   test('names what a chat is doing without disturbing the others', () => {
@@ -75,6 +76,7 @@ describe('clearActivity', () => {
     ids: ['web-1', 'web-2'],
     tools: { 'web-1': { name: 'Read', input: {} }, 'web-2': { name: 'Edit', input: {} } },
     ciWaiting: ['web-3'],
+    ciWaitingSince: {},
   };
 
   test('forgets the tool', () => {

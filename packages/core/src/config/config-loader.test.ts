@@ -1436,6 +1436,7 @@ assistants:
         nudgeAtPercent: 40,
         handoffAtPercent: 50,
         autoHandoff: true,
+        ciWaitAlarmMinutes: 20,
       });
     });
 
@@ -1445,6 +1446,7 @@ chats:
   nudgeAtPercent: 35
   handoffAtPercent: 55
   autoHandoff: false
+  ciWaitAlarmMinutes: 30
 `);
       const config = await loadConfig();
       const safe = toSafeConfig(config);
@@ -1452,6 +1454,7 @@ chats:
         nudgeAtPercent: 35,
         handoffAtPercent: 55,
         autoHandoff: false,
+        ciWaitAlarmMinutes: 30,
       });
     });
 
