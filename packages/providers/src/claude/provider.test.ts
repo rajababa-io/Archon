@@ -1942,6 +1942,20 @@ describe('ClaudeProvider', () => {
 
     // #176: without an explicit display the CLI sends every thinking block
     // blank, so the console's Thinking line has nothing to show.
+    test("thinking 'off' disables thinking, and asks for no display of it", async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'result', session_id: 'sid' };
+      });
+
+      for await (const _ of client.sendQuery('test', '/tmp', undefined, { thinking: 'off' })) {
+        // consume
+      }
+
+      const callArgs = mockQuery.mock.calls[0][0] as { options: Record<string, unknown> };
+      expect(callArgs.options.thinking).toEqual({ type: 'disabled' });
+      expect(callArgs.options).not.toHaveProperty('extraArgs');
+    });
+
     test('asks for summarized thinking without choosing whether Claude thinks', async () => {
       mockQuery.mockImplementation(async function* () {
         yield { type: 'result', session_id: 'sid' };

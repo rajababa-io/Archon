@@ -185,6 +185,9 @@
       "src/services/title-generator.test.ts"
     ],
     [
+      "src/services/next-message-suggester.test.ts"
+    ],
+    [
       "src/services/title-generator.pin-race.integration.test.ts"
     ],
     [

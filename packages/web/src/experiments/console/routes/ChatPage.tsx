@@ -13,7 +13,7 @@ import { ChatRunsPanel } from '../components/ChatRunsPanel';
 import { ChangesPanel } from '../components/ChangesPanel';
 import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
-import { useConversationSSE } from '../lib/sse';
+import { useConversationSSE, type NextMessageSuggestion } from '../lib/sse';
 import { useLiveChats } from '../lib/live-chats';
 import { usePageVisible } from '../lib/use-page-visible';
 import { useTabSignal } from '../lib/use-tab-signal';
@@ -371,12 +371,16 @@ export function ChatPage(): ReactElement {
     }
   }, []);
 
-  useConversationSSE(activeConvId, onLive);
+  // The last finished turn's suggested next message. Belongs to this chat only,
+  // and to the gap between turns: the next turn starting retires it.
+  const [suggestion, setSuggestion] = useState<NextMessageSuggestion | null>(null);
+  useConversationSSE(activeConvId, onLive, setSuggestion);
 
   // Switching chats must not carry one conversation's preview into another.
   useEffect(() => {
     setLiveSegments([]);
     setLiveChecklist([]);
+    setSuggestion(null);
   }, [activeConvId]);
 
   // A turn the server starts on its own — a queued message — begins with the
@@ -385,7 +389,10 @@ export function ChatPage(): ReactElement {
   // every `TaskCreate` among them would be a duplicate item.
   const wasLockedRef = useRef(locked);
   useEffect(() => {
-    if (locked && !wasLockedRef.current) setLiveChecklist([]);
+    if (locked && !wasLockedRef.current) {
+      setLiveChecklist([]);
+      setSuggestion(null);
+    }
     wasLockedRef.current = locked;
   }, [locked]);
 
@@ -991,6 +998,7 @@ export function ChatPage(): ReactElement {
           draftKey={draftKey}
           history={sent}
           projectId={projectId}
+          suggestion={working ? null : suggestion}
           chat={
             activeConversation !== undefined
               ? { conversationId: activeConversation.id, provider: activeConversation.assistant }

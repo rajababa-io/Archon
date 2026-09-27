@@ -26,6 +26,8 @@ import { saveDraftText } from '../lib/draft-store';
 import { SlashMenu, slashOptionId } from './SlashMenu';
 import { escapeAction } from '../lib/escape-key';
 import { useSlashMenu } from '../hooks/useSlashMenu';
+import { acceptsSuggestion, suggestionToShow } from '../lib/next-suggestion';
+import { formatCost } from '../lib/format';
 
 /** What the user has typed and attached but not yet sent, for one conversation. */
 export interface ChatDraft {
@@ -92,6 +94,11 @@ interface ChatComposerProps {
   projectId?: string;
   /** The open chat and its provider, whose own commands the `/` menu adds. */
   chat?: { conversationId: string; provider: string };
+  /**
+   * The last turn's suggested next message. Shown faintly in the empty box;
+   * Tab or Right arrow puts it in the draft, and nothing is sent without Enter.
+   */
+  suggestion?: { text: string; costUsd?: number } | null;
 }
 
 const MAX_HEIGHT = 200;
@@ -126,6 +133,7 @@ export function ChatComposer({
   controlRef,
   projectId,
   chat,
+  suggestion = null,
 }: ChatComposerProps): ReactElement {
   /**
    * The in-flight text is LOCAL. It used to live on the page, so every
@@ -302,19 +310,34 @@ export function ChatComposer({
     }
   };
 
+  // Typing anything dismisses the suggestion for good; see lib/next-suggestion.
+  const [dismissedSuggestion, setDismissedSuggestion] = useState<string | null>(null);
+  const shownSuggestion = disabled
+    ? null
+    : suggestionToShow(suggestion, value, dismissedSuggestion);
+
   const openPlaceholder = working
     ? 'Agent is working — Enter queues a message for when it is done…'
     : onReachAsk !== undefined
       ? 'Message the agent… or press ↑ to answer the question above'
       : 'Message the agent…';
   const idlePlaceholder = disabled ? (disabledReason ?? 'Waiting…') : openPlaceholder;
-  const placeholder = dragging ? 'Drop files to attach…' : idlePlaceholder;
+  const placeholder = dragging ? 'Drop files to attach…' : (shownSuggestion ?? idlePlaceholder);
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // Don't submit while an IME composition is in progress (Japanese,
     // Chinese, Korean, etc. — the first Enter accepts a candidate).
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (slash.onKeyDown(e)) return;
+    if (shownSuggestion !== null && acceptsSuggestion(e)) {
+      e.preventDefault();
+      walkRef.current = AT_DRAFT;
+      // Same landing as a recalled message: grown to fit, caret at the end.
+      recalledRef.current = true;
+      setValue(shownSuggestion);
+      setDismissedSuggestion(shownSuggestion);
+      return;
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -452,6 +475,9 @@ export function ChatComposer({
             onChange={e => {
               // Editing a recalled message makes it your draft.
               walkRef.current = AT_DRAFT;
+              if (shownSuggestion !== null && e.target.value.length > 0) {
+                setDismissedSuggestion(shownSuggestion);
+              }
               setValue(e.target.value);
               grow(e.target);
             }}
@@ -523,7 +549,20 @@ export function ChatComposer({
           )}
         </div>
         <div className="mt-[9px] flex items-center justify-between px-[0.125rem] text-mini text-text-tertiary">
-          <span />
+          {shownSuggestion !== null ? (
+            <span title="A suggested next message, written by the small model tier. Turn it off in Settings → Chats.">
+              <span
+                className="mr-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] text-mini text-text-secondary"
+                style={{ borderColor: 'var(--border-bright)' }}
+              >
+                tab
+              </span>
+              use suggestion
+              {suggestion?.costUsd !== undefined ? ` · ${formatCost(suggestion.costUsd)}` : ''}
+            </span>
+          ) : (
+            <span />
+          )}
           <span>
             <span
               className="mr-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] text-mini text-text-secondary"

@@ -1437,6 +1437,7 @@ assistants:
         handoffAtPercent: 50,
         autoHandoff: true,
         ciWaitAlarmMinutes: 20,
+        suggestNextMessage: true,
       });
     });
 
@@ -1447,6 +1448,7 @@ chats:
   handoffAtPercent: 55
   autoHandoff: false
   ciWaitAlarmMinutes: 30
+  suggestNextMessage: false
 `);
       const config = await loadConfig();
       const safe = toSafeConfig(config);
@@ -1455,6 +1457,7 @@ chats:
         handoffAtPercent: 55,
         autoHandoff: false,
         ciWaitAlarmMinutes: 30,
+        suggestNextMessage: false,
       });
     });
 

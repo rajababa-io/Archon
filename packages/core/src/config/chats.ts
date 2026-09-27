@@ -14,6 +14,8 @@ export interface ResolvedChatsConfig {
   handoffAt: number;
   /** Whether crossing `handoffAt` acts, or only reports. */
   autoHandoff: boolean;
+  /** Whether a finished turn gets a suggested next message. */
+  suggestNextMessage: boolean;
   /**
    * The same two thresholds as whole percentages.
    *
@@ -63,6 +65,7 @@ export function resolveChatsConfig(config: ChatsConfig | undefined): ResolvedCha
     nudgeAt: nudgePercent / 100,
     handoffAt: handoffPercent / 100,
     autoHandoff: config?.autoHandoff ?? true,
+    suggestNextMessage: config?.suggestNextMessage ?? true,
     nudgeAtPercent: nudgePercent,
     handoffAtPercent: handoffPercent,
     ciWaitAlarmMinutes: usableMinutes(config?.ciWaitAlarmMinutes) ?? DEFAULT_CI_WAIT_ALARM_MINUTES,

@@ -123,6 +123,7 @@ import { resolveWorkflowAdoption, WorkflowAdoptionError } from '../operations/wo
 import { loadConfig, loadRepoConfig } from '../config/config-loader';
 import type { MergedConfig } from '../config/config-types';
 import { generateAndSetTitle, reconsiderConversationTitle } from '../services/title-generator';
+import { suggestNextMessage } from '../services/next-message-suggester';
 import { startRunLiveOwner, withRunLiveOwner } from '../services/run-live-owner';
 import { validateAndResolveIsolation, dispatchBackgroundWorkflow } from './orchestrator';
 import { IsolationBlockedError } from '@archon/isolation';
@@ -2839,6 +2840,9 @@ export async function handleMessage(
     // three a second time, in a second place that could resolve them
     // differently.
     const wantsRetitle = trimmedMessage === '/retitle' || trimmedMessage.startsWith('/retitle ');
+    // The small tier this turn's title uses, kept for the next-message suggestion
+    // after it: same model choice, same credentials, resolved once.
+    let smallTier: { provider: string; options: SendQueryOptions } | undefined;
     if (wantsRetitle || !trimmedMessage.startsWith('/')) {
       const titleRequest = resolveModelRequest(aiProfile, 'small', configuredProviderKey);
       const titleOptions: SendQueryOptions = {
@@ -2854,6 +2858,7 @@ export async function handleMessage(
       if (titleRequest.preset) {
         applyPresetToRequestOptions(titleRequest.provider, titleRequest.preset, titleOptions);
       }
+      smallTier = { provider: titleRequest.provider, options: titleOptions };
       if (wantsRetitle) {
         // Explicit: overrides a pinned title and skips the turn-count gate.
         // Awaited, not fire-and-forget — the user asked and is waiting for the
@@ -3103,9 +3108,10 @@ export async function handleMessage(
     // resolved and parked with only a generic error to show for it. The outer
     // catch cannot cover this: it does not know about the resolution.
     // continueResolvedGateRun never throws, so this cannot mask the real error.
+    let reply: string | undefined;
     try {
       if (mode === 'stream') {
-        await handleStreamMode(
+        reply = await handleStreamMode(
           platform,
           conversationId,
           message,
@@ -3122,7 +3128,7 @@ export async function handleMessage(
           userId
         );
       } else {
-        await handleBatchMode(
+        reply = await handleBatchMode(
           platform,
           conversationId,
           message,
@@ -3157,6 +3163,18 @@ export async function handleMessage(
     // A provider may honour an abort by ending its stream rather than throwing;
     // the turn was still cut short, and the transcript must say so either way.
     if (abortSignal?.aborted) await announceInterrupted(platform, conversationId, abortSignal);
+
+    // A turn that ended in a plain reply gets a suggested next message, where the
+    // platform can show one. Fire-and-forget: the reply is already delivered, and
+    // a suggestion that fails or arrives late simply is not shown.
+    if (
+      reply !== undefined &&
+      !abortSignal?.aborted &&
+      smallTier !== undefined &&
+      platform.offerNextMessage !== undefined
+    ) {
+      void offerNextMessage(platform, conversationId, cwd, message, reply, smallTier);
+    }
 
     // Direct-chat turns may have written to source/. If there is local-only state
     // (uncommitted edits, unpushed commits), surface a one-line reminder so the
@@ -3215,7 +3233,7 @@ async function handleStreamMode(
   issueContext?: string,
   requestOptions?: SendQueryOptions,
   userId?: string
-): Promise<void> {
+): Promise<string | undefined> {
   const turnStartedAt = Date.now();
   const allMessages: string[] = [];
   let newSessionId: string | undefined;
@@ -3485,6 +3503,7 @@ async function handleStreamMode(
     tokensOut: lastResult?.tokens?.output,
     outcome: 'completed',
   });
+  return fullResponse;
 }
 
 // ─── Batch Mode ─────────────────────────────────────────────────────────────
@@ -3508,7 +3527,7 @@ async function handleBatchMode(
   issueContext?: string,
   requestOptions?: SendQueryOptions,
   userId?: string
-): Promise<void> {
+): Promise<string | undefined> {
   const turnStartedAt = Date.now();
   const allChunks: { type: string; content: string }[] = [];
   const assistantMessages: string[] = [];
@@ -3782,6 +3801,7 @@ async function handleBatchMode(
     tokensOut: lastResult?.tokens?.output,
     outcome: 'completed',
   });
+  return finalMessage;
 }
 
 /**
@@ -3792,6 +3812,33 @@ async function handleBatchMode(
  * for a reminder, and a reminder is not worth a migration.
  */
 const nudgeBands = new Map<string, NudgeBand>();
+
+/**
+ * Generate and offer a suggested next message, unless Settings turned it off.
+ * Never throws; a suggestion that cannot be made is simply not offered.
+ */
+async function offerNextMessage(
+  platform: IPlatformAdapter,
+  conversationId: string,
+  cwd: string,
+  userMessage: string,
+  reply: string,
+  smallTier: { provider: string; options: SendQueryOptions }
+): Promise<void> {
+  try {
+    if (!resolveChatsConfig((await loadConfig()).chats).suggestNextMessage) return;
+    const suggestion = await suggestNextMessage(
+      smallTier.provider,
+      cwd,
+      userMessage,
+      reply,
+      smallTier.options
+    );
+    if (suggestion !== null) await platform.offerNextMessage?.(conversationId, suggestion);
+  } catch (error) {
+    getLog().warn({ err: error, conversationId }, 'orchestrator.next_message_offer_failed');
+  }
+}
 
 /**
  * Say something when a chat crosses a fill threshold — once per band.

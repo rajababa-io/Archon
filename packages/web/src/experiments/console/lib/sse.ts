@@ -35,6 +35,15 @@ interface ParsedEvent {
   category?: string;
   name?: string;
   input?: unknown;
+  text?: unknown;
+  costUsd?: unknown;
+}
+
+/** A suggested next message for the chat box, as the server offered it. */
+export interface NextMessageSuggestion {
+  text: string;
+  /** What generating it cost, when the provider reported it. */
+  costUsd?: number;
 }
 
 function parse(raw: string): ParsedEvent | null {
@@ -463,7 +472,8 @@ export function useRunStreamSSE(conversationPlatformId: string | null, runId: st
  */
 export function useConversationSSE(
   conversationPlatformId: string | null,
-  onLive?: (event: LiveEvent) => void
+  onLive?: (event: LiveEvent) => void,
+  onSuggestion?: (suggestion: NextMessageSuggestion) => void
 ): void {
   useEffect(() => {
     if (conversationPlatformId === null) return;
@@ -510,6 +520,16 @@ export function useConversationSSE(
         case 'text':
           if (typeof ev.content === 'string') {
             onLive?.({ kind: 'text', content: ev.content, category: ev.category ?? null });
+          }
+          break;
+        // Live only, like the preview: the server keeps no copy, so a reload
+        // simply has no suggestion — the same as one that failed.
+        case 'next_message_suggestion':
+          if (typeof ev.text === 'string' && ev.text.trim() !== '') {
+            onSuggestion?.({
+              text: ev.text,
+              ...(typeof ev.costUsd === 'number' ? { costUsd: ev.costUsd } : {}),
+            });
           }
           break;
         case 'tool_call':

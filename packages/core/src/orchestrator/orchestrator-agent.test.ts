@@ -510,6 +510,16 @@ mock.module('../services/title-generator', () => ({
   generateAndSetTitle: mockGenerateAndSetTitle,
 }));
 
+const mockSuggestNextMessage = mock(() =>
+  Promise.resolve<{ text: string; costUsd?: number } | null>({
+    text: 'run the tests',
+    costUsd: 0.0004,
+  })
+);
+mock.module('../services/next-message-suggester', () => ({
+  suggestNextMessage: mockSuggestNextMessage,
+}));
+
 const mockDispatchBackgroundWorkflow = mock<typeof Orchestrator.dispatchBackgroundWorkflow>(() =>
   Promise.resolve()
 );
@@ -5219,6 +5229,94 @@ describe('stale session ID clearing on error_during_execution', () => {
 });
 
 // ─── Interrupted turn ─────────────────────────────────────────────────────────
+
+describe('handleMessage — suggested next message', () => {
+  beforeEach(() => {
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() =>
+      Promise.resolve(makeConversation({ title: 'Named already' }))
+    );
+    mockGetCodebase.mockReset();
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockSendQuery.mockReset();
+    mockSendQuery.mockImplementation(async function* () {
+      yield { type: 'assistant', content: 'Fixed the bug.' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+    mockTransitionSession.mockResolvedValue(makeSession({ id: 'session-1' }));
+    mockDiscoverWorkflowsWithConfig.mockReset();
+    mockDiscoverWorkflowsWithConfig.mockImplementation(() =>
+      Promise.resolve({ workflows: [], errors: [] })
+    );
+    mockListCodebases.mockReset();
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+    mockLoadConfig.mockImplementation(() => Promise.resolve(makeConfig()));
+    mockSuggestNextMessage.mockClear();
+  });
+
+  function platformThatOffers(): ReturnType<typeof makePlatform> & {
+    offerNextMessage: ReturnType<typeof mock>;
+  } {
+    const platform = makePlatform();
+    (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+    return Object.assign(platform, { offerNextMessage: mock(() => Promise.resolve()) });
+  }
+
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 20; i++) await Promise.resolve();
+  }
+
+  test('a plain reply is followed by a suggestion, offered and never sent', async () => {
+    const platform = platformThatOffers();
+    await handleMessage(platform, 'conv-1', 'fix the bug');
+    await settle();
+    expect(mockSuggestNextMessage).toHaveBeenCalledTimes(1);
+    const args = mockSuggestNextMessage.mock.calls[0] as unknown as unknown[];
+    expect(args[2]).toBe('fix the bug');
+    expect(args[3]).toBe('Fixed the bug.');
+    expect(platform.offerNextMessage).toHaveBeenCalledWith('conv-1', {
+      text: 'run the tests',
+      costUsd: 0.0004,
+    });
+    const sent = (platform.sendMessage as ReturnType<typeof mock>).mock.calls.map(
+      (c: unknown[]) => c[1]
+    );
+    expect(sent).not.toContain('run the tests');
+  });
+
+  test('switched off in Settings, nothing is generated', async () => {
+    mockLoadConfig.mockImplementation(() =>
+      Promise.resolve(makeConfig({ chats: { suggestNextMessage: false } }))
+    );
+    const platform = platformThatOffers();
+    await handleMessage(platform, 'conv-1', 'fix the bug');
+    await settle();
+    expect(mockSuggestNextMessage).not.toHaveBeenCalled();
+    expect(platform.offerNextMessage).not.toHaveBeenCalled();
+  });
+
+  test('a platform that cannot show one is never charged for one', async () => {
+    const platform = makePlatform();
+    (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+    await handleMessage(platform, 'conv-1', 'fix the bug');
+    await settle();
+    expect(mockSuggestNextMessage).not.toHaveBeenCalled();
+  });
+
+  test('a stopped turn gets no suggestion', async () => {
+    const controller = new AbortController();
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'partial' };
+      controller.abort();
+    });
+    const platform = Object.assign(platformThatOffers(), {
+      sendDurableNotice: mock(() => Promise.resolve()),
+    });
+    await handleMessage(platform, 'conv-1', 'fix the bug', { abortSignal: controller.signal });
+    await settle();
+    expect(mockSuggestNextMessage).not.toHaveBeenCalled();
+  });
+});
 
 describe('handleMessage — interrupted turn', () => {
   beforeEach(() => {

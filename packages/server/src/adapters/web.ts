@@ -241,6 +241,25 @@ export class WebAdapter implements IWebPlatformAdapter {
     await this.sendStructuredEvent(conversationId, { type: 'system', content });
   }
 
+  /**
+   * Live only: a suggestion a reload loses is a suggestion not shown, which is
+   * exactly what a failed one looks like too. Nothing is written to history.
+   */
+  async offerNextMessage(
+    conversationId: string,
+    suggestion: { text: string; costUsd?: number }
+  ): Promise<void> {
+    await this.emitSSE(
+      conversationId,
+      JSON.stringify({
+        type: 'next_message_suggestion',
+        text: suggestion.text,
+        ...(suggestion.costUsd === undefined ? {} : { costUsd: suggestion.costUsd }),
+        timestamp: Date.now(),
+      })
+    );
+  }
+
   async sendStructuredEvent(conversationId: string, chunk: MessageChunk): Promise<void> {
     let event: string;
 

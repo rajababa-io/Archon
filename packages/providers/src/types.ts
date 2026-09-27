@@ -530,6 +530,12 @@ export const CONTAINER_ENV_DENYLIST: ReadonlySet<string> = new Set([
 export interface AgentRequestOptions {
   model?: string;
   abortSignal?: AbortSignal;
+  /**
+   * `'off'` asks the model to answer without extended thinking — for small
+   * internal calls whose whole answer is a few words, where thinking only adds
+   * latency and cost. A provider with no such control ignores it.
+   */
+  thinking?: 'off';
   systemPrompt?: SystemPromptInput;
   outputFormat?: { type: 'json_schema'; schema: Record<string, unknown> };
   env?: Record<string, string>;
