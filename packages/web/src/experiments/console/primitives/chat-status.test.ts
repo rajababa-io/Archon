@@ -4,6 +4,7 @@ import {
   awaitingInputIds,
   chatStatus,
   completedIds,
+  markUnreadBlocker,
   readyIds,
   runningRunIds,
   unreadIds,
@@ -396,5 +397,34 @@ describe('unreadIds', () => {
 
   test('empty string reads as absent, not as the epoch', () => {
     expect([...unreadIds([chat('a', '', '')])]).toEqual([]);
+  });
+});
+
+describe('markUnreadBlocker', () => {
+  test('an idle chat you are not reading may be marked', () => {
+    expect(markUnreadBlocker('idle', false, true)).toBeNull();
+  });
+
+  test('every other status is refused, each with its own reason', () => {
+    const others = [
+      'working',
+      'awaiting',
+      'unread',
+      'done',
+      'ready',
+      'running',
+      'waiting',
+    ] as const;
+    const reasons = others.map(s => markUnreadBlocker(s, false, true));
+    for (const r of reasons) expect(r).not.toBeNull();
+    expect(new Set(reasons).size).toBe(others.length);
+  });
+
+  test('the open chat is refused even when idle — the page would clear it at once', () => {
+    expect(markUnreadBlocker('idle', true, true)).toBe("You're reading it");
+  });
+
+  test('a chat with no activity is refused — the mark could not show', () => {
+    expect(markUnreadBlocker('idle', false, false)).toBe('Nothing to read yet');
   });
 });

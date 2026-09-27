@@ -22,6 +22,7 @@ import {
   listConversations,
   nextOrderSlots,
   markConversationRead,
+  markConversationUnread,
   setConversationReady,
   setConversationModelPin,
   setConversationCompleted,
@@ -747,6 +748,31 @@ describe('conversations', () => {
     test('a chat that is not there is an error, not a silent no-op', async () => {
       mockQuery.mockResolvedValueOnce(createQueryResult([], 0));
       await expect(markConversationRead('gone')).rejects.toBeInstanceOf(ConversationNotFoundError);
+    });
+  });
+
+  describe('markConversationUnread', () => {
+    test('it clears the read marker to NULL, the state the rail already reads as unread', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await markConversationUnread('conv-1');
+      const sql = String(mockQuery.mock.calls[0]?.[0]);
+      expect(sql).toContain('last_read_at = NULL');
+      expect(mockQuery.mock.calls[0]?.[1]).toEqual(['conv-1']);
+    });
+
+    test('it touches neither updated_at nor last_activity_at', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await markConversationUnread('conv-1');
+      const sql = String(mockQuery.mock.calls[0]?.[0]);
+      expect(sql).not.toContain('updated_at');
+      expect(sql).not.toContain('last_activity_at');
+    });
+
+    test('a chat that is not there is an error, not a silent no-op', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 0));
+      await expect(markConversationUnread('gone')).rejects.toBeInstanceOf(
+        ConversationNotFoundError
+      );
     });
   });
 });

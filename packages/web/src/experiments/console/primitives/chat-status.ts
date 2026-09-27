@@ -405,3 +405,38 @@ export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {
   waiting: 'Waiting for CI to finish. This chat will be told when it does',
   idle: 'Nothing is running in this chat',
 };
+
+/**
+ * Why "Mark unread" is greyed out on a chat, or `null` when it may be used.
+ *
+ * Only an `idle` chat may be marked. Every other status is either already
+ * asking for attention (awaiting, unread, ready), already green by a human's
+ * hand (done), or still moving (working, running, waiting) — and a chat that
+ * is still moving will mark itself when it next says something.
+ *
+ * The chat you have OPEN is refused whatever its status: you are reading it,
+ * and the page clears the mark again the moment you are at its bottom.
+ *
+ * A chat with no activity is refused too: unread is `last_activity_at >
+ * last_read_at`, so with nothing on the activity side the mark cannot show.
+ */
+export function markUnreadBlocker(
+  status: ChatStatus,
+  open: boolean,
+  hasActivity: boolean
+): string | null {
+  if (open) return "You're reading it";
+  if (status !== 'idle') return MARK_UNREAD_BLOCKED[status];
+  if (!hasActivity) return 'Nothing to read yet';
+  return null;
+}
+
+const MARK_UNREAD_BLOCKED: Readonly<Record<Exclude<ChatStatus, 'idle'>, string>> = {
+  working: 'Busy — marks itself when it stops',
+  awaiting: 'Already waiting on you',
+  unread: 'Already unread',
+  done: 'Closed — reopen it first',
+  ready: 'Waiting on you to close it',
+  running: 'A run is still going',
+  waiting: 'Waiting on CI',
+};
