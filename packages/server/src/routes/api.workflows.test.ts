@@ -122,11 +122,16 @@ mock.module('@archon/core/db/workflow-events', () => ({}));
 mock.module('@archon/core/db/messages', () => ({}));
 
 const mockListCodebases = mock(async () => [{ default_cwd: '/tmp/project' }]);
+const mockGetCodebase = mock(async (id: string) =>
+  id === 'cb-1' ? { id, default_cwd: '/tmp/project' } : null
+);
 mock.module('@archon/core/db/codebases', () => ({
   listCodebases: mockListCodebases,
+  getCodebase: mockGetCodebase,
 }));
 
 import { registerApiRoutes } from './api';
+import { SLASH_COMMANDS } from '@archon/core/handlers/command-registry';
 
 // Every home-scope test below points ARCHON_HOME at a temp directory and
 // expects the route to read from it; inside a container it would not.
@@ -1619,4 +1624,60 @@ describe('GET /api/commands', () => {
       }
     }
   );
+});
+
+describe('GET /api/slash-commands', () => {
+  interface Listing {
+    commands: { command: string; args: string; description: string }[];
+    workflows: { name: string; summary: string | null }[];
+  }
+
+  async function list(query = ''): Promise<Response> {
+    const app = createTestApp();
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+    return app.request(`/api/slash-commands${query}`);
+  }
+
+  // The conformance half of #129: the `/` menu must offer every command the
+  // chat dispatch answers. The dispatch narrows to SLASH_COMMANDS, so a
+  // command missing here is one the operator cannot discover.
+  test('lists every registered command and subcommand', async () => {
+    const body = (await (await list()).json()) as Listing;
+    const offered = new Set(body.commands.map(c => c.command));
+    const expected = SLASH_COMMANDS.flatMap(spec => [
+      `/${spec.name}`,
+      ...('subcommands' in spec ? spec.subcommands.map(sub => `/${spec.name} ${sub.name}`) : []),
+    ]);
+    expect(expected.length).toBeGreaterThan(SLASH_COMMANDS.length);
+    for (const command of expected) expect(offered).toContain(command);
+    expect(offered.size).toBe(expected.length);
+    for (const c of body.commands) expect(c.description.length).toBeGreaterThan(0);
+  });
+
+  test("lists the project's discovered workflows with a one-line summary", async () => {
+    mockDiscoverWorkflows.mockClear();
+    mockDiscoverWorkflows.mockResolvedValueOnce({
+      workflows: [
+        makeTestWorkflowWithSource(
+          { name: 'ship', description: '\n  Use when: shipping.\nMore detail.' },
+          'project'
+        ),
+      ],
+      errors: [],
+    });
+    const body = (await (await list('?codebaseId=cb-1')).json()) as Listing;
+    expect(mockDiscoverWorkflows.mock.calls[0]?.[0]).toBe('/tmp/project');
+    expect(body.workflows).toEqual([{ name: 'ship', summary: 'Use when: shipping.' }]);
+  });
+
+  test('without a project, discovers bundled and home workflows only', async () => {
+    mockDiscoverWorkflows.mockClear();
+    await list();
+    expect(mockDiscoverWorkflows.mock.calls[0]?.[0]).toBeNull();
+  });
+
+  test('an unknown project is a 404, not an empty list', async () => {
+    const response = await list('?codebaseId=missing');
+    expect(response.status).toBe(404);
+  });
 });
