@@ -76,7 +76,9 @@ export function applyActivity(
     [ev.conversationId]: { name: ev.name, input: ev.input },
   };
   const ids = prev.ids.includes(ev.conversationId) ? prev.ids : [...prev.ids, ev.conversationId];
-  return { ids, tools };
+  // Spread, not rebuilt: the snapshot carries more than the two fields an
+  // event changes, and a rebuilt object silently dropped the rest.
+  return { ...prev, ids, tools };
 }
 
 /**
@@ -101,5 +103,5 @@ export function clearActivity(
   const tools = Object.fromEntries(
     Object.entries(prev.tools).filter(([id]) => id !== conversationId)
   );
-  return { ids: prev.ids, tools };
+  return { ...prev, tools };
 }

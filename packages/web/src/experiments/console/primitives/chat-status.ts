@@ -1,5 +1,5 @@
 /**
- * What a chat is, in six states.
+ * What a chat is, in seven states.
  *
  *   working   the server is executing a turn for it right now
  *   awaiting  it is your move — a run it started is paused on a gate, or the
@@ -7,6 +7,8 @@
  *   unread    it has moved since you last read it to the end
  *   done      a human said this chat's unit of work has landed
  *   ready     the AGENT says the work has landed, and no human has answered
+ *   waiting   nothing is running, but the chat asked to be woken when CI
+ *             finishes (`watch_ci`), and the server is watching for it
  *   idle      none of those
  *
  * Exclusive and ordered: a chat that is both working and awaiting is awaiting,
@@ -64,7 +66,7 @@
 import { splitReply } from './ask';
 import { runMessageConversationId } from './run';
 
-export type ChatStatus = 'working' | 'awaiting' | 'unread' | 'done' | 'ready' | 'idle';
+export type ChatStatus = 'working' | 'awaiting' | 'unread' | 'done' | 'ready' | 'waiting' | 'idle';
 
 export interface ChatStatusSets {
   /** Platform conversation ids the server is executing a turn for. */
@@ -97,10 +99,17 @@ export interface ChatStatusSets {
    * strictly more than "nothing is pending".
    */
   ready: ReadonlySet<string>;
+  /**
+   * Chats with an open CI watch, read from /api/health beside `working`.
+   * Ranked LAST, directly above idle: it exists to stop idle claiming nothing
+   * is pending while the server is waiting on CI for the chat, and every other
+   * state says something more specific.
+   */
+  waiting: ReadonlySet<string>;
 }
 
 /**
- * Exclusive and ordered: awaiting, working, unread, done, ready, idle.
+ * Exclusive and ordered: awaiting, working, unread, done, ready, waiting, idle.
  *
  * The two live states come first because they are about right now, and right
  * now outranks a claim about the work as a whole. Unread sits under both: a
@@ -125,6 +134,11 @@ export interface ChatStatusSets {
  * chat that has spoken since you looked is worth reading before it is worth
  * filing.
  *
+ * `waiting` replaces idle and nothing else. Under `working` because a turn in
+ * flight is the chat itself moving, where waiting is the server holding a
+ * promise for it; under `ready` because a chat that has claimed its work landed
+ * is asking for a decision, which outranks a background wait.
+ *
  * Every state that is left says something a person can act on, or something a
  * person has already said.
  */
@@ -134,6 +148,7 @@ export function chatStatus(conversationId: string, sets: ChatStatusSets): ChatSt
   if (sets.unread.has(conversationId)) return 'unread';
   if (sets.done.has(conversationId)) return 'done';
   if (sets.ready.has(conversationId)) return 'ready';
+  if (sets.waiting.has(conversationId)) return 'waiting';
   return 'idle';
 }
 
@@ -279,6 +294,7 @@ export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
   unread: 'Unread',
   done: 'Closed',
   ready: 'Ready to close',
+  waiting: 'Waiting on CI',
   idle: 'Idle',
 };
 
@@ -297,6 +313,10 @@ export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
  * colour; a seventh hue would have to be learned, where "not filled in yet"
  * reads on sight. It is the first state to differ by shape rather than by hue,
  * so the diameter stays the one every dot shares and only the fill changes.
+ *
+ * `waiting` does the same with `working`'s blue: hollow where working is
+ * filled. Both mean "something is happening for this chat"; the hollow one is
+ * the server waiting on CI, not the agent running.
  */
 export const STATUS_COLOR: Readonly<Record<ChatStatus, string>> = {
   working: 'var(--running)',
@@ -304,6 +324,7 @@ export const STATUS_COLOR: Readonly<Record<ChatStatus, string>> = {
   unread: 'var(--warning)',
   done: 'var(--success)',
   ready: 'var(--success)',
+  waiting: 'var(--running)',
   idle: 'var(--text-tertiary)',
 };
 
@@ -313,5 +334,6 @@ export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {
   unread: 'This chat has replied since you last read it',
   done: "This chat's work is finished",
   ready: 'The work here has landed. Close this chat, or keep going',
+  waiting: 'Waiting for CI to finish. This chat will be told when it does',
   idle: 'Nothing is running in this chat',
 };

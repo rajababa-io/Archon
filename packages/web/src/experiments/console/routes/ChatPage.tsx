@@ -372,7 +372,7 @@ export function ChatPage(): ReactElement {
   // looking at. Pushed on the dashboard stream the moment a chat starts or
   // stops (see lib/sse.ts); the hook's own poll is the backstop for what a push
   // cannot reach, shared with every other reader of the same answer.
-  const { ids: liveIds, tools: liveTools } = useLiveChats();
+  const { ids: liveIds, tools: liveTools, ciWaiting } = useLiveChats();
 
   /**
    * Chats whose run is paused on an approval.
@@ -475,8 +475,8 @@ export function ChatPage(): ReactElement {
   // The tab title and the opt-in notification, read off every chat in the rail
   // by the rail's own rules. Clicking a notification opens its chat here.
   const railStatuses = useMemo(
-    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds),
-    [conversations, railLiveIds, awaitingIds]
+    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, ciWaiting),
+    [conversations, railLiveIds, awaitingIds, ciWaiting]
   );
   const railTitles = useMemo(
     () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
@@ -484,7 +484,7 @@ export function ChatPage(): ReactElement {
   );
   useTabSignal(railStatuses, railTitles, selectConversation);
 
-  /** The status of the chat being READ. Same six states and same ordering as
+  /** The status of the chat being READ. Same states and same ordering as
    * every row in the rail — `chatStatus` owns the precedence. */
   const status: ChatStatus =
     activeConvId === null
@@ -495,6 +495,7 @@ export function ChatPage(): ReactElement {
           unread,
           done: doneIds,
           ready: readySet,
+          waiting: ciWaiting,
         });
 
   // Belt and braces: an echo must never outlive its turn. If the reply has
@@ -776,6 +777,7 @@ export function ChatPage(): ReactElement {
         openCount={counts.open}
         liveIds={railLiveIds}
         awaitingIds={awaitingIds}
+        ciWaitingIds={ciWaiting}
         activeConvId={activeConvId}
         onSelect={selectConversation}
         onRename={renameConversation}

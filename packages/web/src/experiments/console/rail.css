@@ -791,6 +791,17 @@
   background: transparent;
   box-shadow: inset 0 0 0 2px currentColor;
 }
+/* Waiting on CI: the chat asked to be told when CI finishes, and the server
+   is watching for it. Working's blue, hollow — the same move ready makes on
+   done's green: "something is happening for this chat" in one hue, and the
+   empty centre says it is not the agent running. */
+.chat-status.is-waiting {
+  color: var(--running);
+}
+.chat-status.is-waiting i {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
 /* Idle: nothing pending here. Quiet rather than empty — the one state with
    nothing to announce, so it is the one that is dimmed. */
 .chat-status.is-idle {
