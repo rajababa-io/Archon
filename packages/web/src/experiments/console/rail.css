@@ -749,6 +749,23 @@
      or leading and the dot follows instead of drifting. */
   height: calc(var(--text-body) * 1.35);
 }
+/* The header chip's slot. The chip shares the project name's BASELINE, not
+   its box: centring a small line box on a large one left the chip's words
+   sitting 2px above the name's. The dot is then centred on the NAME'S
+   x-height, which is where the eye puts the middle of a lowercase word — a
+   slot one `ex` of the title's font tall, bottom on the shared baseline.
+
+   `display: block` is load-bearing. A grid slot takes its baseline from the
+   dot inside it, which puts the dot's bottom on the baseline; a block with no
+   text has no baseline, so the slot's own bottom edge is used instead. */
+.project-chip > .chat-status {
+  display: block;
+  font-size: var(--text-title);
+  height: 1ex;
+}
+.project-chip > .chat-status i {
+  margin-top: calc(0.5ex - 4px); /* 4px: half the 8px dot */
+}
 /* Every state is this dot. Size and radius are stated ONCE, so no state can
    render at a different diameter from its neighbour in the same column. */
 .chat-status i {

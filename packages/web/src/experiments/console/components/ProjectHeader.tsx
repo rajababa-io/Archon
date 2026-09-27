@@ -88,7 +88,10 @@ export function ProjectHeader(): ReactElement {
               <Glyph seed={projectId} glyph={identity.glyph} color={color} size={24} />
             </span>
           ) : null}
-          <h1 title={project?.name} className="truncate text-title font-semibold text-text-primary">
+          <h1
+            title={project?.name}
+            className="self-baseline truncate text-title font-semibold text-text-primary"
+          >
             {projectId === undefined ? 'All projects' : label === '' ? 'Project' : label}
           </h1>
           {/* Whether this project wants something. Beside the name because
