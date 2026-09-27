@@ -1,7 +1,8 @@
 /**
  * Public surface for the GitHub App auth module.
  */
-export { createGitHubAppAuthProvider } from './auth';
+export { createGitHubAppAuthProvider, probeGitHubApp } from './auth';
+export type { GitHubAppIdentity } from './auth';
 export { loadAppPrivateKey } from './private-key';
 export { AppNotInstalledError, AppPrivateKeyError } from './errors';
 export { installCredentialHelper } from './credential-helper-install';

@@ -85,6 +85,32 @@ function lookupKey(owner: string, repo: string): string {
   return `${owner.toLowerCase()}/${repo.toLowerCase()}`;
 }
 
+/** Who a GitHub App credential authenticates as, and where the App is installed. */
+export interface GitHubAppIdentity {
+  slug: string;
+  /** Installations visible to the App, capped at the first page (100). */
+  installationCount: number;
+}
+
+/**
+ * Read-only proof that an App credential works: sign a JWT with the key, ask
+ * GitHub which App it belongs to and where that App is installed. Mints no
+ * installation token and touches no cache, so a diagnostic can call it
+ * without side effects. GitHub errors propagate with their `status` intact.
+ */
+export async function probeGitHubApp(
+  appId: string,
+  privateKey: string
+): Promise<GitHubAppIdentity> {
+  const appOctokit = new Octokit({
+    authStrategy: createAppAuth,
+    auth: { appId, privateKey },
+  });
+  const app = await appOctokit.request('GET /app');
+  const installations = await appOctokit.request('GET /app/installations', { per_page: 100 });
+  return { slug: app.data?.slug ?? '', installationCount: installations.data.length };
+}
+
 export function createGitHubAppAuthProvider(config: GitHubAppConfig): IGitHubAppAuthProvider {
   // Validate config at the boundary so misconfiguration surfaces at server
   // bootstrap, not at the first webhook. loadAppPrivateKey already enforces

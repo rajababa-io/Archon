@@ -7,7 +7,7 @@
  * testability. Avoids `mock.module()` because it is process-global and
  * irreversible in Bun, which would pollute other test files in this package.
  */
-import { describe, it, expect, spyOn, afterEach, beforeEach } from 'bun:test';
+import { describe, it, expect, mock, spyOn, afterEach, beforeEach } from 'bun:test';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'fs';
@@ -23,6 +23,7 @@ import {
   checkDatabase,
   checkConnectedProviders,
   checkGhAuth,
+  checkGitHubApp,
   checkPi,
   checkWorkspaceWritable,
   checkBundledDefaults,
@@ -37,6 +38,7 @@ import {
   type CodexBinaryDeps,
   type DatabaseDeps,
   type FolderProjectDeps,
+  type GitHubAppDeps,
   type OpenCodeDeps,
 } from './doctor';
 import * as doctorModule from './doctor';
@@ -442,6 +444,91 @@ describe('checkGhAuth', () => {
     const result = await checkGhAuth({ GH_TOKEN: 'ghp_y' });
     expect(result.status).toBe('fail');
     expect(result.message).toContain('not logged in');
+  });
+});
+
+describe('checkGhAuth in GitHub App mode', () => {
+  let execSpy: ReturnType<typeof spyOn<typeof git, 'execFileAsync'>>;
+  const appEnv = { GITHUB_APP_ID: '12345', GITHUB_APP_PRIVATE_KEY: 'pem' };
+
+  function appDeps(probe: GitHubAppDeps['probe']): GitHubAppDeps {
+    return { loadPrivateKey: () => 'pem', probe };
+  }
+
+  beforeEach(() => {
+    execSpy = spyOn(git, 'execFileAsync');
+  });
+
+  afterEach(() => {
+    execSpy.mockRestore();
+  });
+
+  it('reports the App healthy with no PAT set, and never asks gh', async () => {
+    const probe = mock(async () => ({ slug: 'archon-bot', installationCount: 2 }));
+    const result = await checkGhAuth(appEnv, appDeps(probe));
+    expect(result).toEqual({
+      label: 'GitHub App',
+      status: 'pass',
+      message: 'App "archon-bot" (id 12345) authenticated, installed on 2 account(s)',
+    });
+    expect(probe).toHaveBeenCalledWith('12345', 'pem');
+    expect(execSpy).not.toHaveBeenCalled();
+  });
+
+  it('does not suggest a GITHUB_TOKEN, which would conflict with App mode', async () => {
+    const result = await checkGhAuth(
+      appEnv,
+      appDeps(async () => ({ slug: 'archon-bot', installationCount: 1 }))
+    );
+    expect(result.message).not.toContain('GITHUB_TOKEN');
+  });
+
+  it('fails with the loader message when the private key cannot be loaded', async () => {
+    const probe = mock(async () => ({ slug: 'x', installationCount: 1 }));
+    const result = await checkGitHubApp(appEnv, {
+      loadPrivateKey: () => {
+        throw new Error('GITHUB_APP_ID is set but no private key was provided.');
+      },
+      probe,
+    });
+    expect(result.status).toBe('fail');
+    expect(result.message).toContain('no private key was provided');
+    expect(probe).not.toHaveBeenCalled();
+  });
+
+  it('fails with a key-mismatch hint when GitHub answers 401', async () => {
+    const result = await checkGitHubApp(
+      appEnv,
+      appDeps(async () => {
+        throw Object.assign(new Error('A JSON web token could not be decoded'), { status: 401 });
+      })
+    );
+    expect(result.status).toBe('fail');
+    expect(result.message).toContain('could not be decoded');
+    expect(result.message).toContain('matches the private key');
+  });
+
+  it('fails when the App authenticates but is installed nowhere', async () => {
+    const result = await checkGitHubApp(
+      appEnv,
+      appDeps(async () => ({ slug: 'archon-bot', installationCount: 0 }))
+    );
+    expect(result.status).toBe('fail');
+    expect(result.message).toContain('https://github.com/apps/archon-bot/installations/new');
+  });
+
+  it('reports a full page of installations as a lower bound', async () => {
+    const result = await checkGitHubApp(
+      appEnv,
+      appDeps(async () => ({ slug: 'archon-bot', installationCount: 100 }))
+    );
+    expect(result.message).toContain('installed on 100+ account(s)');
+  });
+
+  it('treats a whitespace-only GITHUB_APP_ID as PAT mode, unchanged', async () => {
+    execSpy.mockResolvedValue({ stdout: 'Logged in as @user', stderr: '' });
+    const result = await checkGhAuth({ GITHUB_APP_ID: '  ', GITHUB_TOKEN: 'ghp_x' });
+    expect(result).toEqual({ label: 'gh CLI', status: 'pass', message: 'authenticated' });
   });
 });
 

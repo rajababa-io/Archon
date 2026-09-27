@@ -24,7 +24,7 @@ import {
   resolveClaudeBinaryWithSource,
   type ClaudeBinaryResolution,
 } from '@archon/providers/claude/binary-resolver';
-import type { Codebase, MergedConfig, SchemaVersionInfo } from '@archon/core';
+import type { Codebase, GitHubAppIdentity, MergedConfig, SchemaVersionInfo } from '@archon/core';
 
 // Vendor-canonical credential id for Codex (since #1955 credentials are keyed
 // by vendor, not agent). A connected `openai` key signals Codex intent even
@@ -374,7 +374,17 @@ async function defaultLoadOpenCodeDeps(): Promise<OpenCodeDeps> {
   };
 }
 
-export async function checkGhAuth(env: NodeJS.ProcessEnv): Promise<CheckResult> {
+export async function checkGhAuth(
+  env: NodeJS.ProcessEnv,
+  appDeps?: GitHubAppDeps
+): Promise<CheckResult> {
+  // App mode has no ambient gh login to check — runs are handed installation
+  // tokens per repository — so the App credential is what can be broken. The
+  // same GITHUB_APP_ID test decides App mode for CLI-started runs
+  // (ensureGitHubAppAuthProviderFromEnv).
+  if (env.GITHUB_APP_ID?.trim()) {
+    return checkGitHubApp(env, appDeps);
+  }
   const label = 'gh CLI';
   // Skip for users without GitHub configured — gh auth is irrelevant
   // to a CLI-only or Slack/Telegram setup, so reporting fail would be noise.
@@ -389,6 +399,63 @@ export async function checkGhAuth(env: NodeJS.ProcessEnv): Promise<CheckResult> 
       label,
       status: 'fail',
       message: `gh auth status failed: ${(err as Error).message}. Run \`gh auth login\`.`,
+    };
+  }
+}
+
+export interface GitHubAppDeps {
+  loadPrivateKey: (env: NodeJS.ProcessEnv) => string;
+  probe: (appId: string, privateKey: string) => Promise<GitHubAppIdentity>;
+}
+
+async function defaultLoadGitHubAppDeps(): Promise<GitHubAppDeps> {
+  const { loadAppPrivateKey, probeGitHubApp } = await import('@archon/core');
+  return { loadPrivateKey: loadAppPrivateKey, probe: probeGitHubApp };
+}
+
+/**
+ * Prove the GitHub App credential works, read-only: the key loads, GitHub
+ * accepts a JWT signed with it, and the App is installed somewhere.
+ */
+export async function checkGitHubApp(
+  env: NodeJS.ProcessEnv,
+  deps?: GitHubAppDeps
+): Promise<CheckResult> {
+  const label = 'GitHub App';
+  const appId = env.GITHUB_APP_ID?.trim() ?? '';
+  const { loadPrivateKey, probe } = deps ?? (await defaultLoadGitHubAppDeps());
+  let privateKey: string;
+  try {
+    privateKey = loadPrivateKey(env);
+  } catch (err) {
+    return { label, status: 'fail', message: (err as Error).message };
+  }
+  try {
+    const { slug, installationCount } = await probe(appId, privateKey);
+    if (installationCount === 0) {
+      return {
+        label,
+        status: 'fail',
+        message: `App ${appId} authenticated but is not installed on any account. Install it at https://github.com/apps/${slug}/installations/new`,
+      };
+    }
+    // The probe reads one page of installations; a full page means "at least".
+    const count = installationCount >= 100 ? '100+' : String(installationCount);
+    return {
+      label,
+      status: 'pass',
+      message: `App "${slug}" (id ${appId}) authenticated, installed on ${count} account(s)`,
+    };
+  } catch (err) {
+    // No skip branch for "GitHub unreachable": Octokit reports a network
+    // failure as status 500, so it cannot be told apart from a GitHub error,
+    // and a key that passes the PEM shape check but cannot sign has no status.
+    const status = (err as { status?: number }).status;
+    const hint = status === 401 ? ' — check that GITHUB_APP_ID matches the private key' : '';
+    return {
+      label,
+      status: 'fail',
+      message: `App credential check failed: ${(err as Error).message}${hint}`,
     };
   }
 }
