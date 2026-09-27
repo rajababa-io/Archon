@@ -928,6 +928,24 @@ export interface ProviderRegistration {
    * otherwise silently discard.
    */
   parseConfig: ProviderConfigParser;
+
+  /**
+   * Models a picker should offer for this agent, strongest-known first. A
+   * SUGGESTION list, never a gate: the SDKs ship models faster than Archon can
+   * enumerate them, so every picker keeps free text and the strict gate on a
+   * model is `parseConfig`. Owned here so the Web UI holds no second opinion
+   * about which models an agent has. Absent when the catalog is not static
+   * (Pi and OpenCode have their own catalog endpoints).
+   */
+  suggestedModels?: readonly ModelSuggestion[];
+}
+
+/** One model a picker offers for an agent. */
+export interface ModelSuggestion {
+  /** What picking it writes into the model field. */
+  id: string;
+  /** A few words of context shown beside the id (e.g. 'Copilot picks'). */
+  note?: string;
 }
 
 /**
@@ -941,6 +959,8 @@ export interface ProviderInfo {
   builtIn: boolean;
   /** The shared ladder when this provider accepts `effort:`; absent otherwise. */
   effortLevels?: readonly EffortRung[];
+  /** See `ProviderRegistration.suggestedModels`. */
+  suggestedModels?: readonly ModelSuggestion[];
 }
 
 /**

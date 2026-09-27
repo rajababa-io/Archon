@@ -121,6 +121,8 @@ drains should deploy nothing and say so -- the box is still running what it was.
 | PATCH | `/api/conversations/{id}` | Update a conversation (rename) |
 | DELETE | `/api/conversations/{id}` | Soft-delete a conversation |
 | GET | `/api/conversations/{id}/lock` | Whether the conversation is executing a turn right now |
+| GET | `/api/conversations/{id}/model` | The provider, model and effort the conversation's next turn runs on, and its own pin |
+| PUT | `/api/conversations/{id}/model` | Pin the conversation's model and/or effort from its next turn (`null` for both clears) |
 | GET | `/api/conversations/{id}/messages` | List messages in a conversation |
 | POST | `/api/conversations/{id}/message` | Send a message to a conversation |
 

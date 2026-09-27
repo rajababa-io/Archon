@@ -4,6 +4,7 @@
 import { z } from '@hono/zod-openapi';
 import { conversationColorSchema, conversationRowSchema } from '@archon/core/schemas/conversation';
 import { messageRowSchema } from '@archon/core/schemas/message';
+import { EFFORT_LADDER } from '@archon/paths/effort';
 
 /** A conversation record (wire shape with ISO string dates). */
 export const conversationSchema = conversationRowSchema
@@ -331,3 +332,39 @@ export const conversationChangeDiffResponseSchema = z
     truncated: z.boolean(),
   })
   .openapi('ConversationChangeDiffResponse');
+
+/**
+ * What the next turn of a chat runs on (#132) — GET and PUT
+ * /api/conversations/:id/model both answer with it.
+ *
+ * `model` null means the provider's own default (no model is passed). `pin` is
+ * the chat's own choice when it is in force; null when the chat follows the
+ * defaults, including when a stored pin names a provider the chat no longer
+ * runs on (the turn ignores such a pin, so this does too).
+ */
+export const chatModelResponseSchema = z
+  .object({
+    provider: z.string(),
+    model: z.string().nullable(),
+    effort: z.enum(EFFORT_LADDER).nullable(),
+    pin: z
+      .object({ model: z.string().nullable(), effort: z.enum(EFFORT_LADDER).nullable() })
+      .nullable(),
+  })
+  .openapi('ChatModel');
+
+/**
+ * PUT /api/conversations/:id/model body — pin this chat's model and effort.
+ *
+ * `provider` is the one the picker was showing; the server checks both values
+ * against that provider in the registry and refuses a mismatch rather than
+ * storing a pin no turn would honour. Null for either half means "the default"
+ * for that half; both null clears the pin. Applies from the next turn.
+ */
+export const setChatModelBodySchema = z
+  .object({
+    provider: z.string().min(1),
+    model: z.string().trim().min(1).max(255).nullable(),
+    effort: z.enum(EFFORT_LADDER).nullable(),
+  })
+  .openapi('SetChatModelBody');

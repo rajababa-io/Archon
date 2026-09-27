@@ -5,6 +5,7 @@
 
 import { getTerminalRecord } from '@archon/workflows/terminal-record';
 import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { isEffortRung } from '@archon/paths/effort';
 import { streamSSE } from 'hono/streaming';
 import { cors } from 'hono/cors';
 import type { WebAdapter } from '../adapters/web';
@@ -45,6 +46,7 @@ import type {
   TiersPatch,
   UserRole,
   SchemaVersionInfo,
+  ChatModelRequest,
 } from '@archon/core';
 import {
   handleMessage,
@@ -60,6 +62,7 @@ import {
   ConversationNotFoundError,
   generateAndSetTitle,
   resolveTitleRequest,
+  resolveNextChatModel,
   isPerUserGitHubEnabled,
   loadDeviceFlowConfig,
   startDeviceFlow,
@@ -372,6 +375,8 @@ import {
   createConversationBodySchema,
   createConversationResponseSchema,
   updateConversationBodySchema,
+  chatModelResponseSchema,
+  setChatModelBodySchema,
   setConversationOrderBodySchema,
   successResponseSchema,
   messageListResponseSchema,
@@ -409,6 +414,9 @@ import {
   isTierName,
   isEffortValidForProvider,
   validEffortsForProvider,
+  normalizeStrictRunModelPreset,
+  resolvePresetEffort,
+  RunModelPresetValidationError,
 } from '@archon/workflows/model-validation';
 import type { RunModelOverrides } from '@archon/workflows/model-validation';
 import {
@@ -959,6 +967,46 @@ const createConversationRoute = createRoute({
     400: jsonError('Bad request'),
     500: jsonError('Server error'),
     503: jsonError('Server is draining for a restart'),
+  },
+});
+
+const getChatModelRoute = createRoute({
+  method: 'get',
+  path: '/api/conversations/{id}/model',
+  tags: ['Conversations'],
+  summary: "What the chat's next turn runs on: provider, model, effort, and its own pin",
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: chatModelResponseSchema } },
+      description: "The next turn's model",
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const setChatModelRoute = createRoute({
+  method: 'put',
+  path: '/api/conversations/{id}/model',
+  tags: ['Conversations'],
+  summary: "Pin this chat's model and effort from its next turn (both null clears)",
+  request: {
+    params: conversationIdParamsSchema,
+    body: {
+      content: { 'application/json': { schema: setChatModelBodySchema } },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: chatModelResponseSchema } },
+      description: "The next turn's model, with the new pin applied",
+    },
+    400: jsonError('The provider does not accept that model or effort'),
+    404: jsonError('Not found'),
+    409: jsonError('The chat no longer runs on that provider'),
+    500: jsonError('Server error'),
   },
 });
 
@@ -3767,6 +3815,98 @@ export function registerApiRoutes(
       }
       getLog().error({ err: error }, 'update_conversation_failed');
       return apiError(c, 500, 'Failed to update conversation');
+    }
+  });
+
+  /** Wire shape of what the next turn runs on. */
+  function chatModelBody(
+    request: ChatModelRequest,
+    conv: { pinned_model: string | null; pinned_effort: string | null }
+  ): z.infer<typeof chatModelResponseSchema> {
+    const effort = request.preset?.effort;
+    return {
+      provider: request.provider,
+      model: request.model ?? null,
+      effort: effort ?? null,
+      pin: request.pinned
+        ? {
+            model: conv.pinned_model,
+            effort: isEffortRung(conv.pinned_effort) ? conv.pinned_effort : null,
+          }
+        : null,
+    };
+  }
+
+  // GET /api/conversations/:id/model - what the chat's next turn runs on (#132)
+  registerOpenApiRoute(getChatModelRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const next = await resolveNextChatModel(conv, await resolveWebUserId(c));
+      return c.json(chatModelBody(next, conv));
+    } catch (error) {
+      getLog().error({ err: error }, 'get_chat_model_failed');
+      return apiError(c, 500, 'Failed to resolve the chat model');
+    }
+  });
+
+  // PUT /api/conversations/:id/model - pin this chat's model/effort (#132).
+  // Never touches the user's or the install's default: the pin lives on this
+  // conversation's row and nowhere else. A turn already running resolved its
+  // model before this write, so the pin applies from the next turn.
+  registerOpenApiRoute(setChatModelRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    const { provider, model, effort } = getValidatedBody(c, setChatModelBodySchema);
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const userId = await resolveWebUserId(c);
+      // A pin only applies on the provider the chat resolves to, so one
+      // for any other provider would be stored and silently ignored. The
+      // picker sends the provider it was showing; a mismatch means the default
+      // assistant moved underneath it.
+      const current = await resolveNextChatModel(conv, userId);
+      if (provider !== current.provider) {
+        return apiError(
+          c,
+          409,
+          `This chat now runs on ${current.provider}, not ${provider} — reopen the picker.`
+        );
+      }
+      // The registry is the gate: the provider's own strict parser for the
+      // model, the shared effort ladder for effort.
+      let pinnedModel = model;
+      if (model !== null) {
+        pinnedModel = normalizeStrictRunModelPreset({ provider, model }).model;
+      }
+      if (effort !== null) {
+        const decision = resolvePresetEffort(provider, effort);
+        if (!decision.ok) {
+          return apiError(
+            c,
+            400,
+            decision.reason === 'unsupported'
+              ? `${provider} has no reasoning-effort control.`
+              : `'${effort}' is not an effort ${provider} accepts.`
+          );
+        }
+      }
+      const pin =
+        pinnedModel === null && effort === null ? null : { provider, model: pinnedModel, effort };
+      await conversationDb.setConversationModelPin(conv.id, pin);
+      const updated = await conversationDb.getConversationById(conv.id);
+      if (!updated) return apiError(c, 404, 'Conversation not found');
+      return c.json(chatModelBody(await resolveNextChatModel(updated, userId), updated));
+    } catch (error) {
+      if (error instanceof RunModelPresetValidationError) {
+        return apiError(c, 400, error.message);
+      }
+      if (error instanceof ConversationNotFoundError) {
+        return apiError(c, 404, 'Conversation not found');
+      }
+      getLog().error({ err: error }, 'set_chat_model_failed');
+      return apiError(c, 500, 'Failed to set the chat model');
     }
   });
 

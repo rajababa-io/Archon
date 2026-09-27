@@ -1132,6 +1132,124 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/conversations/{id}/model': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What the chat's next turn runs on: provider, model, effort, and its own pin */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description The next turn's model */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ChatModel'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    /** Pin this chat's model and effort from its next turn (both null clears) */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['SetChatModelBody'];
+        };
+      };
+      responses: {
+        /** @description The next turn's model, with the new pin applied */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ChatModel'];
+          };
+        };
+        /** @description The provider does not accept that model or effort */
+        400: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description The chat no longer runs on that provider */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/conversations/{id}/read': {
     parameters: {
       query?: never;
@@ -4701,6 +4819,9 @@ export interface components {
       last_read_at: string | null;
       /** Format: date-time */
       ready_at: string | null;
+      pinned_provider: string | null;
+      pinned_model: string | null;
+      pinned_effort: string | null;
       /** Format: date-time */
       deleted_at: string | null;
       /** Format: date-time */
@@ -4737,6 +4858,50 @@ export interface components {
       archived?: boolean;
       completed?: boolean;
       ready?: boolean;
+    };
+    ChatModel: {
+      provider: string;
+      model: string | null;
+      /** @enum {string|null} */
+      effort:
+        | 'minimal'
+        | 'low'
+        | 'medium'
+        | 'high'
+        | 'xhigh'
+        | 'max'
+        | 'ultra'
+        | 'persistent'
+        | null;
+      pin: {
+        model: string | null;
+        /** @enum {string|null} */
+        effort:
+          | 'minimal'
+          | 'low'
+          | 'medium'
+          | 'high'
+          | 'xhigh'
+          | 'max'
+          | 'ultra'
+          | 'persistent'
+          | null;
+      } | null;
+    };
+    SetChatModelBody: {
+      provider: string;
+      model: string | null;
+      /** @enum {string|null} */
+      effort:
+        | 'minimal'
+        | 'low'
+        | 'medium'
+        | 'high'
+        | 'xhigh'
+        | 'max'
+        | 'ultra'
+        | 'persistent'
+        | null;
     };
     SetConversationOrderBody: {
       ids: string[];
@@ -5849,6 +6014,7 @@ export interface components {
         | 'ultra'
         | 'persistent'
       )[];
+      suggestedModels?: components['schemas']['ModelSuggestion'][];
     };
     ProviderCapabilities: {
       sessionResume: boolean;
@@ -5877,6 +6043,10 @@ export interface components {
       settingSources: boolean;
       nativeTools: boolean;
       containerExec: boolean;
+    };
+    ModelSuggestion: {
+      id: string;
+      note?: string;
     };
     PiModelListResponse: {
       models: components['schemas']['PiModelInfo'][];

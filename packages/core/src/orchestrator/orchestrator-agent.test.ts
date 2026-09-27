@@ -88,6 +88,9 @@ const mockGetOrCreateConversation = mock<typeof ConversationDb.getOrCreateConver
     completed_at: null,
     last_read_at: null,
     ready_at: null,
+    pinned_provider: null,
+    pinned_model: null,
+    pinned_effort: null,
     deleted_at: null,
     last_activity_at: null,
     user_id: null,
@@ -638,6 +641,8 @@ import {
   handleMessage,
   TURN_INTERRUPTED_NOTICE,
   resolveChatModelRequest,
+  applyChatModelPin,
+  resolveNextChatModel,
   resolveTitleRequest,
   continueResolvedGateRun,
 } from './orchestrator-agent';
@@ -1365,6 +1370,9 @@ function makeConversation(overrides: Partial<Conversation> = {}): Conversation {
     completed_at: null,
     last_read_at: null,
     ready_at: null,
+    pinned_provider: null,
+    pinned_model: null,
+    pinned_effort: null,
     deleted_at: null,
     last_activity_at: null,
     user_id: null,
@@ -1746,6 +1754,42 @@ describe('discoverAllWorkflows — remote sync', () => {
     );
     const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
     expect(requestOptions.env).toEqual({ FILE_SECRET: 'file-value' });
+  });
+
+  // #132: a chat's own pin reaches the provider on the next turn — the model on
+  // the request, the effort on the one effort channel.
+  test("a chat's model/effort pin reaches the provider", async () => {
+    mockGetOrCreateConversation.mockReturnValueOnce(
+      Promise.resolve(
+        makeConversation({
+          ai_assistant_type: 'claude',
+          pinned_provider: 'claude',
+          pinned_model: 'haiku',
+          pinned_effort: 'high',
+        })
+      )
+    );
+
+    await handleMessage(makePlatform(), 'conv-1', 'Hello');
+
+    const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
+    expect(requestOptions.model).toBe('haiku');
+    expect((requestOptions.nodeConfig as { effort?: string }).effort).toBe('high');
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ provider: 'claude', model: 'haiku', effort: 'high' }),
+      'orchestrator.chat_model_pin_applied'
+    );
+  });
+
+  test('a chat with no pin runs on the default model', async () => {
+    mockGetOrCreateConversation.mockReturnValueOnce(
+      Promise.resolve(makeConversation({ ai_assistant_type: 'claude' }))
+    );
+
+    await handleMessage(makePlatform(), 'conv-1', 'Hello');
+
+    const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
+    expect(requestOptions.model).toBe(buildAiProfile('claude').aliases.large?.model);
   });
 
   test('passes preset systemPrompt for claude provider', async () => {
@@ -6635,6 +6679,110 @@ describe('resolveChatModelRequest', () => {
       { assistants: { claude: {}, codex: {} }, tiers }
     );
     expect(req.model).toBe('sonnet');
+  });
+});
+
+// ─── applyChatModelPin (#132): a chat's own model/effort choice ───────────────
+
+describe('applyChatModelPin', () => {
+  const base = resolveChatModelRequest(
+    buildAiProfile('claude'),
+    'claude',
+    {},
+    {
+      assistants: { claude: {}, codex: {} },
+      tiers: undefined,
+    }
+  );
+  const noPin = { pinned_provider: null, pinned_model: null, pinned_effort: null };
+
+  test('no pin leaves the default request untouched', () => {
+    const req = applyChatModelPin(base, noPin);
+    expect(req.model).toBe(base.model);
+    expect(req.pinned).toBe(false);
+    expect(req.matchedTier).toBe('large');
+  });
+
+  test('a pinned model replaces the default and drops the tier (no fallback nudge)', () => {
+    const req = applyChatModelPin(base, {
+      ...noPin,
+      pinned_provider: 'claude',
+      pinned_model: 'haiku',
+    });
+    expect(req.model).toBe('haiku');
+    expect(req.pinned).toBe(true);
+    expect(req.matchedTier).toBeUndefined();
+    // The built-in tier carries no effort, so there is nothing for a preset to carry.
+    expect(req.preset).toBeUndefined();
+  });
+
+  test('effort can be pinned alone: the default model stays, effort rides the preset', () => {
+    const req = applyChatModelPin(base, {
+      ...noPin,
+      pinned_provider: 'claude',
+      pinned_effort: 'max',
+    });
+    expect(req.model).toBe(base.model);
+    expect(req.preset?.effort).toBe('max');
+    expect(req.pinned).toBe(true);
+  });
+
+  test('a pin chosen on another provider is ignored, with a warning', () => {
+    const req = applyChatModelPin(base, {
+      pinned_provider: 'codex',
+      pinned_model: 'gpt-5.6-sol',
+      pinned_effort: 'high',
+    });
+    expect(req.provider).toBe('claude');
+    expect(req.model).toBe(base.model);
+    expect(req.pinned).toBe(false);
+    expect(mockLogger.warn).toHaveBeenCalledWith(
+      { pinnedProvider: 'codex', provider: 'claude' },
+      'orchestrator.chat_model_pin_provider_mismatch'
+    );
+  });
+
+  test('an effort value no binary of this version writes is ignored, not guessed at', () => {
+    const req = applyChatModelPin(base, {
+      pinned_provider: 'claude',
+      pinned_model: null,
+      pinned_effort: 'turbo',
+    });
+    expect(req).toEqual({ ...base, pinned: false });
+  });
+});
+
+describe('resolveNextChatModel', () => {
+  beforeEach(() => {
+    mockLoadConfig.mockReset();
+    mockLoadConfig.mockImplementation(() =>
+      Promise.resolve(makeConfig({ assistants: { claude: {}, codex: {} }, envVars: {} }))
+    );
+    mockGetUserAiPrefsDb.mockReset();
+    mockGetUserAiPrefsDb.mockImplementation(async () => ({}));
+  });
+
+  test('answers with what the next turn would ask for, pin included', async () => {
+    const next = await resolveNextChatModel(
+      makeConversation({
+        ai_assistant_type: 'claude',
+        pinned_provider: 'claude',
+        pinned_model: 'sonnet',
+      }),
+      undefined
+    );
+    expect(next.provider).toBe('claude');
+    expect(next.model).toBe('sonnet');
+    expect(next.pinned).toBe(true);
+  });
+
+  test('loads config from the chat worktree when the chat is scoped to a project', async () => {
+    mockGetCodebase.mockReturnValueOnce(Promise.resolve(makeCodebaseForSync()));
+    await resolveNextChatModel(
+      makeConversation({ codebase_id: 'codebase-1', cwd: '/work/tree' }),
+      undefined
+    );
+    expect(mockLoadConfig).toHaveBeenCalledWith('/work/tree');
   });
 });
 

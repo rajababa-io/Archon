@@ -838,7 +838,7 @@ archon ai default codex --scope user
 archon ai default pi openrouter/minimax/minimax-m2 --scope user
 ```
 
-**How the chat model is resolved.** The provider comes from your personal default (if set), else the conversation's recorded assistant, else the install default. The model then resolves as: your `default_model` pin (only when your default provider matches the effective provider) → the configured `large` tier (yours > repo > global) → the install's `assistants.<provider>.model` (only when no `large` tier is configured anywhere) → the built-in tier default (claude and codex only — other providers have none). Workflow nodes are unaffected — `model: large` keeps meaning the tier.
+**How the chat model is resolved.** The provider comes from your personal default (if set), else the conversation's recorded assistant, else the install default. The model then resolves as: the chat's own model (chosen by clicking the model name under the chat in the console; applies from the next turn, to that chat only, and only while the chat runs on the provider it was chosen for) → your `default_model` pin (only when your default provider matches the effective provider) → the configured `large` tier (yours > repo > global) → the install's `assistants.<provider>.model` (only when no `large` tier is configured anywhere) → the built-in tier default (claude and codex only — other providers have none). A chat's own reasoning effort, chosen the same way, likewise outranks the tier's. Workflow nodes are unaffected — `model: large` keeps meaning the tier.
 
 The model-tier presets are the same ones you can hand-write in `~/.archon/config.yaml`; see [Configuration](/reference/configuration/) for the YAML format.
 

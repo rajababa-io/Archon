@@ -22,6 +22,14 @@ export function registerCopilotProvider(): void {
     capabilities: COPILOT_CAPABILITIES,
     builtIn: false,
     parseConfig: parseCopilotConfigStrict,
+    // No API exposes Copilot's catalog — the CLI negotiates it per
+    // subscription — so this is hand-curated and NOT authoritative.
+    suggestedModels: [
+      { id: 'auto', note: 'Copilot picks' },
+      { id: 'gpt-5' },
+      { id: 'gpt-5-mini' },
+      { id: 'claude-sonnet-4.5' },
+    ],
     credentials: {
       kind: 'static',
       specs: [

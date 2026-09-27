@@ -6,6 +6,7 @@ import {
   getRegistration,
   getRegisteredProviders,
   getProviderInfoList,
+  parseProviderRunModel,
   isRegisteredProvider,
   registerBuiltinProviders,
   registerCommunityProviders,
@@ -243,6 +244,25 @@ describe('registry', () => {
         expect(info).not.toHaveProperty('isModelCompatible');
       }
       expect(infos.find(info => info.id === 'codex')?.effortLevels).toBe(EFFORT_LADDER);
+    });
+
+    // The Web UI's model pickers read this list and hold none of their own
+    // (#132), so it has to reach the projection.
+    test("carries each built-in agent's suggested models", () => {
+      const infos = getProviderInfoList();
+      for (const id of ['claude', 'codex']) {
+        expect(infos.find(info => info.id === id)?.suggestedModels?.length ?? 0).toBeGreaterThan(0);
+      }
+    });
+
+    // A suggestion the provider's own strict parser would refuse is a picker
+    // entry that fails when clicked.
+    test("every suggested model passes its provider's strict parser unchanged", () => {
+      for (const reg of getRegisteredProviders()) {
+        for (const m of reg.suggestedModels ?? []) {
+          expect(parseProviderRunModel(reg.id, m.id)).toBe(m.id);
+        }
+      }
     });
   });
 
