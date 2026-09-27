@@ -14,6 +14,11 @@ import { createContext, useContext, type ReactElement, type ReactNode } from 're
 export interface StreamContextValue {
   runStartedAt: string | null;
   assistant: string | null;
+  /**
+   * Hand the keyboard back from an ask card to whatever it came from — the
+   * chat's message box. Absent where a stream has no composer.
+   */
+  leaveAsk?: () => void;
 }
 
 const context = createContext<StreamContextValue>({ runStartedAt: null, assistant: null });
