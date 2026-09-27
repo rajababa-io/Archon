@@ -2095,6 +2095,34 @@ async function resolveChatCwd(
 }
 
 /**
+ * The chat's `cwd` override when it names a directory that is gone, else null.
+ * Only an override can go missing this way — see the guard in handleMessage.
+ */
+function missingConversationCwd(conversation: Conversation): string | null {
+  if (conversation.codebase_id === null || conversation.cwd === null) return null;
+  return existsSync(conversation.cwd) ? null : conversation.cwd;
+}
+
+/**
+ * What a chat is told when its working directory is gone, with the recovery
+ * that applies. The advice branches on whether a worktree is still attached,
+ * because `/worktree remove` hard-returns "This conversation is not using a
+ * worktree." when `isolation_env_id` is null (command-handler.ts). `/setproject`
+ * clears the cwd override and works in both states.
+ */
+function missingCwdMessage(conversation: Conversation): string {
+  return (
+    `This conversation's working directory no longer exists:\n\`${conversation.cwd ?? ''}\`\n\n` +
+    (conversation.isolation_env_id !== null
+      ? 'Its isolated worktree was removed after this conversation was bound to it. ' +
+        'Run `/worktree remove` to detach and go back to the project root, or ' +
+        '`/setproject <name>` to rebind this conversation to a project.'
+      : 'This conversation is not bound to an isolated workspace, so there is nothing ' +
+        'to detach. Run `/setproject <name>` to rebind this conversation to a project.')
+  );
+}
+
+/**
  * The provider a chat's next message goes to, and that provider's commands for
  * the chat's directory — the `/` menu's provider section. Resolved exactly as
  * a turn resolves them; the listing is cached (see `listProviderCommands`).
@@ -2106,6 +2134,12 @@ export async function listChatProviderCommands(
   const codebase = conversation.codebase_id
     ? await codebaseDb.getCodebase(conversation.codebase_id)
     : null;
+  // Refused before anything spawns there, for the same reason a turn is: Node
+  // reports a missing cwd as ENOENT, which the provider words as a missing
+  // binary and sends the operator after the wrong thing (#183).
+  if (missingConversationCwd(conversation) !== null) {
+    throw new Error(missingCwdMessage(conversation));
+  }
   const cwd = await resolveChatCwd(conversation, codebase);
   // Same config and resolution as `resolveNextChatModel`, so a chat pinned to
   // another provider lists that provider's commands.
@@ -2364,54 +2398,32 @@ export async function handleMessage(
       }
     }
 
-    // A conversation's `cwd` override can outlive the directory it names. Every
-    // path that tears a worktree down (`archon isolation cleanup`, the periodic
-    // reaper, the isolation API route, a user's own `rm -rf`) marks the env row
-    // destroyed without touching the conversation row, so `cwd` keeps pointing at
-    // a path that is gone. Only the WORKFLOW path re-resolves isolation and
-    // notices; a chat turn reads `cwd` verbatim and hands it to the provider,
-    // which spawns its subprocess there and fails ENOENT — an error the Claude
-    // SDK reports as a binary/libc mismatch, sending the operator after entirely
-    // the wrong thing.
+    // A conversation's `cwd` override can outlive the directory it names. Marking
+    // an environment destroyed detaches the conversations bound to it
+    // (isolationEnvDb.updateStatus), but a directory removed outside Archon — a
+    // user's own `rm -rf` — or a row stranded before that detach existed still
+    // leaves `cwd` pointing at a path that is gone. A chat turn reads `cwd`
+    // verbatim and hands it to the provider, which spawns its subprocess there and
+    // fails ENOENT — an error the Claude SDK reports as a binary/libc mismatch,
+    // sending the operator after entirely the wrong thing.
     //
     // Deliberately does NOT fall back to codebase.default_cwd: this conversation
     // asked to work in an isolated worktree, and quietly relocating the agent
     // into the live checkout would widen its write scope without consent. Runs
     // before the persist below so a refused turn leaves no `user` row without its
     // `assistant` pair, and after the deterministic-command early-returns above so
-    // the commands that get out of this state keep working. Which of them applies
-    // depends on `isolation_env_id` — see the message branch below.
-    if (conversation.codebase_id !== null && conversation.cwd !== null) {
-      if (!existsSync(conversation.cwd)) {
-        getLog().warn(
-          {
-            conversationId: conversation.id,
-            cwd: conversation.cwd,
-            isolationEnvId: conversation.isolation_env_id,
-          },
-          'orchestrator.conversation_cwd_missing'
-        );
-        // The recovery advice branches on whether a worktree is still attached,
-        // because `/worktree remove` hard-returns "This conversation is not using
-        // a worktree." when `isolation_env_id` is null (command-handler.ts:428).
-        // That state is reachable, not hypothetical: the `stale_cleaned` branch in
-        // validateAndResolveIsolation (orchestrator.ts:204) clears
-        // `isolation_env_id` and leaves `cwd` set, so a workflow run can strand a
-        // conversation exactly here and the next chat turn would be told to run a
-        // command that dead-ends. `/setproject` clears the cwd override and works
-        // in both states, so it is the one suggestion that always applies.
-        await platform.sendMessage(
-          conversationId,
-          `This conversation's working directory no longer exists:\n\`${conversation.cwd}\`\n\n` +
-            (conversation.isolation_env_id !== null
-              ? 'Its isolated worktree was removed after this conversation was bound to it. ' +
-                'Run `/worktree remove` to detach and go back to the project root, or ' +
-                '`/setproject <name>` to rebind this conversation to a project.'
-              : 'This conversation is not bound to an isolated workspace, so there is nothing ' +
-                'to detach. Run `/setproject <name>` to rebind this conversation to a project.')
-        );
-        return;
-      }
+    // the commands that get out of this state keep working (see missingCwdMessage).
+    if (missingConversationCwd(conversation) !== null) {
+      getLog().warn(
+        {
+          conversationId: conversation.id,
+          cwd: conversation.cwd,
+          isolationEnvId: conversation.isolation_env_id,
+        },
+        'orchestrator.conversation_cwd_missing'
+      );
+      await platform.sendMessage(conversationId, missingCwdMessage(conversation));
+      return;
     }
 
     // 3. Load codebases, discover workflows, build prompt

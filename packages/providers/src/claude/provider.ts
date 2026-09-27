@@ -1711,6 +1711,13 @@ export class ClaudeProvider implements IAgentProvider {
     try {
       const q = query({ prompt: CLAUDE_LOCAL_PROBE_COMMAND, options: sdkOptions });
       const supported = q.supportedCommands();
+      // Observed now, because the loop below can throw first (a launch that
+      // fails, an abort) and then nothing ever awaits `supported`. Its rejection
+      // would go unhandled, and the server treats an unhandled rejection as fatal
+      // — one chat's failed listing took the whole process down (#183). The loop's
+      // own error is what this call reports; on the success path `await supported`
+      // below still surfaces a rejection of its own.
+      supported.catch(() => undefined);
       let init: ClaudeInitCommandFields | undefined;
       for await (const message of q) {
         if (message.type === 'system' && message.subtype === 'init') {

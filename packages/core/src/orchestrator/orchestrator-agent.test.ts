@@ -650,6 +650,7 @@ import {
   resolveNextChatModel,
   resolveTitleRequest,
   continueResolvedGateRun,
+  listChatProviderCommands,
 } from './orchestrator-agent';
 import { clearProviderCommandCache } from '../handlers/provider-commands';
 import { buildAiProfile } from '@archon/workflows/model-validation';
@@ -7864,5 +7865,47 @@ describe('handleMessage — provider commands', () => {
     await handleMessage(platform, 'conv-1', '/compact');
     expect(sent().command).toBeUndefined();
     expect(platform.sendDurableNotice.mock.calls[0]?.[1]).toContain('cli missing');
+  });
+});
+
+describe('listChatProviderCommands — missing workspace (#183)', () => {
+  beforeEach(() => {
+    clearProviderCommandCache();
+    mockListCommands.mockReset();
+    mockListCommands.mockImplementation(() => Promise.resolve({ commands: [], withheld: [] }));
+  });
+
+  test('refuses with the recovery advice and spawns nothing when the chat cwd is gone', async () => {
+    // Listing used to spawn the provider in the missing directory: Node reports a
+    // missing cwd as ENOENT, the SDK words it as a missing binary, and an
+    // unobserved rejection in that path took the server down.
+    const conversation = makeConversation({
+      codebase_id: 'codebase-1',
+      cwd: '/worktrees/deleted-branch',
+      isolation_env_id: 'env-gone',
+    });
+    mockGetCodebase.mockReturnValueOnce(Promise.resolve(makeCodebaseForSync()));
+    mockExistsSync.mockImplementation((p: string) => p !== '/worktrees/deleted-branch');
+
+    const listing = listChatProviderCommands(conversation, undefined);
+
+    await expect(listing).rejects.toThrow('working directory no longer exists');
+    await expect(listing).rejects.toThrow('/worktree remove');
+    expect(mockListCommands).not.toHaveBeenCalled();
+  });
+
+  test('lists normally when the chat cwd exists', async () => {
+    const conversation = makeConversation({
+      codebase_id: 'codebase-1',
+      cwd: '/worktrees/live-branch',
+      isolation_env_id: 'env-live',
+    });
+    mockGetCodebase.mockReturnValueOnce(Promise.resolve(makeCodebaseForSync()));
+    mockExistsSync.mockImplementation(() => true);
+
+    await listChatProviderCommands(conversation, undefined);
+
+    expect(mockListCommands).toHaveBeenCalledTimes(1);
+    expect(mockListCommands.mock.calls[0]?.[0]).toBe('/worktrees/live-branch');
   });
 });

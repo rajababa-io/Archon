@@ -1,7 +1,7 @@
 /**
  * Database operations for isolation environments
  */
-import { pool, getDialect, getDatabaseType } from './connection';
+import { pool, getDialect, getDatabase, getDatabaseType } from './connection';
 import {
   TERMINAL_WORKFLOW_STATUSES,
   RESUMABLE_WORKFLOW_STATUSES,
@@ -180,20 +180,46 @@ export async function create(env: CreateEnvironmentParams): Promise<IsolationEnv
 }
 
 /**
- * Update environment status
+ * Update environment status.
+ *
+ * Marking an environment destroyed also detaches every conversation still bound
+ * to it, in the same transaction. Every teardown path (the cleanup sweeps, the
+ * ghost reconciler, `archon isolation cleanup`, a deleted codebase) ends here,
+ * and a conversation left holding the env's `working_path` as its `cwd` is
+ * stranded on a directory that no longer exists: its next turn is refused, and
+ * anything else that spawns a provider there fails ENOENT (#183). A conversation
+ * is matched by its env reference OR by a `cwd` naming the env's path, because
+ * `stale_cleaned` in validateAndResolveIsolation clears the reference and leaves
+ * the `cwd`. Null `cwd` means "no override" — the conversation falls back to the
+ * codebase checkout, the same end state `/setproject` produces.
  */
 export async function updateStatus(id: string, status: 'active' | 'destroyed'): Promise<void> {
-  const result = await pool.query(
-    'UPDATE remote_agent_isolation_environments SET status = $1 WHERE id = $2',
-    [status, id]
-  );
-
-  if (result.rowCount === 0) {
-    throw new Error(
-      `Failed to update isolation environment status: no environment found with id '${id}'`
+  const detached = await getDatabase().withTransaction(async query => {
+    const result = await query(
+      'UPDATE remote_agent_isolation_environments SET status = $1 WHERE id = $2',
+      [status, id]
     );
-  }
-  getLog().debug({ envId: id, status }, 'db.isolation_env_status_update_completed');
+    if (result.rowCount === 0) {
+      throw new Error(
+        `Failed to update isolation environment status: no environment found with id '${id}'`
+      );
+    }
+    if (status !== 'destroyed') return 0;
+    const cleared = await query(
+      `UPDATE remote_agent_conversations
+         SET cwd = CASE WHEN cwd = (SELECT working_path FROM remote_agent_isolation_environments WHERE id = $1)
+                        THEN NULL ELSE cwd END,
+             isolation_env_id = NULL
+       WHERE isolation_env_id = $1
+          OR cwd = (SELECT working_path FROM remote_agent_isolation_environments WHERE id = $1)`,
+      [id]
+    );
+    return cleared.rowCount;
+  });
+  getLog().debug(
+    { envId: id, status, detachedConversations: detached },
+    'db.isolation_env_status_update_completed'
+  );
 }
 
 /**

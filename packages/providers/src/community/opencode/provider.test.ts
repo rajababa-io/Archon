@@ -161,6 +161,7 @@ describe('normalizeTokens', () => {
   });
 });
 import { classifyOpencodeError } from './errors';
+import { abortableStream } from './session';
 import type { NodeConfig } from '../../types';
 
 /** Default model for tests — satisfies the model-or-agent validation */
@@ -1729,5 +1730,37 @@ describe('classifyOpencodeError (#2715)', () => {
       'rate_limit'
     );
     expect(classifyOpencodeError(new Error('server overloaded'), false)).toBe('rate_limit');
+  });
+});
+
+describe('abortableStream', () => {
+  test('a stream that errors rejects the loop and leaves no unhandled rejection (#183)', async () => {
+    // The abort-listener cleanup was chained with `.finally`, whose promise
+    // re-rejects with the stream's error and was never observed. The server exits
+    // on any unhandled rejection, so one failed event stream killed the process.
+    const streamError = new Error('event stream dropped');
+    const stream: AsyncIterable<unknown> = {
+      [Symbol.asyncIterator]: () => ({
+        next: () => Promise.reject(streamError),
+      }),
+    };
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => {
+      unhandled.push(reason);
+    };
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const drain = async (): Promise<void> => {
+        for await (const _ of abortableStream(stream, new AbortController().signal)) {
+          // drain
+        }
+      };
+      await expect(drain()).rejects.toBe(streamError);
+      // Unhandled rejections are reported after the microtask queue drains.
+      await new Promise(resolve => setTimeout(resolve, 10));
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+    expect(unhandled).toEqual([]);
   });
 });
