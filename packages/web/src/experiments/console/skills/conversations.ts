@@ -213,6 +213,60 @@ export async function getConversationLock(
   );
 }
 
+/** What a stop request found: stopped, still stopping, or nothing running. */
+export type InterruptResult = components['schemas']['ConversationInterruptResponse'];
+
+/**
+ * Stop the chat's running turn.
+ *
+ * The server aborts the turn through its provider and answers once it has
+ * ended, or says it is still stopping when the provider is slower than the
+ * server will wait. Either way the composer's lock is released by the server's
+ * own lock event, not by this reply.
+ */
+export async function interruptConversation(
+  conversationPlatformId: string
+): Promise<InterruptResult> {
+  return requestJson<InterruptResult>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/interrupt`,
+    { method: 'POST' }
+  );
+}
+
+/** A message sent while the agent was working, waiting its turn. */
+export type QueuedMessage = components['schemas']['QueuedMessage'];
+export type ConversationQueue = components['schemas']['ConversationQueueResponse'];
+
+/**
+ * The messages queued behind the running turn, oldest first. Held by the
+ * server, so a reload or a second tab sees the same list; the stream's
+ * `conversation_queue` event says when to ask again.
+ */
+export async function getConversationQueue(
+  conversationPlatformId: string
+): Promise<ConversationQueue> {
+  return requestJson<ConversationQueue>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/queue`
+  );
+}
+
+export type WithdrawResult = components['schemas']['WithdrawQueuedResponse'];
+
+/**
+ * Take a queued message back. The server decides the race with delivery:
+ * `withdrawn` carries the text that was queued, `not-queued` means the agent
+ * already has it.
+ */
+export async function withdrawQueuedMessage(
+  conversationPlatformId: string,
+  queuedId: string
+): Promise<WithdrawResult> {
+  return requestJson<WithdrawResult>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}/queue/${encodeURIComponent(queuedId)}`,
+    { method: 'DELETE' }
+  );
+}
+
 /**
  * Record that the reader has reached the bottom of this chat.
  *
@@ -228,19 +282,21 @@ export async function markConversationRead(conversationPlatformId: string): Prom
   );
 }
 
+/** How the server took a message: started now, or queued behind a running turn. */
+export type DispatchResult = components['schemas']['DispatchResponse'];
+
 export async function sendMessage(
   conversationPlatformId: string,
   message: string,
   files?: File[]
-): Promise<void> {
+): Promise<DispatchResult> {
   const url = `/api/conversations/${encodeURIComponent(conversationPlatformId)}/message`;
 
   if (files === undefined || files.length === 0) {
-    await requestJson<{ accepted: boolean; status: string }>(url, {
+    return requestJson<DispatchResult>(url, {
       method: 'POST',
       body: JSON.stringify({ message }),
     });
-    return;
   }
 
   const form = new FormData();
@@ -248,7 +304,7 @@ export async function sendMessage(
   for (const file of files) {
     form.append('files', file, file.name);
   }
-  await postMultipart<{ accepted: boolean; status: string }>(url, form);
+  return postMultipart<DispatchResult>(url, form);
 }
 
 /**

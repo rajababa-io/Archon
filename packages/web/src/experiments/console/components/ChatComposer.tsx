@@ -1,13 +1,15 @@
-import { Paperclip } from 'lucide-react';
+import { Paperclip, Square } from 'lucide-react';
 import {
   useCallback,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
   type ReactElement,
+  type Ref,
 } from 'react';
 import {
   ACCEPTED_EXTENSIONS,
@@ -24,6 +26,16 @@ export interface ChatDraft {
   files: File[];
 }
 
+/** What the page may do to a mounted composer from outside. */
+export interface ComposerControl {
+  /**
+   * Put text back in the box — a queued message pulled back to edit. Added
+   * below anything already typed rather than replacing it, so pulling back
+   * never destroys a draft.
+   */
+  restore: (text: string) => void;
+}
+
 interface ChatComposerProps {
   onSend: (message: string, files?: File[]) => void;
   /**
@@ -37,8 +49,22 @@ interface ChatComposerProps {
    */
   draft: ChatDraft;
   onDraftChange: (next: ChatDraft) => void;
-  disabled: boolean;
+  disabled?: boolean;
   disabledReason?: string;
+  /**
+   * The agent is executing a turn. The box stays open — what is sent now
+   * queues behind the turn — and Stop takes Send's place.
+   */
+  working?: boolean;
+  onStop?: () => void;
+  /** A stop was requested and the turn has not ended yet. */
+  stopping?: boolean;
+  /**
+   * Up in an empty box. Returns true when it pulled a queued message back, so
+   * the key is consumed; false leaves Up to whatever else wants it.
+   */
+  onPullBack?: () => boolean;
+  controlRef?: Ref<ComposerControl>;
 }
 
 const MAX_HEIGHT = 200;
@@ -61,8 +87,13 @@ export function ChatComposer({
   onSend,
   draft,
   onDraftChange,
-  disabled,
+  disabled = false,
   disabledReason,
+  working = false,
+  onStop,
+  stopping = false,
+  onPullBack,
+  controlRef,
 }: ChatComposerProps): ReactElement {
   /**
    * The in-flight text is LOCAL. It used to live on the page, so every
@@ -118,6 +149,29 @@ export function ChatComposer({
     el.style.height = `${next.toString()}px`;
     el.style.overflowY = next >= MAX_HEIGHT ? 'auto' : 'hidden';
   };
+
+  useImperativeHandle(
+    controlRef,
+    () => ({
+      restore: (text: string): void => {
+        const current = valueRef.current;
+        const next = current.trim().length === 0 ? text : `${current}\n\n${text}`;
+        setValue(next);
+        valueRef.current = next;
+        commit();
+        const el = textareaRef.current;
+        if (el !== null) {
+          // After React writes the value, so the height and caret see it.
+          requestAnimationFrame(() => {
+            grow(el);
+            el.focus();
+            el.setSelectionRange(next.length, next.length);
+          });
+        }
+      },
+    }),
+    [commit]
+  );
 
   const addFiles = (incoming: File[]): void => {
     const admitted = admitFiles(files, incoming);
@@ -185,7 +239,10 @@ export function ChatComposer({
     }
   };
 
-  const idlePlaceholder = disabled ? (disabledReason ?? 'Waiting…') : 'Message the agent…';
+  const openPlaceholder = working
+    ? 'Agent is working — Enter queues a message for when it is done…'
+    : 'Message the agent…';
+  const idlePlaceholder = disabled ? (disabledReason ?? 'Waiting…') : openPlaceholder;
   const placeholder = dragging ? 'Drop files to attach…' : idlePlaceholder;
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
@@ -199,6 +256,12 @@ export function ChatComposer({
     }
     if (e.key === 'Escape') {
       e.currentTarget.blur();
+      return;
+    }
+    // Only in an empty box, and only when something was actually pulled back:
+    // otherwise Up keeps its ordinary meaning.
+    if (e.key === 'ArrowUp' && value.length === 0 && onPullBack?.() === true) {
+      e.preventDefault();
     }
   };
 
@@ -278,18 +341,52 @@ export function ChatComposer({
             className="min-h-0 flex-1 resize-none bg-transparent py-[0.4375rem] text-[length:var(--text-medium)] leading-[1.5] text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
             style={{ maxHeight: `${MAX_HEIGHT.toString()}px` }}
           />
-          <button
-            type="button"
-            onClick={submit}
-            disabled={disabled || value.trim().length === 0}
-            title="Send · Enter"
-            className="brand-bar flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-white shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--accent),transparent_30%)] transition-[filter,transform] hover:brightness-110 active:translate-y-[1px] disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
-          >
-            Send
-            <span aria-hidden className="font-mono text-[length:var(--text-micro)] opacity-70">
-              ↵
-            </span>
-          </button>
+          {working ? (
+            <>
+              {value.trim().length > 0 ? (
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={disabled}
+                  title="Queue · Enter — sent when the agent finishes"
+                  className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-text-primary transition-colors hover:bg-[color:var(--surface-hover)] disabled:opacity-45"
+                  style={{ borderColor: 'var(--border-bright)' }}
+                >
+                  Queue
+                  <span
+                    aria-hidden
+                    className="font-mono text-[length:var(--text-micro)] opacity-70"
+                  >
+                    ↵
+                  </span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={onStop === undefined || stopping}
+                title={stopping ? 'Stopping…' : 'Stop the agent'}
+                aria-label={stopping ? 'Stopping' : 'Stop'}
+                className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border border-error/50 bg-error/10 px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-error transition-colors hover:bg-error/20 disabled:opacity-60"
+              >
+                <Square aria-hidden className="h-3 w-3 fill-current" />
+                {stopping ? 'Stopping…' : 'Stop'}
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={disabled || value.trim().length === 0}
+              title="Send · Enter"
+              className="brand-bar flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-white shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--accent),transparent_30%)] transition-[filter,transform] hover:brightness-110 active:translate-y-[1px] disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
+            >
+              Send
+              <span aria-hidden className="font-mono text-[length:var(--text-micro)] opacity-70">
+                ↵
+              </span>
+            </button>
+          )}
         </div>
         <div className="mt-[9px] flex items-center justify-between px-[0.125rem] font-mono text-[length:var(--text-micro)] text-text-tertiary">
           <span />
@@ -300,7 +397,7 @@ export function ChatComposer({
             >
               ↵
             </span>
-            send{' '}
+            {working ? 'queue' : 'send'}{' '}
             <span
               className="ml-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] font-mono text-[length:var(--text-micro)] text-text-secondary"
               style={{ borderColor: 'var(--border-bright)' }}

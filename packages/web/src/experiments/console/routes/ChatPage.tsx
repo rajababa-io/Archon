@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { useParams } from 'react-router';
 import { ChatStream } from '../components/ChatStream';
 import { ChatComposer, type ChatDraft } from '../components/ChatComposer';
+import { QueuedMessages } from '../components/QueuedMessages';
 import { chooseOpenChat, readLastChat, writeLastChat } from '../lib/last-chat';
 import { ConversationRail, type ChatScope } from '../components/ConversationRail';
 import { ChatStatusStrip } from '../components/ChatStatusStrip';
@@ -28,6 +29,7 @@ import type { Run } from '../primitives/run';
 import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useArrowScroll } from '../hooks/useArrowScroll';
+import { useTurnControls } from '../hooks/useTurnControls';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
 import {
@@ -394,6 +396,8 @@ export function ChatPage(): ReactElement {
    */
   const serverWorking = activeConvId !== null && liveIds.has(activeConvId);
   const working = sending || locked || serverWorking;
+  // Stop, queue and take back. Its own hook so the page only routes to it.
+  const turn = useTurnControls(activeConvId, working);
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP
@@ -583,6 +587,12 @@ export function ChatPage(): ReactElement {
 
   const onSend = (text: string, files?: File[]): void => {
     if (projectId === undefined) return;
+    // Sending while the agent works queues behind the turn on the server; the
+    // queued bubble, not the optimistic echo, is what shows it.
+    if (working && activeConvId !== null) {
+      turn.queueSend(text, files);
+      return;
+    }
     setError(null);
     // The reader may be up in the history; their own message is the one thing
     // they always want to see land, so sending re-pins the tail.
@@ -790,6 +800,12 @@ export function ChatPage(): ReactElement {
                       trailing={<ContextBar messages={renderedMessages} />}
                     />
                   ) : null}
+                  <QueuedMessages
+                    messages={turn.queued}
+                    busyIds={turn.busyIds}
+                    onEdit={turn.edit}
+                    onRemove={turn.remove}
+                  />
                 </StreamContextProvider>
               )}
             </div>
@@ -817,6 +833,15 @@ export function ChatPage(): ReactElement {
           </div>
         ) : null}
 
+        {turn.notice !== null ? (
+          <div
+            role="status"
+            className="shrink-0 border-t border-border bg-surface px-6 py-2 font-mono text-[11px] text-text-secondary"
+          >
+            {turn.notice}
+          </div>
+        ) : null}
+
         {/* Keyed by conversation: the composer holds its own in-flight text, so
             switching chats must remount it to reseed from that chat's draft. */}
         <ChatComposer
@@ -824,7 +849,11 @@ export function ChatPage(): ReactElement {
           onSend={onSend}
           draft={draft}
           onDraftChange={setDraft}
-          disabled={working}
+          working={working}
+          onStop={activeConvId === null ? undefined : turn.stop}
+          stopping={turn.stopping}
+          onPullBack={turn.pullBackLast}
+          controlRef={turn.controlRef}
         />
       </div>
     </section>

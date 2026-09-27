@@ -632,6 +632,7 @@ mock.module('../db/user-ai-prefs-store', () => ({
 import {
   parseOrchestratorCommands,
   handleMessage,
+  TURN_INTERRUPTED_NOTICE,
   resolveChatModelRequest,
   resolveTitleRequest,
   continueResolvedGateRun,
@@ -5063,6 +5064,97 @@ describe('stale session ID clearing on error_during_execution', () => {
       (c: unknown[]) => c[1] as string
     );
     expect(sentMessages.some((m: string) => m.toLowerCase().includes('error'))).toBe(false);
+  });
+});
+
+// ─── Interrupted turn ─────────────────────────────────────────────────────────
+
+describe('handleMessage — interrupted turn', () => {
+  beforeEach(() => {
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() => Promise.resolve(makeConversation()));
+    mockGetCodebase.mockReset();
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockSendQuery.mockReset();
+    mockTransitionSession.mockResolvedValue(makeSession({ id: 'session-1' }));
+    mockGetRecentWorkflowResultMessages.mockReset();
+    mockGetRecentWorkflowResultMessages.mockImplementation(() => Promise.resolve([]));
+    mockDiscoverWorkflowsWithConfig.mockReset();
+    mockDiscoverWorkflowsWithConfig.mockImplementation(() =>
+      Promise.resolve({ workflows: [], errors: [] })
+    );
+    mockListCodebases.mockReset();
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+  });
+
+  function platformWithNotices(): ReturnType<typeof makePlatform> & {
+    sendDurableNotice: ReturnType<typeof mock>;
+  } {
+    const platform = makePlatform();
+    (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue('stream');
+    return Object.assign(platform, {
+      sendDurableNotice: mock(() => Promise.resolve()),
+    });
+  }
+
+  function sentTexts(platform: ReturnType<typeof makePlatform>): string[] {
+    return (platform.sendMessage as ReturnType<typeof mock>).mock.calls.map(
+      (c: unknown[]) => c[1] as string
+    );
+  }
+
+  test('the provider receives the abort, streamed text stays, and the turn is marked interrupted', async () => {
+    const controller = new AbortController();
+    let providerSignal: AbortSignal | undefined;
+    mockSendQuery.mockImplementationOnce(async function* (_prompt, _cwd, _resume, options) {
+      providerSignal = options?.abortSignal;
+      yield { type: 'assistant', content: 'Working on it' };
+      // Stop pressed mid-turn; the provider ends by throwing, as Claude's does.
+      controller.abort();
+      throw new Error('Query aborted');
+    });
+
+    const platform = platformWithNotices();
+    await handleMessage(platform, 'conv-1', 'do the thing', { abortSignal: controller.signal });
+
+    expect(providerSignal).toBe(controller.signal);
+    expect(sentTexts(platform)).toContain('Working on it');
+    expect(platform.sendDurableNotice).toHaveBeenCalledWith('conv-1', TURN_INTERRUPTED_NOTICE, {
+      category: 'turn_interrupted',
+    });
+    // The abort is not reported as a failure.
+    expect(sentTexts(platform).some(m => m.toLowerCase().includes('error'))).toBe(false);
+  });
+
+  test('a provider that ends its stream quietly on abort still gets the marker', async () => {
+    const controller = new AbortController();
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'partial' };
+      controller.abort();
+    });
+
+    const platform = platformWithNotices();
+    await handleMessage(platform, 'conv-1', 'do the thing', { abortSignal: controller.signal });
+
+    expect(platform.sendDurableNotice).toHaveBeenCalledTimes(1);
+    expect(platform.sendDurableNotice).toHaveBeenCalledWith('conv-1', TURN_INTERRUPTED_NOTICE, {
+      category: 'turn_interrupted',
+    });
+  });
+
+  test('a real failure on a turn nobody stopped is still reported as one', async () => {
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'partial' };
+      throw new Error('provider exploded');
+    });
+
+    const platform = platformWithNotices();
+    await handleMessage(platform, 'conv-1', 'do the thing', {
+      abortSignal: new AbortController().signal,
+    });
+
+    expect(platform.sendDurableNotice).not.toHaveBeenCalled();
+    expect(sentTexts(platform).length).toBeGreaterThan(1);
   });
 });
 
