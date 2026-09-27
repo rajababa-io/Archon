@@ -15779,11 +15779,12 @@ describe('executeDagWorkflow -- env var injection', () => {
     expect(optionsArg?.env).toEqual({
       MY_SECRET: 'abc123',
       ANTHROPIC_API_KEY: 'acting-user-secret',
+      WORKFLOW_ID: workflowRun.id,
     });
     expect(optionsArg?.protectedEnvKeys).toEqual(['ANTHROPIC_API_KEY']);
   });
 
-  it('does not set env on claudeOptions when config.envVars is empty', async () => {
+  it('passes only WORKFLOW_ID as env when config.envVars is empty', async () => {
     const mockDeps = createMockDeps();
     const platform = createMockPlatform();
     const workflowRun = makeWorkflowRun();
@@ -15804,7 +15805,30 @@ describe('executeDagWorkflow -- env var injection', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0]?.[3] as Record<string, unknown> | undefined;
-    expect(optionsArg?.env).toBeUndefined();
+    expect(optionsArg?.env).toEqual({ WORKFLOW_ID: workflowRun.id });
+  });
+
+  it('project env cannot shadow WORKFLOW_ID', async () => {
+    const mockDeps = createMockDeps();
+    const platform = createMockPlatform();
+    const workflowRun = makeWorkflowRun();
+
+    await executeDagWorkflow(
+      dagOptions({
+        deps: mockDeps,
+        platform,
+        cwd: testDir,
+        workflow: {
+          name: 'dag-env-shadow',
+          nodes: [{ id: 'task', kind: 'agent', source: { kind: 'command', name: 'my-cmd' } }],
+        },
+        workflowRun,
+        config: { ...minimalConfig, envVars: { WORKFLOW_ID: 'from-project', KEEP: '1' } },
+      })
+    );
+
+    const optionsArg = mockSendQueryDag.mock.calls[0]?.[3] as Record<string, unknown> | undefined;
+    expect(optionsArg?.env).toEqual({ KEEP: '1', WORKFLOW_ID: workflowRun.id });
   });
 });
 
