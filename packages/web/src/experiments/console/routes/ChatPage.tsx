@@ -11,6 +11,9 @@ import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
 import { useConversationSSE } from '../lib/sse';
 import { useLiveChats } from '../lib/live-chats';
+import { usePageVisible } from '../lib/use-page-visible';
+import { useTabSignal } from '../lib/use-tab-signal';
+import { chatStatuses } from '../primitives/tab-signal';
 import { useEntity, invalidate } from '../store/cache';
 import { K } from '../store/keys';
 import {
@@ -434,6 +437,18 @@ export function ChatPage(): ReactElement {
    */
   const unread = useMemo(() => unreadIds(conversations ?? []), [conversations]);
 
+  // The tab title and the opt-in notification, read off every chat in the rail
+  // by the rail's own rules. Clicking a notification opens its chat here.
+  const railStatuses = useMemo(
+    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds),
+    [conversations, railLiveIds, awaitingIds]
+  );
+  const railTitles = useMemo(
+    () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
+    [conversations]
+  );
+  useTabSignal(railStatuses, railTitles, selectConversation);
+
   /** The status of the chat being READ. Same six states and same ordering as
    * every row in the rail — `chatStatus` owns the precedence. */
   const status: ChatStatus =
@@ -527,16 +542,22 @@ export function ChatPage(): ReactElement {
    * anyone: its last line does not exist. That also matches the rail, where
    * working outranks unread.
    *
+   * `visible` gates it too: a hidden tab has not been read, even with the
+   * chat open at its bottom. Marking it anyway would clear the unread mark the
+   * tab title counts, so a turn that ends while you are away would leave no
+   * trace for you to come back to. Returning to the tab re-runs this.
+   *
    * The ref keys on the ACTIVITY TIMESTAMP, not just the chat, and is what
    * stops this being a write per render. `unread` is derived from a polled
    * feed, so it stays true for a beat after the POST lands; without the key
    * every one of those renders would fire another. A new reply moves the
    * timestamp, which is exactly when a second write is wanted.
    */
+  const visible = usePageVisible();
   const markedReadRef = useRef<string | null>(null);
   useEffect(() => {
     if (activeConvId === null || lastActivityAt === null) return;
-    if (!atBottom || working) return;
+    if (!atBottom || working || !visible) return;
     if (!unread.has(activeConvId)) return;
     const key = `${activeConvId}|${lastActivityAt}`;
     if (markedReadRef.current === key) return;
@@ -552,7 +573,7 @@ export function ChatPage(): ReactElement {
         // and an error banner over a cosmetic write would be the louder bug.
         markedReadRef.current = null;
       });
-  }, [activeConvId, lastActivityAt, atBottom, working, unread]);
+  }, [activeConvId, lastActivityAt, atBottom, working, unread, visible]);
 
   // Held in a ref so `onAnswer` below can be referentially stable without
   // threading every dependency of onSend through a useCallback. Memoized
