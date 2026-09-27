@@ -585,11 +585,11 @@
   gap: 7px;
   padding: 2px 8px 7px;
 }
-/* A chat row is taller than a rail row: the title wraps to up to three lines
-   and the time sits under it. Only a handful of chats run at once, so the
-   list spends vertical space on reading the title rather than on fitting
-   more rows. It still pins its height rather than letting the contents
-   decide — see .rail-row.
+/* A chat row is taller than a rail row: two lines of title, then the time.
+   Every row is that height whether its title needs one line or two, so the
+   list stays an even grid at any width — resizing the rail rewraps titles
+   but never makes rows jump. Only a handful of chats run at once, so the
+   space goes on reading the title rather than on fitting more rows.
 
    The left gutter is 26px, not the rail's 17px. Two marks live in that column
    — the drag grip on hover, and the status dot — and at 17px the grip's right
@@ -598,8 +598,10 @@
    things and they have to read as two objects. 26px leaves 10px between
    them. */
 .chatlist .rail-row {
-  height: auto;
-  min-height: calc(17px + 2 * var(--row-y));
+  /* Two title lines + the stamp line + the stamp's 2px + 12px of padding,
+     from the same tokens that size them — so a one-line title leaves its
+     spare line at the bottom, under the time, and the row never changes. */
+  height: calc(2 * 1.35 * var(--text-body) + 1.4 * var(--text-mini) + 14px);
   padding: 6px 8px 6px 26px;
   align-items: flex-start;
 }
@@ -608,7 +610,7 @@
 }
 .chatlist .rail-row .rail-text {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   white-space: normal;
   overflow: hidden;
@@ -642,9 +644,14 @@
    rather than a second copy of the vocabulary. */
 .chat-stamp {
   display: block;
+  /* One line, always — a wrapped stamp would make its row taller than the rest. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-transform: lowercase;
   margin-top: 2px;
   font-size: var(--text-mini);
+  line-height: 1.4;
   color: var(--text-tertiary);
   letter-spacing: 0.3px;
   font-variant-numeric: tabular-nums;
