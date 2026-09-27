@@ -13,7 +13,7 @@ function press(key: string, over: Partial<Parameters<typeof arrowScrollDelta>[0]
   };
 }
 
-const composer: FocusedElement = { tagName: 'TEXTAREA', isContentEditable: false, value: '' };
+const composer: FocusedElement = { tagName: 'TEXTAREA', isContentEditable: false };
 
 describe('arrowScrollDelta', () => {
   test('arrows scroll when nothing holds focus', () => {
@@ -21,18 +21,28 @@ describe('arrowScrollDelta', () => {
     expect(arrowScrollDelta(press('ArrowUp'), null)).toBe(-ARROW_SCROLL_PX);
   });
 
-  test('an empty composer does not claim the key', () => {
-    expect(arrowScrollDelta(press('ArrowDown'), composer)).toBe(ARROW_SCROLL_PX);
+  test('plain arrows in the composer belong to its history, even when empty', () => {
+    expect(arrowScrollDelta(press('ArrowUp'), composer)).toBe(null);
+    expect(arrowScrollDelta(press('ArrowDown'), composer)).toBe(null);
   });
 
-  test('a composer holding a draft keeps the key for its caret', () => {
-    expect(arrowScrollDelta(press('ArrowUp'), { ...composer, value: 'half a message' })).toBe(null);
+  test('Option-arrows scroll from inside the composer', () => {
+    expect(arrowScrollDelta(press('ArrowUp', { altKey: true }), composer)).toBe(-ARROW_SCROLL_PX);
+    expect(arrowScrollDelta(press('ArrowDown', { altKey: true }), composer)).toBe(ARROW_SCROLL_PX);
+    expect(arrowScrollDelta(press('ArrowDown', { altKey: true }), null)).toBe(ARROW_SCROLL_PX);
+  });
+
+  test('selects and rich editors keep even the Option form', () => {
+    const select = { tagName: 'SELECT', isContentEditable: false };
+    expect(arrowScrollDelta(press('ArrowDown', { altKey: true }), select)).toBe(null);
+    const editor = { tagName: 'DIV', isContentEditable: true };
+    expect(arrowScrollDelta(press('ArrowDown', { altKey: true }), editor)).toBe(null);
   });
 
   test('single-line inputs and rich editors keep the key', () => {
-    expect(
-      arrowScrollDelta(press('ArrowUp'), { tagName: 'INPUT', isContentEditable: false, value: '' })
-    ).toBe(null);
+    expect(arrowScrollDelta(press('ArrowUp'), { tagName: 'INPUT', isContentEditable: false })).toBe(
+      null
+    );
     expect(
       arrowScrollDelta(press('ArrowUp'), { tagName: 'SELECT', isContentEditable: false })
     ).toBe(null);

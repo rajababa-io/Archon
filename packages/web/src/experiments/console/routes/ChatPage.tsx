@@ -30,6 +30,8 @@ import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
+import { sentHistory } from '../lib/composer-history';
+import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
 import {
@@ -306,7 +308,7 @@ export function ChatPage(): ReactElement {
   // project switch, so a bare '__new__' slot was shared by every project and
   // text typed in one project's new chat surfaced in another's.
   const draftKey = `${projectId ?? '_'}:${activeConvId ?? '__new__'}`;
-  const draft = drafts[draftKey] ?? { text: '', files: [] };
+  const draft = drafts[draftKey] ?? { text: loadDraftText(draftKey), files: [] };
   const setDraft = (next: ChatDraft): void => {
     setDrafts(prev => ({ ...prev, [draftKey]: next }));
   };
@@ -701,6 +703,9 @@ export function ChatPage(): ReactElement {
     ];
   }, [messageList, liveSegments, pendingUser]);
 
+  // Cheap enough to derive per render; the composer re-renders with the page anyway.
+  const sent = sentHistory(renderedMessages);
+
   onSendRef.current = onSend;
 
   /** Stable across renders; flips only between itself and `undefined`. */
@@ -854,6 +859,8 @@ export function ChatPage(): ReactElement {
           stopping={turn.stopping}
           onPullBack={turn.pullBackLast}
           controlRef={turn.controlRef}
+          draftKey={draftKey}
+          history={sent}
         />
       </div>
     </section>

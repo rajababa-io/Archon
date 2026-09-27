@@ -177,14 +177,16 @@ export function useKeymap({ bindings, enabled = true }: UseKeymapOptions): void 
 
 /** Pretty-format a chord for the help overlay. */
 export function formatChord(keys: readonly string[]): string {
-  return keys
-    .map(k => {
-      if (k === ' ') return 'Space';
-      if (k === 'Escape') return 'Esc';
-      if (k === 'Enter') return '↵';
-      if (k === 'ArrowUp') return '↑';
-      if (k === 'ArrowDown') return '↓';
-      return k;
-    })
-    .join(' ');
+  return keys.map(formatKey).join(' ');
+}
+
+/** One key of a chord. `Alt+` marks a key held with Option, not a sequence. */
+function formatKey(k: string): string {
+  if (k.startsWith('Alt+')) return `⌥${formatKey(k.slice('Alt+'.length))}`;
+  if (k === ' ') return 'Space';
+  if (k === 'Escape') return 'Esc';
+  if (k === 'Enter') return '↵';
+  if (k === 'ArrowUp') return '↑';
+  if (k === 'ArrowDown') return '↓';
+  return k;
 }

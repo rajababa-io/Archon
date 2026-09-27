@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type ClipboardEvent,
@@ -19,6 +20,8 @@ import {
   imagesFromClipboard,
 } from '../primitives/file';
 import { AttachedFiles } from './AttachedFiles';
+import { AT_DRAFT, caretAtEdge, stepHistory, type HistoryWalk } from '../lib/composer-history';
+import { saveDraftText } from '../lib/draft-store';
 
 /** What the user has typed and attached but not yet sent, for one conversation. */
 export interface ChatDraft {
@@ -49,6 +52,14 @@ interface ChatComposerProps {
    */
   draft: ChatDraft;
   onDraftChange: (next: ChatDraft) => void;
+  /**
+   * The page's per-chat draft key. The text is saved under it in browser
+   * storage as you type, so a reload restores it; the page seeds `draft.text`
+   * from the same entry.
+   */
+  draftKey: string;
+  /** Messages you sent in this chat, oldest first — what Up/Down walk. */
+  history: readonly string[];
   disabled?: boolean;
   disabledReason?: string;
   /**
@@ -87,6 +98,8 @@ export function ChatComposer({
   onSend,
   draft,
   onDraftChange,
+  draftKey,
+  history,
   disabled = false,
   disabledReason,
   working = false,
@@ -128,6 +141,17 @@ export function ChatComposer({
     onDraftChange({ text: valueRef.current, files: filesRef.current });
   }, [onDraftChange]);
 
+  // Per keystroke is fine here: a localStorage write is microseconds, and the
+  // cost this component avoids is re-rendering the page, not I/O.
+  useEffect(() => {
+    saveDraftText(draftKey, value);
+  }, [draftKey, value]);
+
+  const walkRef = useRef<HistoryWalk>(AT_DRAFT);
+  // Set when Up/Down replaced the text, so the caret lands at its end once the
+  // new value is in the DOM.
+  const recalledRef = useRef(false);
+
   // Unmount is the chat switch: the page re-keys this component, so the
   // callback captured here still belongs to the conversation being left.
   useEffect(() => commit, [commit]);
@@ -158,6 +182,7 @@ export function ChatComposer({
         const next = current.trim().length === 0 ? text : `${current}\n\n${text}`;
         setValue(next);
         valueRef.current = next;
+        walkRef.current = AT_DRAFT;
         commit();
         const el = textareaRef.current;
         if (el !== null) {
@@ -172,6 +197,14 @@ export function ChatComposer({
     }),
     [commit]
   );
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current;
+    if (!recalledRef.current || el === null) return;
+    recalledRef.current = false;
+    grow(el);
+    el.setSelectionRange(value.length, value.length);
+  }, [value]);
 
   const addFiles = (incoming: File[]): void => {
     const admitted = admitFiles(files, incoming);
@@ -229,6 +262,7 @@ export function ChatComposer({
     if (trimmed.length === 0 || disabled) return;
     onSend(trimmed, files.length > 0 ? [...files] : undefined);
     setValue('');
+    walkRef.current = AT_DRAFT;
     committedRef.current = '';
     onDraftChange({ text: '', files: [] });
     setFileError(null);
@@ -262,7 +296,34 @@ export function ChatComposer({
     // otherwise Up keeps its ordinary meaning.
     if (e.key === 'ArrowUp' && value.length === 0 && onPullBack?.() === true) {
       e.preventDefault();
+      return;
     }
+    if (
+      (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+      !e.altKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.shiftKey
+    ) {
+      recallHistory(e);
+    }
+  };
+
+  /**
+   * Up on the first line walks back through what you sent; Down on the last
+   * line walks forward and finally returns your draft. Anywhere else, or with
+   * nothing further to recall, the key moves the caret as usual.
+   */
+  const recallHistory = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
+    const el = e.currentTarget;
+    const direction = e.key === 'ArrowUp' ? 'older' : 'newer';
+    if (!caretAtEdge(el.value, el.selectionStart, el.selectionEnd, direction)) return;
+    const step = stepHistory(history, walkRef.current, direction, el.value);
+    if (step === null) return;
+    e.preventDefault();
+    walkRef.current = step.walk;
+    recalledRef.current = true;
+    setValue(step.text);
   };
 
   return (
@@ -330,6 +391,8 @@ export function ChatComposer({
             ref={textareaRef}
             value={value}
             onChange={e => {
+              // Editing a recalled message makes it your draft.
+              walkRef.current = AT_DRAFT;
               setValue(e.target.value);
               grow(e.target);
             }}
