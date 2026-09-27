@@ -21,22 +21,19 @@ export interface ArrowKeyEvent {
 export interface FocusedElement {
   tagName: string;
   isContentEditable: boolean;
-  /** Present for form controls; a textarea's draft text. */
-  value?: string;
 }
 
 /**
  * How far an arrow press should move the transcript, or null when the key
  * belongs to something else.
  *
- * The judgment that matters is the focus guard. The console's chat composer
- * re-focuses itself after every send, so the keymap's "not typing" rule —
- * any focused input keeps the key — would mean the arrows never scroll the
- * transcript in the one place a reader wants them to. An *empty* textarea has
- * no caret to move, so the key is free; a textarea holding a draft is being
- * edited and keeps it. Single-line inputs and contentEditable always keep it:
- * those are the rail filter and the summary editor, where a caret exists or
- * the surrounding component owns the key.
+ * Plain ↑/↓ belong to whatever text field holds focus — in the chat composer
+ * they walk your sent-message history — so they scroll only when no field is
+ * focused (Escape leaves the composer). ⌥↑/⌥↓ scroll from anywhere, including
+ * the composer, because the composer re-focuses itself after every send and a
+ * reader should not have to leave it to look back. Selects and
+ * contentEditable keep even the ⌥ form: a select opens on ⌥↓, and the summary
+ * editor owns its own keys.
  */
 export function arrowScrollDelta(
   event: ArrowKeyEvent,
@@ -44,14 +41,14 @@ export function arrowScrollDelta(
   step: number = ARROW_SCROLL_PX
 ): number | null {
   if (event.defaultPrevented) return null;
-  if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return null;
+  if (event.metaKey || event.ctrlKey || event.shiftKey) return null;
   if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return null;
 
   if (focused !== null) {
     if (focused.isContentEditable) return null;
     const tag = focused.tagName.toUpperCase();
-    if (tag === 'INPUT' || tag === 'SELECT') return null;
-    if (tag === 'TEXTAREA' && (focused.value ?? '').length > 0) return null;
+    if (tag === 'SELECT') return null;
+    if ((tag === 'INPUT' || tag === 'TEXTAREA') && !event.altKey) return null;
   }
 
   return event.key === 'ArrowUp' ? -step : step;
