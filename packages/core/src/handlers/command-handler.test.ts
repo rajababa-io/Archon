@@ -1587,6 +1587,81 @@ describe('CommandHandler', () => {
         });
       });
 
+      describe('live', () => {
+        test('pins a new chat to the live checkout without ending a session', async () => {
+          const newChat = makeConversation({ ...conversationWithCodebase, cwd: null });
+
+          const result = await handleCommand(newChat, '/worktree live');
+
+          expect(result.success).toBe(true);
+          expect(result.modified).toBe(true);
+          expect(result.message).toContain('live checkout');
+          expect(mockUpdateConversation).toHaveBeenCalledWith(newChat.id, {
+            cwd: '/workspace/my-repo',
+          });
+          expect(mockDeactivateSession).not.toHaveBeenCalled();
+        });
+
+        test('refuses while a worktree is attached and leaves it alone', async () => {
+          const convWithWorktree = makeConversation({
+            ...conversationWithCodebase,
+            cwd: '/workspace/my-repo/worktrees/thread-1',
+            isolation_env_id: 'env-uuid-thread',
+          });
+          mockIsolationEnvDbGet.mockResolvedValue(
+            makeIsolationEnvironment({
+              id: 'env-uuid-thread',
+              working_path: '/workspace/my-repo/worktrees/thread-1',
+            })
+          );
+
+          const result = await handleCommand(convWithWorktree, '/worktree live');
+
+          expect(result.success).toBe(false);
+          expect(result.message).toContain('/worktree remove');
+          expect(mockUpdateConversation).not.toHaveBeenCalled();
+          expect(mockIsolationDestroy).not.toHaveBeenCalled();
+        });
+
+        test('moves a stranded override to the live checkout and ends its session', async () => {
+          const stranded = makeConversation({
+            ...conversationWithCodebase,
+            cwd: '/workspace/my-repo/worktrees/gone',
+            isolation_env_id: null,
+          });
+          mockGetActiveSession.mockResolvedValue(makeSession({ id: 'session-live', active: true }));
+          mockDeactivateSession.mockResolvedValue(undefined);
+
+          const result = await handleCommand(stranded, '/worktree live');
+
+          expect(result.success).toBe(true);
+          expect(mockUpdateConversation).toHaveBeenCalledWith(stranded.id, {
+            cwd: '/workspace/my-repo',
+          });
+          expect(mockDeactivateSession).toHaveBeenCalledWith('session-live', 'isolation-changed');
+        });
+
+        test('is a no-op when already in the live checkout', async () => {
+          const result = await handleCommand(conversationWithCodebase, '/worktree live');
+
+          expect(result.success).toBe(true);
+          expect(result.message).toContain('Already');
+          expect(mockUpdateConversation).not.toHaveBeenCalled();
+        });
+
+        test('is refused on a folder project', async () => {
+          mockGetCodebase.mockResolvedValueOnce(
+            makeCodebase({ id: 'codebase-123', repository_url: null, kind: 'folder' })
+          );
+
+          const result = await handleCommand(conversationWithCodebase, '/worktree live');
+
+          expect(result.success).toBe(false);
+          expect(result.message).toContain('not applicable to folder projects');
+          expect(mockUpdateConversation).not.toHaveBeenCalled();
+        });
+      });
+
       describe('default', () => {
         test('should show usage for unknown subcommand', async () => {
           const result = await handleCommand(conversationWithCodebase, '/worktree foo');

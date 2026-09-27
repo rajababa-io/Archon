@@ -426,7 +426,9 @@ async function dispatchBackgroundWorkflowOwned(
       });
     }
     if (workflow.worktree?.enabled === false) {
-      // Respect an explicit worktree opt-out: skip isolation and run in the parent's cwd.
+      // Respect an explicit worktree opt-out: skip isolation and run in the live
+      // checkout, as the foreground path does. Not the parent's cwd — that is
+      // normally the parent chat's own worktree, which the chat is still editing.
       getLog().info(
         {
           workflowName: workflow.name,
@@ -435,7 +437,13 @@ async function dispatchBackgroundWorkflowOwned(
         },
         'workflow.worktree_disabled_by_policy'
       );
-      workerCwd = ctx.cwd;
+      workerCwd = codebase.default_cwd;
+      await db.updateConversation(workerConv.id, { cwd: workerCwd }).catch((e: unknown) => {
+        getLog().warn(
+          { err: toError(e), workerPlatformId },
+          'orchestrator.worker_cwd_persist_failed'
+        );
+      });
     } else if (ctx.adoptionLane?.kind === 'reuse-worktree') {
       // Adoption lane 2: the adopted run's worktree survives — inherit it dirty-as-is
       // instead of cutting a fresh one from base. Linking the env keeps standard

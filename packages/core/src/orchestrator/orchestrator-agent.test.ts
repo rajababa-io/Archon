@@ -523,8 +523,14 @@ mock.module('../services/next-message-suggester', () => ({
 const mockDispatchBackgroundWorkflow = mock<typeof Orchestrator.dispatchBackgroundWorkflow>(() =>
   Promise.resolve()
 );
+// A new git-project chat binds its default worktree through this resolver (#184),
+// so the default answer is the one a real repo codebase gets: a fresh worktree.
 const mockValidateAndResolveIsolation = mock<typeof Orchestrator.validateAndResolveIsolation>(() =>
-  Promise.resolve({ cwd: '/test/cwd', status: 'none', env: null })
+  Promise.resolve({
+    cwd: '/test/cwd',
+    status: 'new',
+    env: makeIsolationEnvironment({ workflow_type: 'thread', working_path: '/test/cwd' }),
+  })
 );
 mock.module('./orchestrator', () => ({
   validateAndResolveIsolation: mockValidateAndResolveIsolation,
@@ -1918,10 +1924,11 @@ describe('provider cwd resolution', () => {
     mockGetCodebaseEnvVars.mockImplementation(() => Promise.resolve({}));
   });
 
-  test('scoped chat uses codebase.default_cwd as provider cwd', async () => {
+  test('scoped chat with a live session keeps codebase.default_cwd as provider cwd', async () => {
     const codebase = makeCodebaseForSync();
     const conversation = makeConversation({ codebase_id: 'codebase-1' });
     mockGetOrCreateConversation.mockReturnValueOnce(Promise.resolve(conversation));
+    mockGetActiveSession.mockResolvedValueOnce(makeSession());
     mockGetCodebase.mockReturnValueOnce(Promise.resolve(codebase));
     mockListCodebases.mockReturnValueOnce(Promise.resolve([codebase]));
 
@@ -1990,6 +1997,7 @@ describe('provider cwd resolution', () => {
     const sent = (platform.sendMessage as ReturnType<typeof mock>).mock.calls[0][1] as string;
     expect(sent).toContain('/worktree remove');
     expect(sent).toContain('/setproject');
+    expect(sent).toContain('/reset');
   });
 
   test('drops the worktree advice once isolation_env_id is already cleared', async () => {
@@ -2014,6 +2022,7 @@ describe('provider cwd resolution', () => {
     expect(sent).not.toContain('/worktree remove');
     expect(sent).not.toContain('isolated worktree was removed');
     expect(sent).toContain('/setproject');
+    expect(sent).toContain('/reset');
   });
 
   test('missing conversation.cwd does not silently fall back to default_cwd', async () => {
@@ -2048,6 +2057,196 @@ describe('provider cwd resolution', () => {
     // so a stale override must not block the turn.
     expect(mockEnsureArchonWorkspacesPath).toHaveBeenCalled();
     expect(mockSendQuery).toHaveBeenCalled();
+  });
+
+  // ─── default chat worktree (#184) ───────────────────────────────────────────
+
+  describe('default chat worktree (#184)', () => {
+    function scopeTo(codebase: Codebase, overrides: Partial<Conversation> = {}): void {
+      mockGetOrCreateConversation.mockReturnValueOnce(
+        Promise.resolve(makeConversation({ codebase_id: codebase.id, ...overrides }))
+      );
+      mockGetCodebase.mockReturnValueOnce(Promise.resolve(codebase));
+      mockListCodebases.mockReturnValueOnce(Promise.resolve([codebase]));
+    }
+
+    function resolverHints(call = 0): unknown {
+      return (mockValidateAndResolveIsolation.mock.calls[call] as unknown[])[4];
+    }
+
+    beforeEach(() => {
+      mockValidateAndResolveIsolation.mockClear();
+      mockGetActiveSession.mockReset();
+      mockGetActiveSession.mockImplementation(() => Promise.resolve(null));
+      mockTransitionSession.mockClear();
+      mockAddMessage.mockClear();
+    });
+
+    test('a new chat on a git project runs in its own worktree', async () => {
+      scopeTo(makeCodebaseForSync());
+      mockValidateAndResolveIsolation.mockResolvedValueOnce({
+        status: 'new',
+        cwd: '/wt/thread-a',
+        env: makeIsolationEnvironment({ id: 'env-a', working_path: '/wt/thread-a' }),
+      });
+
+      await handleMessage(makePlatform(), 'conv-1', 'edit the README');
+
+      expect(mockValidateAndResolveIsolation).toHaveBeenCalledTimes(1);
+      expect(resolverHints()).toEqual({ workflowType: 'thread', workflowId: 'conv-1' });
+      expect(getSendQueryCwd()).toBe('/wt/thread-a');
+      // The session remembers its worktree, so losing the worktree later cannot
+      // quietly continue this session in the shared checkout.
+      expect(mockTransitionSession.mock.calls[0]?.[2]).toMatchObject({
+        metadata: { worktreePath: '/wt/thread-a' },
+      });
+    });
+
+    test('adapter-supplied hints reach the resolver unchanged', async () => {
+      scopeTo(makeCodebaseForSync());
+      const isolationHints = { workflowType: 'issue' as const, workflowId: '42' };
+
+      await handleMessage(makePlatform(), 'conv-1', 'look at this issue', { isolationHints });
+
+      expect(resolverHints()).toEqual(isolationHints);
+    });
+
+    test('two chats on the same project ask for two different worktrees', async () => {
+      const codebase = makeCodebaseForSync();
+      scopeTo(codebase);
+      await handleMessage(makePlatform(), 'conv-a', 'edit src/a.ts');
+      scopeTo(codebase);
+      await handleMessage(makePlatform(), 'conv-b', 'edit src/a.ts');
+
+      expect(resolverHints(0)).toEqual({ workflowType: 'thread', workflowId: 'conv-a' });
+      expect(resolverHints(1)).toEqual({ workflowType: 'thread', workflowId: 'conv-b' });
+    });
+
+    test('a chat with a live session is not moved', async () => {
+      scopeTo(makeCodebaseForSync());
+      mockGetActiveSession.mockResolvedValueOnce(makeSession());
+
+      await handleMessage(makePlatform(), 'conv-1', 'hello');
+
+      expect(mockValidateAndResolveIsolation).not.toHaveBeenCalled();
+      expect(getSendQueryCwd()).toBe('/repos/test-repo');
+    });
+
+    test('a live session whose worktree was detached is refused, not moved to the checkout', async () => {
+      // The state a destroyed worktree leaves once the conversation is detached
+      // from it: no cwd, no env, and the session that started in it still active.
+      scopeTo(makeCodebaseForSync(), { cwd: null, isolation_env_id: null });
+      mockGetActiveSession.mockResolvedValueOnce(
+        makeSession({ metadata: { worktreePath: '/wt/thread-a' } })
+      );
+      const platform: IPlatformAdapter = {
+        ...makePlatform(),
+        getPlatformType: mock(() => 'slack' as const),
+      };
+
+      await handleMessage(platform, 'conv-1', 'keep going');
+
+      expect(mockSendQuery).not.toHaveBeenCalled();
+      expect(mockValidateAndResolveIsolation).not.toHaveBeenCalled();
+      expect(mockTransitionSession).not.toHaveBeenCalled();
+      expect(mockAddMessage).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'user',
+        expect.anything(),
+        undefined,
+        undefined
+      );
+      const sent = (platform.sendMessage as ReturnType<typeof mock>).mock.calls
+        .map(c => String(c[1]))
+        .join('\n');
+      expect(sent).toContain('/wt/thread-a');
+      expect(sent).toContain('/reset');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionWorktree: '/wt/thread-a' }),
+        'orchestrator.session_worktree_detached'
+      );
+    });
+
+    test('a chat pinned to the live checkout stays there', async () => {
+      scopeTo(makeCodebaseForSync(), { cwd: '/repos/test-repo' });
+
+      await handleMessage(makePlatform(), 'conv-1', 'hello');
+
+      expect(mockValidateAndResolveIsolation).not.toHaveBeenCalled();
+      expect(getSendQueryCwd()).toBe('/repos/test-repo');
+      expect(mockTransitionSession.mock.calls[0]?.[2]).not.toHaveProperty('metadata');
+    });
+
+    test('a folder project runs in place', async () => {
+      scopeTo({
+        ...makeCodebaseForSync(),
+        kind: 'folder',
+        repository_url: null,
+        default_cwd: '/folders/notes',
+      });
+
+      await handleMessage(makePlatform(), 'conv-1', 'hello');
+
+      expect(mockValidateAndResolveIsolation).not.toHaveBeenCalled();
+      expect(getSendQueryCwd()).toBe('/folders/notes');
+    });
+
+    test('a blocked worktree stops the turn without falling back to the checkout', async () => {
+      const { IsolationBlockedError } = await import('@archon/isolation');
+      scopeTo(makeCodebaseForSync());
+      mockValidateAndResolveIsolation.mockRejectedValueOnce(
+        new IsolationBlockedError(
+          'Isolation environment required but could not be created',
+          'creation_failed'
+        )
+      );
+      const platform: IPlatformAdapter = {
+        ...makePlatform(),
+        getPlatformType: mock(() => 'slack' as const),
+      };
+
+      await handleMessage(platform, 'conv-1', 'edit the README');
+
+      expect(mockSendQuery).not.toHaveBeenCalled();
+      expect(mockTransitionSession).not.toHaveBeenCalled();
+      expect(mockAddMessage).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'user',
+        expect.anything(),
+        undefined,
+        undefined
+      );
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ codebaseId: 'codebase-1' }),
+        'orchestrator.chat_worktree_blocked'
+      );
+    });
+
+    test('any other worktree failure is reported and the provider never runs', async () => {
+      scopeTo(makeCodebaseForSync());
+      mockValidateAndResolveIsolation.mockRejectedValueOnce(new Error('git worktree add failed'));
+      const platform = makePlatform();
+
+      await handleMessage(platform, 'conv-1', 'edit the README');
+
+      expect(mockSendQuery).not.toHaveBeenCalled();
+      expect(platform.sendMessage).toHaveBeenCalled();
+    });
+
+    test('a resolver answer with no worktree fails instead of using the checkout', async () => {
+      scopeTo(makeCodebaseForSync());
+      mockValidateAndResolveIsolation.mockResolvedValueOnce({
+        status: 'none',
+        cwd: '/repos/test-repo',
+        env: null,
+      });
+      const platform = makePlatform();
+
+      await handleMessage(platform, 'conv-1', 'edit the README');
+
+      expect(mockSendQuery).not.toHaveBeenCalled();
+      expect(platform.sendMessage).toHaveBeenCalled();
+    });
   });
 
   // ─── missing project directory (#2663) ──────────────────────────────────────
@@ -2232,6 +2431,7 @@ describe('provider cwd resolution', () => {
       const codebase = makeCodebaseForSync();
       const conversation = makeConversation({ codebase_id: 'codebase-1' });
       mockGetOrCreateConversation.mockReturnValueOnce(Promise.resolve(conversation));
+      mockGetActiveSession.mockResolvedValueOnce(makeSession());
       mockGetCodebase.mockReturnValueOnce(Promise.resolve(codebase));
       mockListCodebases.mockReturnValueOnce(Promise.resolve([codebase]));
 

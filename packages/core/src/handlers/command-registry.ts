@@ -66,6 +66,11 @@ export const WORKTREE_SUBCOMMANDS = [
   { name: 'list', args: '', description: "List the project's worktrees" },
   { name: 'remove', args: '[--force]', description: "Remove this conversation's worktree" },
   {
+    name: 'live',
+    args: '',
+    description: "Work in the project's live checkout, shared with other chats",
+  },
+  {
     name: 'cleanup',
     args: 'merged|stale',
     description: 'Remove merged or stale worktrees',

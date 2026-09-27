@@ -146,6 +146,9 @@
       "src/db/isolation-environments.metadata.integration.test.ts"
     ],
     [
+      "src/db/sessions.metadata.integration.test.ts"
+    ],
+    [
       "src/db/isolation-environments.live-run.integration.test.ts"
     ],
     [

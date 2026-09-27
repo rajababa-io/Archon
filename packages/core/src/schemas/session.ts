@@ -11,6 +11,9 @@ import type { TransitionTrigger } from '../state/session-transitions';
 export const sessionMetadataSchema = z
   .object({
     lastCommand: z.string().optional(),
+    // The worktree the provider session started in. A session is bound to its
+    // directory, so a turn that would resume it anywhere else is refused.
+    worktreePath: z.string().optional(),
   })
   .passthrough();
 

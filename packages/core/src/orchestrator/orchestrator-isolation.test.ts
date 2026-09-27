@@ -596,17 +596,22 @@ describe('dispatchBackgroundWorkflow', () => {
     expect(sent.some(m => m.includes('failed: Failed to persist'))).toBe(false);
   });
 
-  test('worktree.enabled: false skips isolation and runs in the parent cwd', async () => {
+  test('worktree.enabled: false skips isolation and runs in the live checkout', async () => {
     const workflow = makeWorkflow({ worktree: { enabled: false } });
 
     await dispatchBackgroundWorkflow(makeRoutingCtx(), workflow);
 
     // Policy opt-out: no isolation resolution attempted at all.
     expect(mockResolve).not.toHaveBeenCalled();
-    // The run executes in the parent conversation's cwd (live checkout).
+    // The run executes in the project's live checkout, not the parent chat's
+    // cwd, which is normally that chat's own worktree.
     expect(mockCreateWorkflowRun).toHaveBeenCalledTimes(1);
     const runRow = mockCreateWorkflowRun.mock.calls[0]?.[0];
-    expect(runRow?.working_path).toBe('/parent/cwd');
+    expect(runRow?.working_path).toBe('/workspace/test-repo');
+    // The worker row agrees with where the run executes; it was seeded with the
+    // parent's cwd, so without the correction it would name the parent's tree.
+    const lastWorkerUpdate = mockUpdateConversation.mock.calls.at(-1) as unknown[] | undefined;
+    expect(lastWorkerUpdate?.[1]).toEqual({ cwd: '/workspace/test-repo' });
     // Operators can distinguish live-checkout runs from worktree runs in logs.
     expect(mockLogger.info).toHaveBeenCalledWith(
       { workflowName: 'bg-workflow', conversationId: 'parent-conv', codebaseId: 'cb-1' },

@@ -29,7 +29,7 @@ Five request types, all extending `IsolationRequestBase` (which carries `codebas
 | `IssueIsolationRequest` | `'issue'` | `issue-{identifier}` | GitHub issue |
 | `PRIsolationRequest` | `'pr'` | actual PR branch (same-repo) or `pr-{N}-review` (fork) | GitHub PR |
 | `ReviewIsolationRequest` | `'review'` | `review-{identifier}` | PR review workflow |
-| `ThreadIsolationRequest` | `'thread'` | `thread-{8-hex-hash}` | Slack/Telegram/Discord |
+| `ThreadIsolationRequest` | `'thread'` | `thread-{8-hex-hash}` | Chat conversations — the default worktree a git-project chat gets when its session starts |
 | `TaskIsolationRequest` | `'task'` | `task-{slugified}` (max 50 chars) | CLI or manual task |
 
 `IsolationHints` carries the same data loosely typed, flowing from adapters through to the resolver.

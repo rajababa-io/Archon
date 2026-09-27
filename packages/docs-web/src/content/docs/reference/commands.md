@@ -71,10 +71,13 @@ The following commands exist in the command handler but are **not** deterministi
 | `/worktree create <branch>` | Create isolated worktree |
 | `/worktree list` | Show worktrees for this repo |
 | `/worktree remove [--force]` | Remove current worktree |
+| `/worktree live` | Work in the project's live checkout, shared with other chats |
 | `/worktree cleanup merged\|stale` | Clean up worktrees |
 | `/worktree orphans` | Show all worktrees from git |
 | `/init` | Create `.archon` structure in current repo |
 | `/reset-context` | Reset AI context, keep worktree |
+
+A chat on a git project gets its own worktree when its AI session starts. `/worktree live` keeps a chat in the shared checkout instead, and `/reset` returns it to a worktree of its own.
 
 > **Note:** In practice, you rarely need to type these commands directly. Describe what you want in natural language and the AI router will invoke the appropriate command or workflow.
 

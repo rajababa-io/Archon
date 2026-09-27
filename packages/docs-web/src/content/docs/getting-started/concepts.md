@@ -93,6 +93,8 @@ Every workflow run gets its own **git worktree** by default -- an isolated copy 
 2. **Multiple workflows run in parallel** without conflicting with each other.
 3. **Failed runs don't leave a mess.** Clean up with `archon isolation cleanup`.
 
+Chats on a git project get their own worktree too, when their AI session starts, so two chats editing the same file never see each other's changes. Send `/worktree live` to keep a chat in the project's shared checkout instead. Folder projects run in place.
+
 Worktrees live at `~/.archon/workspaces/<owner>/<repo>/worktrees/`. Each worktree gets its own branch, so you can inspect the work, create a PR from it, or discard it.
 
 To opt out of isolation (run directly in your checkout), pass `--no-worktree`:
