@@ -1892,6 +1892,29 @@ describe('ClaudeProvider', () => {
       expect(callArgs.options.effort).toBe('high');
     });
 
+    // #176: without an explicit display the CLI sends every thinking block
+    // blank, so the console's Thinking line has nothing to show.
+    test('asks for summarized thinking without choosing whether Claude thinks', async () => {
+      mockQuery.mockImplementation(async function* () {
+        yield { type: 'result', session_id: 'sid' };
+      });
+
+      for await (const _ of client.sendQuery('test', '/tmp', undefined, {
+        nodeConfig: { effort: 'high' },
+      })) {
+        // consume
+      }
+
+      expect(mockQuery).toHaveBeenCalledTimes(1);
+      const callArgs = mockQuery.mock.calls[0][0] as { options: Record<string, unknown> };
+      expect(callArgs.options.extraArgs).toEqual({ 'thinking-display': 'summarized' });
+      // The typed `thinking` option would emit `--thinking adaptive`, overriding
+      // the model's own default; only the display may change.
+      expect(callArgs.options).not.toHaveProperty('thinking');
+      expect(callArgs.options).not.toHaveProperty('maxThinkingTokens');
+      expect(callArgs.options.effort).toBe('high');
+    });
+
     test('omits effort from SDK when not provided in nodeConfig', async () => {
       mockQuery.mockImplementation(async function* () {
         yield { type: 'result', session_id: 'sid' };

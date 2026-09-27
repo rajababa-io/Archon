@@ -36,6 +36,7 @@ import {
   type SDKAssistantMessageError,
   type SDKResultMessage,
   type ModelUsage,
+  type ThinkingAdaptive,
 } from '@anthropic-ai/claude-agent-sdk';
 import type {
   IAgentProvider,
@@ -773,6 +774,25 @@ export function shouldPassNoEnvFile(cliPath: string | undefined): boolean {
 }
 
 /**
+ * Every turn asks Claude to return a summary of its thinking. The CLI's default
+ * display is `omitted`, which sends each thinking block with an empty body, so
+ * the folded "Thinking" line in the console had nothing to show.
+ *
+ * Passed as the bare `--thinking-display` flag rather than the SDK's typed
+ * `thinking` option on purpose: that option cannot carry a display without also
+ * a `type`, and every type it accepts emits `--thinking adaptive` or
+ * `--thinking disabled` — overriding whether and how much Claude thinks, which
+ * this setting must not touch. The value is typed against the SDK's own union;
+ * a CLI that rejects it exits non-zero with its own message, so the turn fails
+ * clearly rather than silently.
+ *
+ * Applies to workflow nodes too. The provider cannot tell a chat from a node,
+ * the summary does not change thinking depth, and the workflow executor drops
+ * thinking chunks today, so a node's output is unchanged.
+ */
+const THINKING_DISPLAY: NonNullable<ThinkingAdaptive['display']> = 'summarized';
+
+/**
  * Build base Claude SDK options from cwd, request options, and assistant defaults.
  * Does not include nodeConfig translation — that is handled by applyNodeConfig.
  */
@@ -813,6 +833,7 @@ function buildBaseClaudeOptions(
       ? { executableArgs: ['--no-env-file'] }
       : {}),
     ...spawnOverride,
+    extraArgs: { 'thinking-display': THINKING_DISPLAY },
     env,
     model: requestOptions?.model ?? assistantDefaults.model,
     abortController: controller,
