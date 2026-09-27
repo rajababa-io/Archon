@@ -814,7 +814,10 @@ export interface paths {
       };
     };
     put?: never;
-    /** Create a new conversation */
+    /**
+     * Create a new conversation (JSON or multipart with file uploads)
+     * @description Accepts `application/json` with `{ codebaseId?, message? }`, or `multipart/form-data` with optional `codebaseId` and `message` fields and optional file attachments (max 5 files, 10 MB each). Files require a `message` to attach them to. An empty body creates an empty conversation.
+     */
     post: {
       parameters: {
         query?: never;
@@ -822,11 +825,7 @@ export interface paths {
         path?: never;
         cookie?: never;
       };
-      requestBody?: {
-        content: {
-          'application/json': components['schemas']['CreateConversationBody'];
-        };
-      };
+      requestBody?: never;
       responses: {
         /** @description Created conversation */
         200: {
@@ -4322,10 +4321,6 @@ export interface components {
       conversationId: string;
       id: string;
       dispatched?: boolean;
-    };
-    CreateConversationBody: {
-      codebaseId?: string;
-      message?: string;
     };
     SuccessResponse: {
       success: boolean;
