@@ -271,6 +271,34 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     ]);
   });
 
+  test('a pass that could not replay a chat keeps it held while the chats it finished are let go', async () => {
+    const server = new ConversationLockManager(10);
+    const owed = await webChat('chat-owed');
+    await webChat('chat-done');
+    const ownedTurns = [
+      scriptedLongTurn(server, 'chat-owed'),
+      scriptedLongTurn(server, 'chat-done'),
+    ];
+
+    server.beginDrain(600);
+    await parkForDeploy(server, { runFinishWindowMs: 0 });
+    await Promise.all(ownedTurns.map(turn => turn.ended));
+    server.cancelDrain();
+
+    const dispatch: Parameters<typeof replayParked>[1] = async conversationId => {
+      if (conversationId === owed) return 'refused_draining';
+      await server.acquireLock('chat-done', async () => {}, undefined, 'replay');
+      return 'dispatched';
+    };
+    await replayParked(server, dispatch);
+    for (let tick = 0; tick < 100 && server.isActive('chat-done'); tick++) await Promise.resolve();
+
+    const done = await server.acquireLock('chat-done', async () => {});
+    expect(done.status).toBe('started');
+    const stillOwed = await server.acquireLock('chat-owed', async () => {});
+    expect(stillOwed.status).toBe('queued-conversation');
+  });
+
   test('parking outside a drain is refused, so nothing is parked only to be replayed at once', async () => {
     await expect(parkForDeploy(new ConversationLockManager(10))).rejects.toThrow('not draining');
   });

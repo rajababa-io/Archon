@@ -955,6 +955,35 @@ describe('holding a parked conversation until its replay', () => {
     await drainUntilIdle(manager);
   });
 
+  test('a held message cannot be steered into the running replay', async () => {
+    const manager = parkedThenEnded(m => m.cancelDrain());
+    let finish!: () => void;
+    await manager.acquireLock(
+      'conv-parked',
+      async turn => {
+        turn.inbox.open();
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+      },
+      undefined,
+      'replay'
+    );
+    const held = await manager.acquireLock('conv-parked', async () => {}, {
+      text: 'sent after cancel',
+    });
+    const id = held.queuedId ?? '';
+
+    expect(manager.acceptsSteer('conv-parked')).toBe(false);
+    expect(manager.steer('conv-parked', id)).toEqual({ status: 'not-accepting' });
+
+    manager.releaseReplayHolds(new Set());
+    expect(manager.acceptsSteer('conv-parked')).toBe(true);
+    expect(manager.steer('conv-parked', id)).toEqual({ status: 'sent' });
+    finish();
+    await drainUntilIdle(manager);
+  });
+
   test('a held conversation does not keep a freed slot from other queued work', async () => {
     const manager = new ConversationLockManager(1);
     const log: string[] = [];

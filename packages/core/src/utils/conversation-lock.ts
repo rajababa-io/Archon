@@ -219,7 +219,7 @@ interface ActiveTurn {
 export type SteerResult =
   | { status: 'sent' }
   | { status: 'not-queued' }
-  /** Nothing running, or its provider cannot take a message mid-turn. */
+  /** Nothing running, its provider cannot take a message mid-turn, or the conversation still owes a replay. */
   | { status: 'not-accepting' }
   /** Attachments cannot ride into a running turn; the message waits for its own. */
   | { status: 'has-files' };
@@ -614,7 +614,10 @@ export class ConversationLockManager {
 
   /** Can a queued message be sent into this conversation's running turn right now? */
   acceptsSteer(conversationId: string): boolean {
-    return this.activeConversations.get(conversationId)?.inbox.accepting === true;
+    return (
+      !this.awaitingReplay.has(conversationId) &&
+      this.activeConversations.get(conversationId)?.inbox.accepting === true
+    );
   }
 
   /**
@@ -628,6 +631,8 @@ export class ConversationLockManager {
     if (!message?.description) return { status: 'not-queued' };
     if (message.steering === true) return { status: 'sent' };
     if ((message.description.files ?? []).length > 0) return { status: 'has-files' };
+    // Only a replay can be running while held; steering into it would jump the backlog
+    if (!this.mayStart(conversationId, message)) return { status: 'not-accepting' };
     const turn = this.activeConversations.get(conversationId);
     if (!turn?.inbox.push({ id, text: message.description.text })) {
       return { status: 'not-accepting' };
