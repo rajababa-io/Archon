@@ -231,30 +231,47 @@ describe('askAwaitingIds', () => {
 
   test('a chat whose last message is a question is your move', () => {
     expect([
-      ...askAwaitingIds([{ id: 'a', askCandidate: `Here is the call:\n${ask(spec)}` }]),
+      ...askAwaitingIds([
+        { id: 'a', completed: false, askCandidate: `Here is the call:\n${ask(spec)}` },
+      ]),
     ]).toEqual(['a']);
   });
 
   test('no candidate, nothing to decide', () => {
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: null }])]).toEqual([]);
+    expect([...askAwaitingIds([{ id: 'a', completed: false, askCandidate: null }])]).toEqual([]);
   });
 
   test('a question that failed to render is still a question', () => {
     // The agent stopped to ask either way, and a chat whose card is broken is
     // the one most in need of a human opening it. Dropping it from the rail
     // would hide the breakage a second time.
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: ask('{ not json') }])]).toEqual(['a']);
+    expect([
+      ...askAwaitingIds([{ id: 'a', completed: false, askCandidate: ask('{ not json') }]),
+    ]).toEqual(['a']);
   });
 
   test('the parser decides, not the fence — an unterminated block is prose', () => {
     // The server sends anything containing the fence, deliberately. What counts
     // as a question is settled here, and half a block is not one yet.
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: '```ask\n{ not json' }])]).toEqual([]);
+    expect([
+      ...askAwaitingIds([{ id: 'a', completed: false, askCandidate: '```ask\n{ not json' }]),
+    ]).toEqual([]);
   });
 
   test('an ask block shown as an EXAMPLE inside a longer fence is not a question', () => {
     const quoted = ['````markdown', ask(spec), '````'].join('\n');
-    expect([...askAwaitingIds([{ id: 'a', askCandidate: quoted }])]).toEqual([]);
+    expect([...askAwaitingIds([{ id: 'a', completed: false, askCandidate: quoted }])]).toEqual([]);
+  });
+
+  test('a chat marked done is not asking, even when it ended on a question', () => {
+    // The Open tab hides done chats, so counting one put the project header on
+    // "Needs you" with no amber chat anywhere to explain it (#197).
+    expect([
+      ...askAwaitingIds([
+        { id: 'open', completed: false, askCandidate: ask(spec) },
+        { id: 'done', completed: true, askCandidate: ask(spec) },
+      ]),
+    ]).toEqual(['open']);
   });
 });
 

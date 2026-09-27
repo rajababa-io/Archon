@@ -224,12 +224,18 @@ export function completedIds(
  * A malformed block counts too. The agent stopped to ask something either way,
  * and a chat whose question failed to render is the one most in need of a human
  * looking at it — dropping it from the rail would hide the breakage twice.
+ *
+ * A chat a human has marked done is never asking. Closing it is the answer:
+ * the question was settled some other way, or dropped. Counting it anyway
+ * kept a whole project on "Needs you" from a chat the Open tab does not even
+ * list, so the reader saw amber with nothing amber to open (#197).
  */
 export function askAwaitingIds(
-  conversations: readonly { id: string; askCandidate: string | null }[]
+  conversations: readonly { id: string; askCandidate: string | null; completed: boolean }[]
 ): Set<string> {
   const out = new Set<string>();
   for (const c of conversations) {
+    if (c.completed) continue;
     if (c.askCandidate === null || c.askCandidate === '') continue;
     if (splitReply(c.askCandidate).some(p => p.kind === 'ask' || p.kind === 'ask-error'))
       out.add(c.id);
