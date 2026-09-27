@@ -175,3 +175,21 @@ test('an ask block renders as clickable cards, not a JSON code block', async ({ 
     page.getByRole('button', { name: new RegExp(ASK_SECOND_OPTION_LABEL) })
   ).toBeVisible();
 });
+
+test('an answer the server queues shows once, as queued', async ({ page }) => {
+  await openChatScreen(page);
+
+  // The stub answers every send as a server at its concurrency cap does:
+  // queued, with an id. The page thinks the chat is idle, so it echoes the
+  // message as sent — and the queued list shows it again unless the echo goes.
+  await page.getByRole('button', { name: new RegExp(ASK_OPTION_LABEL) }).click();
+  await page.getByRole('button', { name: 'Submit all 1' }).click();
+
+  // The queued bubble first, because the other half passes on a page that
+  // never sent anything: one card title and nothing else is also "once".
+  const queue = page.getByRole('list', { name: 'Queued messages' });
+  await expect(queue.getByText(ASK_QUESTION)).toBeVisible();
+
+  // The card's own title, plus the queued bubble. A third is the echo.
+  await expect(page.getByText(ASK_QUESTION)).toHaveCount(2);
+});

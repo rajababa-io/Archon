@@ -646,7 +646,12 @@ export function ChatPage(): ReactElement {
           writeLastChat(projectId, conv.conversationId);
           invalidate(K.messages(conv.conversationId));
         } else {
-          await skill.sendMessage(activeConvId, text, files);
+          const dispatch = await skill.sendMessage(activeConvId, text, files);
+          // The server can queue a message this page thought would start at
+          // once — it is at its concurrency cap, or a turn began that the
+          // page had not heard of yet. The queued bubble then shows it, so the
+          // echo goes: both at once read as the message sent twice.
+          if (dispatch.queuedId !== undefined) setPendingUser(null);
           invalidate(K.messages(activeConvId));
         }
         // Sending can change the conversation list, not just its messages: a
