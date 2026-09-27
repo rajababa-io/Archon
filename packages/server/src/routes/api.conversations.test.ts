@@ -449,9 +449,11 @@ describe('PATCH /api/conversations/:id', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean };
     expect(body).toEqual({ success: true });
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('internal-uuid-123', 'New Title', {
-      pinned: true,
-    });
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'internal-uuid-123',
+      'New Title',
+      'person'
+    );
   });
 
   test('returns 404 when platform conversation ID does not exist', async () => {
@@ -1053,9 +1055,11 @@ describe('PATCH /api/conversations/:id — forge platform IDs with encoded slash
     expect(response.status).toBe(200);
     const body = (await response.json()) as { success: boolean };
     expect(body).toEqual({ success: true });
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('forge-internal-uuid', 'New Title', {
-      pinned: true,
-    });
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'forge-internal-uuid',
+      'New Title',
+      'person'
+    );
   });
 
   test('updates gitea PR conversation with ! separator when ID is encoded', async () => {
@@ -1075,9 +1079,11 @@ describe('PATCH /api/conversations/:id — forge platform IDs with encoded slash
       body: JSON.stringify({ title: 'New Title' }),
     });
     expect(response.status).toBe(200);
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('forge-internal-uuid', 'New Title', {
-      pinned: true,
-    });
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'forge-internal-uuid',
+      'New Title',
+      'person'
+    );
   });
 
   test('returns 404 for unknown encoded forge conversation ID', async () => {
