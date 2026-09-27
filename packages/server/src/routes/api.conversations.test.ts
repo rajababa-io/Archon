@@ -1175,7 +1175,10 @@ describe('PUT /api/conversations/order', () => {
 describe('POST /api/conversations with file attachments', () => {
   const mockLockManager = {
     acquireLock: mock(async (_convId: string, fn: (turn: TurnContext) => Promise<void>) => {
-      await fn({ signal: new AbortController().signal });
+      await fn({
+        signal: new AbortController().signal,
+        inbox: { open: () => ({ next: async () => null, landed: () => undefined }) },
+      });
       return { status: 'started' as const };
     }),
     isDraining: () => false,

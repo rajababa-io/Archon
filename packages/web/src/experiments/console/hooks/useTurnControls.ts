@@ -9,6 +9,11 @@ const NO_QUEUE: readonly skill.QueuedMessage[] = [];
 export interface TurnControls {
   /** Messages waiting behind the running turn, oldest first — the server's list. */
   queued: readonly skill.QueuedMessage[];
+  /**
+   * The running turn can take a queued message now. The server's answer: false
+   * when nothing runs or its provider has no mid-turn input.
+   */
+  steerable: boolean;
   /** Queued ids with a withdraw in flight. */
   busyIds: ReadonlySet<string>;
   stopping: boolean;
@@ -20,6 +25,8 @@ export interface TurnControls {
   queueSend: (text: string, files?: File[]) => void;
   edit: (message: skill.QueuedMessage) => void;
   remove: (message: skill.QueuedMessage) => void;
+  /** "Send now": hand a queued message to the running turn. */
+  steer: (message: skill.QueuedMessage) => void;
   /** Up in an empty composer: pull the newest queued message back. */
   pullBackLast: () => boolean;
 }
@@ -43,9 +50,10 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
     () =>
       conversationId !== null
         ? skill.getConversationQueue(conversationId)
-        : Promise.resolve({ conversationId: '', messages: [] })
+        : Promise.resolve({ conversationId: '', messages: [], steerable: false })
   );
   const queued = queue?.messages ?? NO_QUEUE;
+  const steerable = queue?.steerable === true;
 
   const [stopping, setStopping] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -156,15 +164,44 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
     [withdraw]
   );
 
+  const steer = useCallback(
+    (message: skill.QueuedMessage): void => {
+      if (conversationId === null) return;
+      setNotice(null);
+      setBusyIds(prev => new Set(prev).add(message.id));
+      void skill
+        .steerQueuedMessage(conversationId, message.id)
+        .then(result => {
+          if (result.status === 'not-accepting')
+            setNotice('The turn ended before it could take that — it goes next instead.');
+          else if (result.status === 'has-files')
+            setNotice('A message with attachments waits for its own turn.');
+        })
+        .catch((e: unknown) => {
+          setNotice(`Could not send it now: ${e instanceof Error ? e.message : 'unknown error'}`);
+        })
+        .finally(() => {
+          setBusyIds(prev => {
+            const next = new Set(prev);
+            next.delete(message.id);
+            return next;
+          });
+          invalidate(K.conversationQueue(conversationId));
+        });
+    },
+    [conversationId]
+  );
+
   const pullBackLast = useCallback((): boolean => {
     const last = queued.at(-1);
-    if (last === undefined || busyIds.has(last.id)) return false;
+    if (last === undefined || busyIds.has(last.id) || last.steering) return false;
     edit(last);
     return true;
   }, [queued, busyIds, edit]);
 
   return {
     queued,
+    steerable,
     busyIds,
     stopping,
     notice,
@@ -173,6 +210,7 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
     queueSend,
     edit,
     remove,
+    steer,
     pullBackLast,
   };
 }

@@ -66,6 +66,7 @@ export const CLAUDE_CAPABILITIES: ProviderCapabilities = {
   stopReasonReporting: true,
   turnCountReporting: true,
   resolvedModelReporting: true,
+  midTurnInput: true, // streaming input; the SDK folds a message into the running turn
   effortControl: true,
   fallbackModel: true,
   sandbox: true,

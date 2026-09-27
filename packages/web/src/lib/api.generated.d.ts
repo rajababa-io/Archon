@@ -1776,6 +1776,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/conversations/{id}/queue/{queuedId}/steer': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Send a queued message into the running turn
+     * @description Hands a queued text message to the running turn, which reads it at the next point its provider accepts input. It stays queued until read, and is delivered as the next turn if the running turn ends first. Only turns whose provider supports mid-turn input accept it.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          queuedId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Sent, or why not */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['SteerQueuedResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/codebases': {
     parameters: {
       query?: never;
@@ -4932,6 +4992,7 @@ export interface components {
     ConversationQueueResponse: {
       conversationId: string;
       messages: components['schemas']['QueuedMessage'][];
+      steerable: boolean;
     };
     QueuedMessage: {
       id: string;
@@ -4942,6 +5003,7 @@ export interface components {
         size: number;
       }[];
       queuedAt: string;
+      steering: boolean;
     };
     ConversationChangesResponse:
       | {
@@ -4986,6 +5048,10 @@ export interface components {
           /** @enum {string} */
           status: 'not-queued';
         };
+    SteerQueuedResponse: {
+      /** @enum {string} */
+      status: 'sent' | 'not-queued' | 'not-accepting' | 'has-files';
+    };
     CodebaseListResponse: components['schemas']['Codebase'][];
     Codebase: {
       id: string;
@@ -6071,6 +6137,7 @@ export interface components {
       stopReasonReporting?: boolean;
       turnCountReporting?: boolean;
       resolvedModelReporting?: boolean;
+      midTurnInput?: boolean;
       effortControl: boolean;
       fallbackModel: boolean;
       sandbox: boolean;

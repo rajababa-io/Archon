@@ -799,6 +799,36 @@ export interface SendQueryOptions extends AgentRequestOptions {
    * same provider's `listCommands()` returned.
    */
   command?: ProviderCommandInvocation;
+  /**
+   * Messages the user sends into this turn while it runs. Honoured only by a
+   * provider whose capabilities declare `midTurnInput`; any other provider
+   * ignores it, which leaves every message waiting for the turn to end.
+   */
+  midTurnInput?: MidTurnInbox;
+}
+
+/** A message handed to a running turn. */
+export interface MidTurnMessage {
+  /** The caller's id for the message, echoed back through `landed`. */
+  id: string;
+  text: string;
+}
+
+/**
+ * Where a running turn picks up messages sent to it mid-turn.
+ *
+ * The caller owns the messages and what happens to one that never lands: the
+ * provider only pulls, and reports the ones the agent is proven to have read.
+ * A message pulled but never reported landed must be treated as undelivered.
+ */
+export interface MidTurnInbox {
+  /**
+   * The next message for this turn. Resolves `null` once the caller closes the
+   * inbox; a provider stops pulling on its own when its turn ends.
+   */
+  next(): Promise<MidTurnMessage | null>;
+  /** The agent has read this message: its reply to it has begun. */
+  landed(id: string): void;
 }
 
 /**
@@ -886,6 +916,12 @@ export interface ProviderCapabilities {
   turnCountReporting?: boolean;
   /** Whether the provider translates a reported model identity, not the requested alias. */
   resolvedModelReporting?: boolean;
+  /**
+   * Whether a message can be handed to a turn that is already running and be
+   * picked up by the agent in that same turn — see {@link MidTurnInbox}.
+   * Omission means unsupported: the message waits for the turn to end.
+   */
+  midTurnInput?: boolean;
   effortControl: boolean;
   fallbackModel: boolean;
   sandbox: boolean;

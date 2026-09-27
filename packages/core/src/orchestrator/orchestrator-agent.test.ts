@@ -5230,6 +5230,51 @@ describe('handleMessage — interrupted turn', () => {
   });
 });
 
+describe('handleMessage — mid-turn input', () => {
+  beforeEach(() => {
+    mockGetOrCreateConversation.mockReset();
+    mockGetOrCreateConversation.mockImplementation(() => Promise.resolve(makeConversation()));
+    mockGetCodebase.mockReset();
+    mockGetCodebase.mockImplementation(() => Promise.resolve(null));
+    mockSendQuery.mockReset();
+    mockSendQuery.mockImplementation(async function* () {
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+    mockTransitionSession.mockResolvedValue(makeSession({ id: 'session-1' }));
+    mockDiscoverWorkflowsWithConfig.mockReset();
+    mockDiscoverWorkflowsWithConfig.mockImplementation(() =>
+      Promise.resolve({ workflows: [], errors: [] })
+    );
+    mockListCodebases.mockReset();
+    mockListCodebases.mockImplementation(() => Promise.resolve([]));
+  });
+
+  const inbox = { next: async () => null, landed: () => undefined };
+
+  test('a provider that declares mid-turn input gets the opened inbox', async () => {
+    const providers = await import('@archon/providers');
+    const capsMock = providers.getProviderCapabilities as ReturnType<typeof mock>;
+    capsMock.mockReturnValue({ ...DEFAULT_PROVIDER_CAPS, midTurnInput: true });
+    const open = mock(() => inbox);
+    try {
+      await handleMessage(makePlatform(), 'conv-1', 'Hello', { midTurnInput: { open } });
+      const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(requestOptions.midTurnInput).toBe(inbox);
+    } finally {
+      capsMock.mockReturnValue({ ...DEFAULT_PROVIDER_CAPS });
+    }
+  });
+
+  test('any other provider leaves the inbox closed, so send-now is never offered', async () => {
+    const open = mock(() => inbox);
+    await handleMessage(makePlatform(), 'conv-1', 'Hello', { midTurnInput: { open } });
+    const requestOptions = mockSendQuery.mock.calls[0][3] as Record<string, unknown>;
+    expect(open).not.toHaveBeenCalled();
+    expect(requestOptions.midTurnInput).toBeUndefined();
+  });
+});
+
 // ─── Multi-chunk command accumulation regression ──────────────────────────────
 
 describe('handleMessage — multi-chunk command accumulation (regression)', () => {

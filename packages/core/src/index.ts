@@ -213,7 +213,10 @@ export {
   type ParkTakeResult,
   type QueuedMessageInfo,
   type QueueDescription,
+  type SteerResult,
   type TurnContext,
+  type MidTurnInput,
+  TurnInbox,
   type WithdrawResult,
   notifyDrainRefusal,
 } from './utils/conversation-lock';

@@ -211,6 +211,7 @@ function handleApi(
         text: typeof body.message === 'string' ? body.message : '',
         files: [],
         queuedAt: new Date().toISOString(),
+        steering: false,
       };
       chatQueue.push(message);
       const dispatch: components['schemas']['DispatchResponse'] = {
@@ -235,6 +236,7 @@ function handleApi(
     const queue: components['schemas']['ConversationQueueResponse'] = {
       conversationId: decodeURIComponent(queueMatch[1]),
       messages: queues.get(decodeURIComponent(queueMatch[1])) ?? [],
+      steerable: false,
     };
     sendJson(res, queue);
     return;

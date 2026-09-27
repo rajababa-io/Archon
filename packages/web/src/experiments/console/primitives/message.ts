@@ -71,6 +71,12 @@ export interface Message {
   /** Attachments sent with this message. Empty when there were none. */
   files: MessageFile[];
   /**
+   * Your message, read by the agent inside a turn that was already running —
+   * sent with "send now" rather than waiting. Its place in the history is where
+   * the agent read it.
+   */
+  midTurn: boolean;
+  /**
    * What this turn cost, when the provider reported it. Present on assistant
    * messages only, and only on turns that completed.
    */
@@ -145,6 +151,8 @@ interface ParsedMetadata {
   // Written by the server when an upload is saved. Same untrusted-shape caveat
   // as workflowResult: toMessage validates before producing domain values.
   files?: { name: string; mimeType: string; size: number }[];
+  // Written by the server when a message sent into a running turn is read.
+  midTurn?: unknown;
   // Written by the web adapter when the provider streams thinking. Untrusted
   // like the rest: toMessage keeps it only if it is a non-blank string.
   thinking?: unknown;
@@ -229,6 +237,7 @@ export function toMessage(raw: RawMessage): Message {
     dispatch,
     workflowResult,
     files,
+    midTurn: meta.midTurn === true,
     usage: toTurnUsage(meta.usage),
     thinking:
       typeof meta.thinking === 'string' && meta.thinking.trim().length > 0 ? meta.thinking : null,

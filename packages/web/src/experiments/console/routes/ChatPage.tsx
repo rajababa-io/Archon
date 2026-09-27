@@ -747,6 +747,7 @@ export function ChatPage(): ReactElement {
               timestamp: now,
               toolCalls: [],
               files: pendingUser.files,
+              midTurn: false,
               error: null,
               category: null,
               dispatch: null,
@@ -769,6 +770,7 @@ export function ChatPage(): ReactElement {
           timestamp: now,
           toolCalls: [],
           files: [],
+          midTurn: false,
           error: null,
           category: seg.category,
           dispatch: null,
@@ -903,6 +905,8 @@ export function ChatPage(): ReactElement {
                     busyIds={turn.busyIds}
                     onEdit={turn.edit}
                     onRemove={turn.remove}
+                    steerable={turn.steerable}
+                    onSteer={turn.steer}
                   />
                 </StreamContextProvider>
               )}
