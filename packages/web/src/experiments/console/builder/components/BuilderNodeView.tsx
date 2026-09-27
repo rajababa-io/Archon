@@ -60,21 +60,16 @@ function BuilderNodeRender({ data, selected }: NodeProps<BuilderFlowNode>): Reac
 
       <div aria-hidden className="w-[3px] shrink-0" style={stripeStyle} />
 
-      <div className="min-w-0 flex-1 px-2.5 py-2">
+      <div className="min-w-0 flex-1 px-2.5 py-1.25">
         <div className="mb-1 flex items-center gap-1.5">
-          <span
-            className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase"
-            style={badgeStyle}
-          >
+          <span className="shrink-0 rounded px-1.5 py-0.5 text-mini font-medium" style={badgeStyle}>
             {data.label}
           </span>
-          <span className="truncate font-mono text-xs font-medium text-text-primary">
-            {node.id}
-          </span>
+          <span className="truncate text-small font-medium text-text-primary">{node.id}</span>
         </div>
 
         {preview.length > 0 ? (
-          <div className="mb-1 truncate font-mono text-[10px] text-text-tertiary">{preview}</div>
+          <div className="mb-1 truncate text-mini text-text-tertiary">{preview}</div>
         ) : null}
 
         <div className="flex flex-wrap gap-1">
@@ -95,7 +90,7 @@ function BuilderNodeRender({ data, selected }: NodeProps<BuilderFlowNode>): Reac
 
 function Pill({ children }: { children: ReactNode }): ReactElement {
   return (
-    <span className="inline-flex items-center rounded bg-surface-inset px-1.5 py-0.5 text-[9px] font-medium text-text-secondary">
+    <span className="inline-flex items-center rounded bg-surface-inset px-1.5 py-0.5 text-mini font-medium text-text-secondary">
       {children}
     </span>
   );

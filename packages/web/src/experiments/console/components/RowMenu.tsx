@@ -19,14 +19,14 @@ interface Anchor {
  * left edges, and the eye reads that as two lists.
  */
 const MENU_ROW_CLASS =
-  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-[12.5px] hover:bg-surface-elevated hover:text-text-primary';
+  'flex h-[1.875rem] w-full items-center gap-2 rounded-[5px] px-2 text-left text-body hover:bg-surface-elevated';
 
 /** The tick gutter, reserved on every row and filled only by a checked one. */
 function TickSlot({ on }: { on: boolean }): ReactElement {
   return (
     <span
       aria-hidden
-      className={`w-[11px] shrink-0 text-[12px] leading-none${on ? '' : ' opacity-0'}`}
+      className={`w-[11px] shrink-0 text-body leading-none${on ? '' : ' opacity-0'}`}
       style={{ color: 'var(--text-primary)' }}
     >
       ✓
@@ -43,16 +43,24 @@ function TickSlot({ on }: { on: boolean }): ReactElement {
 export function MenuItem({
   label,
   onSelect,
+  danger = false,
 }: {
   label: string;
   onSelect: () => void;
+  /** Destructive: red, and kept last behind a separator by the caller. */
+  danger?: boolean;
 }): ReactElement {
   return (
     <button
       type="button"
       role="menuitem"
-      onClick={onSelect}
-      className={`${MENU_ROW_CLASS} text-text-secondary`}
+      onClick={e => {
+        // The menu portals to the body but React still bubbles through the
+        // portal to the row that owns it; a click here must not also open it.
+        e.stopPropagation();
+        onSelect();
+      }}
+      className={`${MENU_ROW_CLASS} ${danger ? 'text-error hover:bg-error/10' : 'text-text-primary'}`}
     >
       <TickSlot on={false} />
       {label}
@@ -101,18 +109,26 @@ export function MenuCheckItem({
       type="button"
       role="menuitemcheckbox"
       aria-checked={checked}
-      onClick={onSelect}
-      className={`${MENU_ROW_CLASS} ${checked ? 'text-text-primary' : 'text-text-secondary'}`}
+      onClick={e => {
+        e.stopPropagation();
+        onSelect();
+      }}
+      className={`${MENU_ROW_CLASS} text-text-primary`}
     >
       <TickSlot on={checked} />
       {label}
       {checked && checkedAction !== undefined ? (
-        <span aria-hidden className="ml-auto whitespace-nowrap text-[11px] text-text-tertiary">
+        <span aria-hidden className="ml-auto whitespace-nowrap text-small text-text-tertiary">
           {checkedAction}
         </span>
       ) : null}
     </button>
   );
+}
+
+/** The rule between groups of items. */
+export function MenuSeparator(): ReactElement {
+  return <div role="separator" className="mx-1.5 my-1 h-px bg-border" />;
 }
 
 export interface RowMenuProps {
@@ -215,7 +231,7 @@ export function RowMenu({
       ref={panelRef}
       role="menu"
       aria-label={label}
-      className="console-root fixed z-[1000] rounded-[11px] border p-[5px] shadow-[0_18px_44px_-18px_rgba(0,0,0,0.85)]"
+      className="console-root fixed z-[1000] rounded-lg border p-1 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.28)]"
       style={{
         top: at?.top ?? 0,
         left: at?.left ?? 0,

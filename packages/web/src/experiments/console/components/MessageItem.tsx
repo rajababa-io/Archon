@@ -11,7 +11,7 @@ interface MessageItemProps {
 }
 
 const ERROR_BLOCK = (msg: string): ReactElement => (
-  <div className="mt-2 rounded border border-error/40 bg-error/10 px-2 py-1.5 font-mono text-[12px] text-error">
+  <div className="mt-2 rounded border border-error/40 bg-error/10 px-2 py-1.5 text-body text-error">
     {msg}
   </div>
 );
@@ -34,9 +34,9 @@ function MessageItemImpl({ message }: MessageItemProps): ReactElement {
 
   return (
     <div className="group relative flex flex-col">
-      <header className="mb-2 flex items-center gap-[9px] font-mono">
+      <header className="mb-2 flex items-center gap-[9px]">
         <span
-          className="rounded px-[7px] py-[2px] text-[10px] font-bold uppercase tracking-[0.14em]"
+          className="rounded px-[7px] py-[2px] text-mini font-medium"
           style={{
             color: 'var(--accent-bright)',
             background: 'color-mix(in oklch, var(--accent), transparent 88%)',
@@ -44,20 +44,16 @@ function MessageItemImpl({ message }: MessageItemProps): ReactElement {
         >
           {label}
         </span>
-        <time
-          dateTime={message.timestamp}
-          title={clock}
-          className="text-[11px] tracking-[0.3px] text-text-tertiary"
-        >
+        <time dateTime={message.timestamp} title={clock} className="text-small text-text-tertiary">
           {clock}
         </time>
       </header>
       <div
-        className="rounded-[12px] border bg-[color:var(--surface-elevated)] px-4 py-[14px]"
+        className="rounded-lg border bg-[color:var(--surface-elevated)] px-3 py-[8.5px]"
         style={{ borderColor: 'var(--border)', borderLeft: '3px solid var(--accent)' }}
       >
         {content.length > 0 ? (
-          <div className="max-w-none font-mono text-[12px] leading-[1.7] text-text-secondary">
+          <div className="max-w-none text-body leading-[1.7] text-text-secondary">
             {splitReply(content).map((part, i) => {
               if (part.kind === 'ask') return <AskCard key={`ask-${String(i)}`} spec={part.spec} />;
               if (part.kind === 'ask-error')

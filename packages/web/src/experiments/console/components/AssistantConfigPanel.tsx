@@ -123,14 +123,14 @@ export function AssistantConfigPanel(): ReactElement {
   if (loadError !== undefined) {
     return (
       <SettingsSection title="Defaults">
-        <p className="font-mono text-[11px] text-error">{loadError.message}</p>
+        <p className="text-small text-error">{loadError.message}</p>
       </SettingsSection>
     );
   }
   if (form === null || providers === undefined) {
     return (
       <SettingsSection title="Defaults">
-        <p className="font-mono text-[11px] text-text-tertiary">Loading…</p>
+        <p className="text-small text-text-tertiary">Loading…</p>
       </SettingsSection>
     );
   }
@@ -163,12 +163,12 @@ export function AssistantConfigPanel(): ReactElement {
           row edits the default assistant + its default model
           (assistants.<p>.model, shared state with the grid row below); saved
           by the panel's Save button. */}
-      <label className="mb-5 flex flex-wrap items-center gap-[18px]">
-        <span className="w-[150px] shrink-0 text-[13.5px] font-semibold text-text-secondary">
+      <label className="mb-3.25 flex flex-wrap items-center gap-x-[13.5px] gap-y-[11px]">
+        <span className="w-[150px] shrink-0 text-body font-medium text-text-secondary">
           {/* The scope marker breaks to its own line rather than wrapping
               mid-phrase: a 150px label rendered "Chat runs on THIS / INSTALL". */}
           Chat runs on
-          <span className="mt-[2px] block font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-text-tertiary">
+          <span className="mt-[2px] block text-mini font-medium text-text-tertiary">
             this install
           </span>
         </span>
@@ -178,7 +178,7 @@ export function AssistantConfigPanel(): ReactElement {
             onChange={e => {
               patch({ assistant: e.target.value });
             }}
-            className={`${SELECT_CLASS_COMPACT} py-[11px] pl-3.5 text-[13.5px]`}
+            className={`${SELECT_CLASS_COMPACT} py-[7px] pl-2.75 text-body`}
           >
             {providers.map(p => (
               <option key={p.id} value={p.id}>
@@ -205,14 +205,12 @@ export function AssistantConfigPanel(): ReactElement {
       </label>
 
       {userScopeAvailable && userDraft !== null ? (
-        <div className="mb-5 flex flex-wrap items-center gap-[18px]">
-          <span className="w-[150px] shrink-0 text-[13.5px] font-semibold text-text-secondary">
+        <div className="mb-3.25 flex flex-wrap items-center gap-x-[13.5px] gap-y-[11px]">
+          <span className="w-[150px] shrink-0 text-body font-medium text-text-secondary">
             {/* The scope marker breaks to its own line rather than wrapping
                 mid-phrase: a 150px label rendered "Chat runs on THIS / INSTALL". */}
             Chat runs on
-            <span className="mt-[2px] block font-mono text-[10px] font-bold uppercase tracking-[0.06em] text-text-tertiary">
-              just me
-            </span>
+            <span className="mt-[2px] block text-mini font-medium text-text-tertiary">just me</span>
           </span>
           <SelectShell className="w-[180px] shrink-0">
             <select
@@ -225,7 +223,7 @@ export function AssistantConfigPanel(): ReactElement {
               }}
               disabled={savingUserDefault}
               aria-label="Your default assistant"
-              className={`${SELECT_CLASS_COMPACT} py-[11px] pl-3.5 text-[13.5px]`}
+              className={`${SELECT_CLASS_COMPACT} py-[7px] pl-2.75 text-body`}
             >
               <option value="">Inherit (this install)</option>
               {providers.map(p => (
@@ -257,24 +255,24 @@ export function AssistantConfigPanel(): ReactElement {
               type="button"
               onClick={() => void onUserDefaultSave()}
               disabled={savingUserDefault}
-              className="rounded-[10px] border border-border px-3.5 py-2 text-[12.5px] font-bold text-text-primary transition-colors hover:bg-surface-elevated disabled:opacity-40"
+              className="rounded-lg border border-border px-2.75 py-1.25 text-body font-medium text-text-primary transition-colors hover:bg-surface-elevated disabled:opacity-40"
             >
               {savingUserDefault ? 'Saving…' : 'Save'}
             </button>
           ) : null}
           {userDefaultError !== null ? (
-            <span className="font-mono text-[11px] text-error">{userDefaultError}</span>
+            <span className="text-small text-error">{userDefaultError}</span>
           ) : null}
         </div>
       ) : null}
 
-      <div className="flex flex-col gap-[11px]">
+      <div className="flex flex-col gap-x-[8px] gap-y-[6.5px]">
         {providers.map(p => {
           const isDefault = p.id === form.assistant;
           return (
             <div
               key={p.id}
-              className="flex items-start gap-[18px] rounded-xl border bg-surface-elevated p-4 transition-colors"
+              className="flex items-start gap-[13.5px] rounded-lg border bg-surface-elevated p-4 transition-colors"
               // Active/default provider gets the magenta tint (design .set-provider.active).
               style={
                 isDefault
@@ -286,11 +284,11 @@ export function AssistantConfigPanel(): ReactElement {
                   : { borderColor: 'var(--border)' }
               }
             >
-              <div className="flex w-[150px] shrink-0 flex-wrap items-center gap-2 pt-[11px] text-[13.5px] font-bold text-text-primary">
+              <div className="flex w-[150px] shrink-0 flex-wrap items-center gap-x-2 gap-y-1.25 pt-[7px] text-body font-medium text-text-primary">
                 {p.displayName}
                 {isDefault ? (
                   <span
-                    className="rounded-full border px-[7px] py-px font-mono text-[9.5px] font-bold uppercase tracking-[0.06em]"
+                    className="rounded-full border px-[7px] py-px text-mini font-medium"
                     style={{
                       color: 'var(--accent-bright)',
                       background: 'color-mix(in oklch, var(--accent), transparent 88%)',
@@ -316,8 +314,8 @@ export function AssistantConfigPanel(): ReactElement {
                   piModels={piModels}
                 />
                 {p.id === 'codex' ? (
-                  <div className="mt-[11px] flex flex-wrap items-center justify-end gap-5">
-                    <label className="flex items-center gap-[9px] font-mono text-[12px] text-text-tertiary">
+                  <div className="mt-[11px] flex flex-wrap items-center justify-end gap-x-3.75 gap-y-3">
+                    <label className="flex items-center gap-[9px] text-body text-text-tertiary">
                       <span>effort</span>
                       <SelectShell>
                         <select
@@ -336,7 +334,7 @@ export function AssistantConfigPanel(): ReactElement {
                         </select>
                       </SelectShell>
                     </label>
-                    <label className="flex items-center gap-[9px] font-mono text-[12px] text-text-tertiary">
+                    <label className="flex items-center gap-[9px] text-body text-text-tertiary">
                       <span>web search</span>
                       <SelectShell>
                         <select
@@ -363,15 +361,13 @@ export function AssistantConfigPanel(): ReactElement {
         })}
       </div>
 
-      <div className="mt-[18px] flex items-center justify-end gap-3">
-        {saveError !== null ? (
-          <span className="font-mono text-[11px] text-error">{saveError}</span>
-        ) : null}
+      <div className="mt-[11.5px] flex items-center justify-end gap-2.25">
+        {saveError !== null ? <span className="text-small text-error">{saveError}</span> : null}
         <button
           type="button"
           onClick={() => void onSave()}
           disabled={!dirty || saving}
-          className="brand-bar rounded-[10px] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
+          className="brand-bar rounded-lg px-[14px] py-1.5 text-body font-medium text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>

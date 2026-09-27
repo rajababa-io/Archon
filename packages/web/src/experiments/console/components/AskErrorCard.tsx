@@ -25,28 +25,22 @@ interface AskErrorCardProps {
 export function AskErrorCard({ reason, text }: AskErrorCardProps): ReactElement {
   return (
     <div
-      className="my-3 overflow-hidden rounded-[var(--radius-card)] border"
+      className="my-2 overflow-hidden rounded-[var(--radius-card)] border"
       style={{
         borderColor: 'color-mix(in oklch, var(--error), transparent 55%)',
         background: 'var(--error-soft)',
       }}
     >
-      <div className="flex flex-col gap-1 px-3 py-2">
-        <span
-          className="text-[length:var(--text-micro)] font-medium tracking-wide uppercase"
-          style={{ color: 'var(--error)' }}
-        >
+      <div className="flex flex-col gap-1 px-3 py-1.25">
+        <span className="text-mini font-medium" style={{ color: 'var(--error)' }}>
           Malformed ask block
         </span>
-        <span
-          className="font-mono text-[length:var(--text-small)] leading-[1.5]"
-          style={{ color: 'var(--error)' }}
-        >
+        <span className="text-small leading-[1.5]" style={{ color: 'var(--error)' }}>
           {reason}
         </span>
       </div>
       <pre
-        className="overflow-x-auto px-3 py-2 font-mono text-[length:var(--text-micro)] leading-[1.6] whitespace-pre"
+        className="overflow-x-auto px-3 py-1.25 text-mini leading-[1.6] whitespace-pre"
         style={{ background: 'var(--surface-inset)', color: 'var(--text-secondary)' }}
       >
         {text}

@@ -36,15 +36,15 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
       return (
         <div className="flex h-screen items-center justify-center bg-zinc-950 p-8">
           <div className="max-w-md text-center">
-            <h1 className="mb-2 text-xl font-semibold text-zinc-100">Something went wrong</h1>
-            <p className="mb-4 text-sm text-zinc-400">
+            <h1 className="mb-2 text-title font-semibold text-zinc-100">Something went wrong</h1>
+            <p className="mb-4 text-large text-zinc-400">
               {this.state.error?.message ?? 'An unexpected error occurred.'}
             </p>
             <button
               onClick={(): void => {
                 window.location.reload();
               }}
-              className="rounded-md bg-zinc-800 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-700"
+              className="rounded-md bg-zinc-800 px-4 py-2 text-large text-zinc-200 hover:bg-zinc-700"
             >
               Reload page
             </button>

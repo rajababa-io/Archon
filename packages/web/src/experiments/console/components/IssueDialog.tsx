@@ -82,23 +82,23 @@ export function IssueDialog({
         onMouseDown={e => {
           e.stopPropagation();
         }}
-        className="relative my-auto w-full max-w-[760px] overflow-hidden rounded-2xl border bg-surface-elevated text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)] outline-none"
+        className="relative my-auto w-full max-w-[760px] overflow-hidden rounded-lg border bg-surface-elevated text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)] outline-none"
         // Inline because the console scope's wildcard border-color rule
         // repaints Tailwind border utilities (see theme.css).
         style={{ borderColor: 'var(--border-bright)' }}
       >
         <span aria-hidden className="brand-bar absolute left-0 right-0 top-0 h-[2px] opacity-90" />
 
-        <header className="flex items-start gap-3 px-[22px] pb-3 pt-[20px]">
+        <header className="flex items-start gap-2.25 px-[17px] pb-1.75 pt-[12.5px]">
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15.5px] font-medium leading-[1.35] text-text-primary">
+            <h2 className="text-large font-medium leading-[1.35] text-text-primary">
               {issue.title}
             </h2>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {col !== undefined ? (
                 <span
                   title={placement.reason}
-                  className="inline-flex h-[19px] items-center gap-1.5 rounded-full border px-[9px] text-[10.5px] text-text-secondary"
+                  className="inline-flex h-[19px] items-center gap-1.5 rounded-full border px-[9px] text-mini text-text-secondary"
                   style={{ borderColor: col.color }}
                 >
                   <span
@@ -109,19 +109,19 @@ export function IssueDialog({
                   {col.label}
                 </span>
               ) : null}
-              <span className="font-mono text-[10.5px] text-text-tertiary">#{issue.number}</span>
+              <span className="text-mini text-text-tertiary">#{issue.number}</span>
               {type !== null ? <IssueTypeChip name={type.name} derived={type.derived} /> : null}
               {issue.labels.map(l => (
                 <span
                   key={l.name}
-                  className="inline-flex h-[17px] items-center rounded-full border px-[7px] text-[10px]"
+                  className="inline-flex h-[17px] items-center rounded-full border px-[7px] text-mini"
                   style={{ borderColor: `#${l.color}`, color: 'var(--text-secondary)' }}
                 >
                   {l.name}
                 </span>
               ))}
               {issue.assignees.length > 0 ? (
-                <span className="text-[10.5px] text-text-tertiary">
+                <span className="text-mini text-text-tertiary">
                   assigned to {issue.assignees.join(', ')}
                 </span>
               ) : null}
@@ -148,7 +148,7 @@ export function IssueDialog({
         </header>
 
         <div
-          className="max-h-[70vh] overflow-y-auto border-t px-[22px] py-4"
+          className="max-h-[70vh] overflow-y-auto border-t px-[17px] py-2.5"
           style={{ borderColor: 'var(--border)' }}
         >
           {error !== undefined ? (
@@ -163,11 +163,11 @@ export function IssueDialog({
         </div>
 
         <footer
-          className="flex items-center gap-2 border-t px-[22px] py-2.5"
+          className="flex items-center gap-2 border-t px-[17px] py-1.5"
           style={{ borderColor: 'var(--border)' }}
         >
           <MessageSquare aria-hidden className="h-[12px] w-[12px] text-text-tertiary" />
-          <span className="text-[11px] text-text-tertiary">
+          <span className="text-small text-text-tertiary">
             {detail === null
               ? 'read-only'
               : `${String(detail.comments.length + detail.moreComments)} comment${
@@ -178,7 +178,7 @@ export function IssueDialog({
             href={issue.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="ml-auto text-[11px] text-text-secondary underline underline-offset-2 transition-colors hover:text-accent-bright"
+            className="ml-auto text-small text-text-secondary underline underline-offset-2 transition-colors hover:text-accent-bright"
           >
             Open on github.com
           </a>
@@ -218,7 +218,7 @@ export function IssueThread({
         <Comment key={c.id} comment={c} now={now} />
       ))}
       {detail.moreComments > 0 ? (
-        <p className="mt-3 text-[11.5px] text-text-tertiary">
+        <p className="mt-2 text-small text-text-tertiary">
           {detail.moreComments} more comment{detail.moreComments === 1 ? '' : 's'} on{' '}
           <a
             href={url}
@@ -236,12 +236,12 @@ export function IssueThread({
 }
 
 function Note({ children }: { children: string }): ReactElement {
-  return <p className="py-6 text-center text-[12.5px] text-text-tertiary">{children}</p>;
+  return <p className="py-3.75 text-center text-body text-text-tertiary">{children}</p>;
 }
 
 function Comment({ comment, now }: { comment: IssueComment; now: number }): ReactElement {
   return (
-    <div className="mt-3 border-t pt-3" style={{ borderColor: 'var(--border)' }}>
+    <div className="mt-2 border-t pt-1.75" style={{ borderColor: 'var(--border)' }}>
       <Entry
         author={comment.author}
         at={comment.createdAt}
@@ -267,15 +267,15 @@ function Entry({ author, at, now, body, emptyText }: EntryProps): ReactElement {
     <article>
       <div className="mb-1.5 flex items-baseline gap-2">
         {/* GitHub's own word for an account that no longer exists. */}
-        <span className="text-[12px] font-medium text-text-secondary">{author ?? 'ghost'}</span>
-        <span className="font-mono text-[10.5px] text-text-tertiary">
+        <span className="text-body font-medium text-text-secondary">{author ?? 'ghost'}</span>
+        <span className="text-mini text-text-tertiary">
           {at === '' ? '' : relativeTime(at, now)}
         </span>
       </div>
       {body.trim() === '' ? (
-        <p className="text-[12.5px] italic text-text-tertiary">{emptyText}</p>
+        <p className="text-body italic text-text-tertiary">{emptyText}</p>
       ) : (
-        <div className="max-w-none text-[13.5px] leading-[1.62] text-text-primary">
+        <div className="max-w-none text-body leading-[1.62] text-text-primary">
           <Markdown>{body}</Markdown>
         </div>
       )}

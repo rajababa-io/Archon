@@ -45,14 +45,14 @@ export function ChatsPanel(): ReactElement {
   if (configError !== undefined) {
     return (
       <SettingsSection title="Chats" scope="this install">
-        <p className="font-mono text-[11px] text-error">{configError.message}</p>
+        <p className="text-small text-error">{configError.message}</p>
       </SettingsSection>
     );
   }
   if (form === null) {
     return (
       <SettingsSection title="Chats" scope="this install">
-        <p className="font-mono text-[11px] text-text-tertiary">Loading…</p>
+        <p className="text-small text-text-tertiary">Loading…</p>
       </SettingsSection>
     );
   }
@@ -83,7 +83,7 @@ export function ChatsPanel(): ReactElement {
 
   return (
     <SettingsSection title="Chats" scope="this install">
-      <p className="mb-4 text-[12.5px] leading-relaxed text-text-tertiary">
+      <p className="mb-2.5 text-body leading-relaxed text-text-tertiary">
         Percentages of the answering model&rsquo;s context window, not token counts — the same
         conversation is half full on one model and a tenth full on another. A chat whose model has
         no known window is never acted on.
@@ -132,18 +132,14 @@ export function ChatsPanel(): ReactElement {
 
       <ChatFillPreview nudge={form.nudgeAtPercent} handoff={form.handoffAtPercent} />
 
-      <div className="mt-[18px] flex items-center justify-end gap-3">
-        {orderError !== null ? (
-          <span className="font-mono text-[11px] text-error">{orderError}</span>
-        ) : null}
-        {saveError !== null ? (
-          <span className="font-mono text-[11px] text-error">{saveError}</span>
-        ) : null}
+      <div className="mt-[11.5px] flex items-center justify-end gap-2.25">
+        {orderError !== null ? <span className="text-small text-error">{orderError}</span> : null}
+        {saveError !== null ? <span className="text-small text-error">{saveError}</span> : null}
         <button
           type="button"
           onClick={() => void onSave()}
           disabled={!dirty || saving || orderError !== null}
-          className="brand-bar rounded-[10px] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
+          className="brand-bar rounded-lg px-[14px] py-1.5 text-body font-medium text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>
@@ -162,10 +158,10 @@ function Row({
   children: ReactNode;
 }): ReactElement {
   return (
-    <div className="flex items-start gap-[18px] py-[13px]">
+    <div className="flex items-start gap-[13.5px] py-[8px]">
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-medium text-text-primary">{title}</div>
-        <div className="mt-[3px] text-[12px] leading-relaxed text-text-tertiary">{description}</div>
+        <div className="text-body font-medium text-text-primary">{title}</div>
+        <div className="mt-[3px] text-body leading-relaxed text-text-tertiary">{description}</div>
       </div>
       <div className="shrink-0 pt-[2px]">{children}</div>
     </div>
@@ -205,11 +201,11 @@ function PercentField({
         onBlur={() => {
           setText(null);
         }}
-        className={`${INPUT_CLASS} w-[86px] pr-7 text-right`}
+        className={`${INPUT_CLASS} w-[86px] pr-5.5 text-right`}
       />
       <span
         aria-hidden
-        className="pointer-events-none absolute right-[11px] font-mono text-[12px] text-text-tertiary"
+        className="pointer-events-none absolute right-[11px] text-body text-text-tertiary"
       >
         %
       </span>
@@ -233,7 +229,7 @@ export function ChatFillPreview({
 }): ReactElement | null {
   if (nudge >= handoff) return null;
   return (
-    <div className="mt-4">
+    <div className="mt-2.5">
       <div
         className="flex h-[9px] overflow-hidden rounded-full border"
         style={{ borderColor: 'var(--border)', background: 'var(--surface-inset)' }}
@@ -244,13 +240,13 @@ export function ChatFillPreview({
         />
         <span style={{ flex: 1, background: 'var(--error-soft)' }} />
       </div>
-      <div className="mt-[7px] flex justify-between font-mono text-[10.5px] font-medium text-text-tertiary">
+      <div className="mt-[7px] flex justify-between text-mini font-medium text-text-tertiary">
         <span>0% — quiet</span>
         <span style={{ color: 'var(--warning)' }}>{nudge}% — nudge</span>
         <span style={{ color: 'var(--error)' }}>{handoff}% — hand off</span>
         <span>100%</span>
       </div>
-      <p className="mt-[11px] text-[12px] leading-relaxed text-text-tertiary">
+      <p className="mt-[11px] text-body leading-relaxed text-text-tertiary">
         Each band speaks <b className="text-text-primary">once</b>. A fall — the provider compacted
         — re-arms it, so the next genuine crossing is heard. The defaults sit far below the
         window&rsquo;s ceiling on purpose: attention dilutes long before context fills.

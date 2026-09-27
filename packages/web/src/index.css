@@ -42,6 +42,26 @@
   --ring: oklch(0.65 0.18 250);
 }
 
+/* THE TYPE SCALE — six sizes, in rem so the text-size control (tokens.css,
+   --ui-scale on <html>) moves every one of them. Nothing in the web app sets
+   a font size any other way. */
+@theme {
+  --text-mini: 0.6875rem;
+  --text-mini--line-height: 1.45;
+  --text-small: 0.75rem;
+  --text-small--line-height: 1.5;
+  --text-body: 0.8125rem;
+  --text-body--line-height: 1.55;
+  --text-large: 0.9375rem;
+  --text-large--line-height: 1.5;
+  --text-title: 1.125rem;
+  --text-title--line-height: 1.35;
+  --text-title--letter-spacing: -0.015em;
+  --text-display: 1.5rem;
+  --text-display--line-height: 1.25;
+  --text-display--letter-spacing: -0.02em;
+}
+
 @theme inline {
   /* App-specific theme colors */
   --color-background: var(--background);

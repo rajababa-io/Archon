@@ -26,11 +26,9 @@ function Section({
   children: ReactElement | ReactElement[];
 }): ReactElement {
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-x-2 gap-y-1.25">
       <div className="flex items-center gap-2">
-        <h2 className="font-mono text-[10.5px] font-bold uppercase tracking-[0.14em] text-text-tertiary">
-          {label}
-        </h2>
+        <h2 className="text-mini font-medium text-text-tertiary">{label}</h2>
         {action !== undefined && action !== null ? <span className="ml-auto">{action}</span> : null}
       </div>
       {children}
@@ -93,8 +91,8 @@ export function OverviewPage(): ReactElement {
   if (projectId === '') return <EmptyState title="No project." />;
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-10 pt-5">
-      <div className="mx-auto flex max-w-[860px] flex-col gap-7">
+    <div className="min-h-0 flex-1 overflow-y-auto px-6.25 pb-6.25 pt-3">
+      <div className="mx-auto flex max-w-[860px] flex-col gap-x-5.25 gap-y-4.25">
         {/* 1 — what this is. The standing answer, above everything that moves. */}
         <Section label="Where this project is">
           <ProjectBriefCard projectId={projectId} />
@@ -105,7 +103,7 @@ export function OverviewPage(): ReactElement {
           label="Needs you"
           action={
             needsYou.length > 0 ? (
-              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[color:var(--warning,oklch(0.78_0.15_80))]">
+              <span className="inline-flex items-center gap-1.5 text-small font-medium text-[color:var(--warning,oklch(0.78_0.15_80))]">
                 <AlertTriangle className="h-3 w-3" />
                 {needsYou.length}
               </span>
@@ -113,12 +111,12 @@ export function OverviewPage(): ReactElement {
           }
         >
           {needsYou.length === 0 ? (
-            <p className="flex items-center gap-2 text-[13px] text-text-secondary">
+            <p className="flex items-center gap-2 text-body text-text-secondary">
               <Check className="h-4 w-4 text-[color:var(--success)]" />
               Nothing is waiting on you.
             </p>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-x-2 gap-y-1.25">
               {needsYou.map(r => (
                 <ActiveRunCard
                   key={r.id}
@@ -135,7 +133,7 @@ export function OverviewPage(): ReactElement {
         {/* 2 — what is executing, not that something started two hours ago. */}
         {inFlight.length > 0 ? (
           <Section label="In flight">
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-x-2 gap-y-1.25">
               {inFlight.map(r => (
                 <ActiveRunCard
                   key={r.id}
@@ -157,30 +155,30 @@ export function OverviewPage(): ReactElement {
           action={
             <Link
               to={`/console/p/${projectId}/chat`}
-              className="rounded border border-border px-2 py-0.5 font-mono text-[10.5px] text-text-secondary transition-colors hover:border-border-bright hover:text-text-primary"
+              className="rounded border border-border px-2 py-0.5 text-mini text-text-secondary transition-colors hover:border-border-bright hover:text-text-primary"
             >
               Open
             </Link>
           }
         >
           {(chats ?? []).length === 0 ? (
-            <p className="text-[13px] text-text-tertiary">No chats yet.</p>
+            <p className="text-body text-text-tertiary">No chats yet.</p>
           ) : (
-            <div className="flex flex-col overflow-hidden rounded-[10px] border border-border">
+            <div className="flex flex-col overflow-hidden rounded-lg border border-border">
               {(chats ?? []).slice(0, 5).map(c => (
                 <Link
                   key={c.id}
                   to={`/console/p/${projectId}/chat`}
-                  className="group flex items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0 hover:bg-surface-hover"
+                  className="group flex items-center gap-2 border-b border-border px-3 py-1.25 last:border-b-0 hover:bg-surface-hover"
                 >
                   <MessageCircle className="h-[14px] w-[14px] shrink-0 text-text-tertiary" />
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-text-secondary group-hover:text-text-primary">
+                  <span className="min-w-0 flex-1 truncate text-body text-text-secondary group-hover:text-text-primary">
                     {conversationLabel(c)}
                   </span>
                   {c.lastActivityAt !== null ? (
                     <time
                       dateTime={c.lastActivityAt}
-                      className="shrink-0 font-mono text-[10px] text-text-tertiary"
+                      className="shrink-0 text-mini text-text-tertiary"
                     >
                       {relativeTime(c.lastActivityAt)}
                     </time>
@@ -197,14 +195,14 @@ export function OverviewPage(): ReactElement {
           action={
             <Link
               to={`/console/p/${projectId}/issues`}
-              className="rounded border border-border px-2 py-0.5 font-mono text-[10.5px] text-text-secondary transition-colors hover:border-border-bright hover:text-text-primary"
+              className="rounded border border-border px-2 py-0.5 text-mini text-text-secondary transition-colors hover:border-border-bright hover:text-text-primary"
             >
               Board
             </Link>
           }
         >
           {openIssues.length === 0 ? (
-            <p className="text-[13px] text-text-tertiary">
+            <p className="text-body text-text-tertiary">
               {issueData?.reason !== null && issueData?.reason !== undefined
                 ? 'No issues to show for this project.'
                 : 'No open issues.'}
@@ -224,19 +222,17 @@ export function OverviewPage(): ReactElement {
                   />
                 ))}
               </div>
-              <div className="flex flex-col overflow-hidden rounded-[10px] border border-border">
+              <div className="flex flex-col overflow-hidden rounded-lg border border-border">
                 {openIssues.slice(0, 4).map(i => (
                   <a
                     key={i.number}
                     href={i.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group flex items-center gap-2.5 border-b border-border px-3 py-2 last:border-b-0 hover:bg-surface-hover"
+                    className="group flex items-center gap-2 border-b border-border px-3 py-1.25 last:border-b-0 hover:bg-surface-hover"
                   >
-                    <span className="shrink-0 font-mono text-[10.5px] text-text-tertiary">
-                      #{i.number}
-                    </span>
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-text-secondary group-hover:text-text-primary">
+                    <span className="shrink-0 text-mini text-text-tertiary">#{i.number}</span>
+                    <span className="min-w-0 flex-1 truncate text-body text-text-secondary group-hover:text-text-primary">
                       {i.title}
                     </span>
                     <ExternalLink className="h-3 w-3 shrink-0 text-text-tertiary opacity-0 group-hover:opacity-100" />
@@ -245,7 +241,7 @@ export function OverviewPage(): ReactElement {
                 {openIssues.length > 4 ? (
                   <Link
                     to={`/console/p/${projectId}/issues`}
-                    className="flex items-center gap-1.5 px-3 py-2 text-[12px] text-text-tertiary hover:text-text-primary"
+                    className="flex items-center gap-1.5 px-3 py-1.25 text-body text-text-tertiary hover:text-text-primary"
                   >
                     {openIssues.length - 4} more on the board
                     <ArrowRight className="h-3 w-3" />

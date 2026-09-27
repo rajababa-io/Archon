@@ -95,20 +95,18 @@ export function StreamCard({
       onClick={onClick}
       style={{ borderColor: style.borderColor }}
       className={`rounded ${style.borderClass} bg-surface px-3 ${
-        compact ? 'py-1.5' : 'py-2'
+        compact ? 'py-1.5' : 'py-1.25'
       } ${onClick !== undefined ? 'cursor-pointer transition-colors hover:bg-surface-hover' : ''}`}
     >
       <header className={`flex items-center gap-2 ${compact ? '' : 'mb-1.5'}`}>
         <time
           dateTime={timestamp}
           title={wallClock}
-          className="font-mono text-[10px] tabular-nums text-text-tertiary"
+          className="text-mini tabular-nums text-text-tertiary"
         >
           {displayed}
         </time>
-        <span
-          className={`rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.14em] ${style.pill}`}
-        >
+        <span className={`rounded px-1.5 py-0.5 text-mini font-medium ${style.pill}`}>
           {label ?? style.label}
         </span>
         {headerRight !== undefined ? (

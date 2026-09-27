@@ -96,9 +96,7 @@ export function Toolbar({
 }: ToolbarProps): ReactElement {
   return (
     <div className="flex items-center gap-1 border-b border-border bg-surface px-3 py-1.5">
-      <span className="mr-2 truncate font-mono text-[12px] font-semibold text-text-primary">
-        {workflowName}
-      </span>
+      <span className="mr-2 truncate text-body font-medium text-text-primary">{workflowName}</span>
 
       <Group>
         <ToolButton icon={Undo2} title="Undo (u)" disabled={!canUndo} onClick={onUndo} />
@@ -204,7 +202,7 @@ export function Toolbar({
         type="button"
         title="Auto-arrange the graph with dagre (A)"
         onClick={onAutoArrange}
-        className="brand-bar flex items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-[12px] font-semibold text-white/95 transition-opacity hover:brightness-110"
+        className="brand-bar flex items-center gap-1.5 rounded-[8px] px-2.5 py-1 text-body font-medium text-white/95 transition-opacity hover:brightness-110"
       >
         <Workflow aria-hidden className="h-3.5 w-3.5" />
         Auto-arrange

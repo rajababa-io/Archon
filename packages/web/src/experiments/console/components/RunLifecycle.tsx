@@ -14,16 +14,16 @@ export function RunStartedLine({ run }: { run: Run }): ReactElement {
   const clock = useClock();
   return (
     <>
-      <div className="flex items-center gap-2 py-1 text-[11px]">
+      <div className="flex items-center gap-2 py-1 text-small">
         <span aria-hidden className="text-[color:var(--running)]">
           ▶
         </span>
         <span className="font-medium text-text-secondary">Workflow {run.workflow} started</span>
-        <span className="font-mono text-text-tertiary">{clock(run.startedAt)}</span>
+        <span className="text-text-tertiary">{clock(run.startedAt)}</span>
         <div className="h-px flex-1 bg-border/50" aria-hidden />
       </div>
       {run.userMessage !== '' ? (
-        <div className="ml-[7px] border-l-2 border-border/60 pl-3 text-[11px] text-text-tertiary">
+        <div className="ml-[7px] border-l-2 border-border/60 pl-3 text-small text-text-tertiary">
           {run.userMessage}
         </div>
       ) : null}
@@ -45,14 +45,14 @@ export function RunFinishedLine({ run }: { run: Run }): ReactElement | null {
   const cost = run.costUsd !== null ? ` · ${formatCost(run.costUsd)}` : '';
 
   return (
-    <div className="mt-2 flex items-center gap-2 py-1 text-[11px]">
+    <div className="mt-2 flex items-center gap-2 py-1 text-small">
       <div className="h-px flex-1 bg-border/50" aria-hidden />
       <span aria-hidden className={statusTextClass[run.status]}>
         {GLYPH[run.status]}
       </span>
       <span className={`font-medium ${statusTextClass[run.status]}`}>{LABEL[run.status]}</span>
       <RunOutcomeBadge outcome={run.outcome} />
-      <span className="font-mono text-text-tertiary">
+      <span className="text-text-tertiary">
         in {duration}
         {cost}
       </span>

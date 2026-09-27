@@ -5,6 +5,7 @@ import { DeployOverlay } from './components/DeployOverlay';
 import { AddProjectDialog } from './components/AddProjectDialog';
 import { ProjectPalette } from './components/ProjectPalette';
 import { KeymapHelp } from './components/KeymapHelp';
+import { WorkflowsPage } from './routes/WorkflowsPage';
 import { BuilderConnected } from './builder/BuilderConnected';
 import { RunsPage } from './routes/RunsPage';
 import { ProjectLayout } from './routes/ProjectLayout';
@@ -82,7 +83,7 @@ export function ConsoleApp(): ReactElement {
 
   return (
     <div className="console-root flex h-screen w-screen flex-col bg-surface text-text-primary">
-      <header className="flex items-center gap-3 border-b border-border px-3 py-2 md:hidden">
+      <header className="flex items-center gap-2.25 border-b border-border px-3 py-1.25 md:hidden">
         <button
           type="button"
           aria-controls="project-navigation"
@@ -90,11 +91,11 @@ export function ConsoleApp(): ReactElement {
           onClick={() => {
             setRailOpen(open => !open);
           }}
-          className="rounded border border-border px-3 py-2"
+          className="rounded border border-border px-3 py-1.25"
         >
           {railOpen ? 'Close navigation' : 'Projects and settings'}
         </button>
-        <span className="font-semibold">Archon</span>
+        <span className="font-medium">Archon</span>
       </header>
       <div className="rail-shell flex min-h-0 flex-1">
         {railOpen ? (
@@ -125,6 +126,7 @@ export function ConsoleApp(): ReactElement {
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <Routes>
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="workflows" element={<WorkflowsPage />} />
             <Route path="builder" element={<BuilderConnected />} />
             <Route path="builder/:name" element={<BuilderConnected />} />
             <Route path="_preview" element={<PreviewPage />} />
@@ -140,7 +142,7 @@ export function ConsoleApp(): ReactElement {
                 element={
                   <Suspense
                     fallback={
-                      <p className="px-6 py-4 font-mono text-[12px] text-text-tertiary">
+                      <p className="px-4.75 py-2.5 text-body text-text-tertiary">
                         Loading the file viewer...
                       </p>
                     }

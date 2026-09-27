@@ -89,7 +89,7 @@ function Row({ node, style }: NodeRendererProps<Node>): ReactElement {
   return (
     <div
       style={style}
-      className={`flex h-full cursor-pointer items-center gap-1.5 pr-2 text-[12.5px] ${
+      className={`flex h-full cursor-pointer items-center gap-1.5 pr-2 text-body ${
         node.isSelected
           ? 'bg-surface-elevated text-text-primary'
           : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
@@ -98,12 +98,12 @@ function Row({ node, style }: NodeRendererProps<Node>): ReactElement {
         if (entry.kind === 'dir') node.toggle();
       }}
     >
-      <span aria-hidden className="w-3 shrink-0 font-mono text-[10px] text-text-tertiary">
+      <span aria-hidden className="w-3 shrink-0 text-mini text-text-tertiary">
         {entry.kind === 'dir' ? (node.isOpen ? 'v' : '>') : ''}
       </span>
       <span className="truncate">{entry.name}</span>
       {entry.kind === 'file' ? (
-        <span className="ml-auto shrink-0 font-mono text-[10px] tabular-nums text-text-tertiary">
+        <span className="ml-auto shrink-0 text-mini tabular-nums text-text-tertiary">
           {formatBytes(entry.size)}
         </span>
       ) : null}
@@ -161,7 +161,7 @@ function Preview({
   };
 
   return (
-    <div className="chat-markdown h-full overflow-auto px-6 py-4 text-[13px] leading-relaxed text-text-primary">
+    <div className="chat-markdown h-full overflow-auto px-4.75 py-2.5 text-body leading-relaxed text-text-primary">
       <ReactMarkdown
         remarkPlugins={MD_REMARK_PLUGINS}
         rehypePlugins={MD_REHYPE_PLUGINS}
@@ -324,7 +324,7 @@ export function FilesPage(): ReactElement {
             setFilter(e.target.value);
           }}
           placeholder="Filter loaded tree..."
-          className="m-2 rounded border border-border bg-surface px-2 py-1 font-mono text-[11.5px] text-text-primary outline-none focus:border-border-bright"
+          className="m-2 rounded border border-border bg-surface px-2 py-1 font-mono text-small text-text-primary outline-none focus:border-border-bright"
         />
         <div className="min-h-0 flex-1">
           <Tree<Node>
@@ -359,8 +359,8 @@ export function FilesPage(): ReactElement {
       </aside>
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
-          <span className="min-w-0 truncate font-mono text-[12px] text-text-secondary">
+        <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.25">
+          <span className="min-w-0 truncate font-mono text-body text-text-secondary">
             {selected ?? 'No file selected'}
           </span>
           {selected !== null && hasPreview(selected) ? (
@@ -369,34 +369,31 @@ export function FilesPage(): ReactElement {
               onClick={() => {
                 setShowSource(v => !v);
               }}
-              className="shrink-0 rounded border border-border px-2 py-0.5 font-mono text-[11px] text-text-secondary transition-colors hover:text-text-primary"
+              className="shrink-0 rounded border border-border px-2 py-0.5 text-small text-text-secondary transition-colors hover:text-text-primary"
             >
               {showSource ? 'Preview' : 'Source'}
             </button>
           ) : null}
           {dirty ? (
-            <span
-              aria-label="Unsaved changes"
-              className="shrink-0 font-mono text-[11px] text-warning"
-            >
+            <span aria-label="Unsaved changes" className="shrink-0 text-small text-warning">
               unsaved
             </span>
           ) : savedAt !== null ? (
-            <span className="shrink-0 font-mono text-[11px] text-text-tertiary">saved</span>
+            <span className="shrink-0 text-small text-text-tertiary">saved</span>
           ) : null}
           {selected !== null ? (
             <button
               type="button"
               onClick={save}
               disabled={!dirty || saving}
-              className="shrink-0 rounded border border-border px-2 py-0.5 font-mono text-[11px] text-text-secondary transition-colors hover:text-text-primary disabled:opacity-40"
+              className="shrink-0 rounded border border-border px-2 py-0.5 text-small text-text-secondary transition-colors hover:text-text-primary disabled:opacity-40"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
           ) : null}
         </header>
         {saveError !== null ? (
-          <p className="shrink-0 border-b border-error/30 bg-error/[0.06] px-4 py-1.5 font-mono text-[11.5px] text-error">
+          <p className="shrink-0 border-b border-error/30 bg-error/[0.06] px-3 py-1.5 text-small text-error">
             {saveError}
           </p>
         ) : null}
@@ -406,7 +403,7 @@ export function FilesPage(): ReactElement {
             hint="Arrow keys move the tree. Cmd-F searches the file."
           />
         ) : viewerError !== null ? (
-          <p className="px-6 py-4 font-mono text-[12px] text-error">{viewerError}</p>
+          <p className="px-4.75 py-2.5 text-body text-error">{viewerError}</p>
         ) : isImagePath(selected) ? (
           // Images never reach the text route - the server refuses them as
           // binary - so they are loaded by URL from the raw route instead.
@@ -418,7 +415,7 @@ export function FilesPage(): ReactElement {
             />
           </div>
         ) : content === null ? (
-          <p className="px-6 py-4 font-mono text-[12px] text-text-tertiary">Loading...</p>
+          <p className="px-4.75 py-2.5 text-body text-text-tertiary">Loading...</p>
         ) : hasPreview(selected) && !showSource ? (
           <div className="min-h-0 flex-1">
             <Preview projectId={projectId} path={selected} text={draft} />

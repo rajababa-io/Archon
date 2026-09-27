@@ -23,23 +23,23 @@ export function SettingsSection({
 }): ReactElement {
   return (
     <section
-      className="overflow-hidden rounded-[10px] border bg-surface-elevated"
+      className="overflow-hidden rounded-lg border bg-surface-elevated"
       // Inline because the console scope's wildcard border-color rule
       // repaints Tailwind border utilities (see theme.css).
       style={{ borderColor: 'var(--border)' }}
     >
       <header
-        className="flex items-center gap-[9px] border-b px-[14px] py-[11px]"
+        className="flex items-center gap-[9px] border-b px-[11px] py-[7px]"
         style={{ borderColor: 'var(--border)' }}
       >
-        <h2 className="text-[14px] font-semibold leading-[1.55] text-text-primary">{title}</h2>
+        <h2 className="text-large font-medium leading-[1.55] text-text-primary">{title}</h2>
         {scope !== undefined ? (
-          <span className="rounded-[4px] bg-[color:var(--surface-bright,var(--surface-hover))] px-[7px] py-[2px] font-mono text-[11px] text-text-secondary">
+          <span className="rounded-[4px] bg-[color:var(--surface-bright,var(--surface-hover))] px-[7px] py-[2px] text-small text-text-secondary">
             {scope}
           </span>
         ) : null}
       </header>
-      <div className="px-[14px] py-3">{children}</div>
+      <div className="px-[11px] py-1.75">{children}</div>
     </section>
   );
 }

@@ -8,7 +8,7 @@ import { signIn, signUp, useSession } from '@/lib/auth-client';
 type Mode = 'login' | 'signup';
 
 const inputClassName =
-  'h-10 w-full rounded-md border border-border bg-background px-3 text-base text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary';
+  'h-10 w-full rounded-md border border-border bg-background px-3 text-large text-text-primary outline-none focus-visible:ring-2 focus-visible:ring-primary';
 
 /**
  * Email/password login + signup for opt-in web auth. Signup may be gated by an
@@ -69,15 +69,15 @@ export function LoginPage(): React.ReactElement {
       <div className="w-full max-w-sm rounded-xl border border-border bg-surface p-8 shadow-lg">
         <div className="mb-6 flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary">
-            <span className="text-sm font-semibold text-primary-foreground">A</span>
+            <span className="text-large font-medium text-primary-foreground">A</span>
           </div>
-          <span className="text-base font-semibold text-text-primary">Archon</span>
+          <span className="text-large font-medium text-text-primary">Archon</span>
         </div>
 
-        <h1 className="mb-1 text-lg font-semibold text-text-primary">
+        <h1 className="mb-1 text-title font-semibold text-text-primary">
           {isSignup ? 'Create your account' : 'Sign in'}
         </h1>
-        <p className="mb-6 text-sm text-text-secondary">
+        <p className="mb-6 text-large text-text-secondary">
           {isSignup
             ? status?.signup === 'allowlist'
               ? 'Signup is invite-only — use an allowlisted email.'
@@ -86,7 +86,7 @@ export function LoginPage(): React.ReactElement {
         </p>
 
         {error && (
-          <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-large text-destructive">
             {error}
           </div>
         )}
@@ -94,7 +94,7 @@ export function LoginPage(): React.ReactElement {
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {isSignup && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-medium text-text-secondary">Name</span>
+              <span className="text-small font-medium text-text-secondary">Name</span>
               <input
                 className={inputClassName}
                 type="text"
@@ -108,7 +108,7 @@ export function LoginPage(): React.ReactElement {
             </label>
           )}
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-text-secondary">Email</span>
+            <span className="text-small font-medium text-text-secondary">Email</span>
             <input
               className={inputClassName}
               type="email"
@@ -122,7 +122,7 @@ export function LoginPage(): React.ReactElement {
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-text-secondary">Password</span>
+            <span className="text-small font-medium text-text-secondary">Password</span>
             <input
               className={inputClassName}
               type="password"
@@ -140,7 +140,7 @@ export function LoginPage(): React.ReactElement {
           <button
             type="submit"
             disabled={submitting}
-            className="mt-2 h-10 w-full rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
+            className="mt-2 h-10 w-full rounded-md bg-primary px-4 text-large font-medium text-primary-foreground hover:opacity-90 focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50"
           >
             {submitting ? 'Please wait…' : isSignup ? 'Create account' : 'Sign in'}
           </button>
@@ -153,7 +153,7 @@ export function LoginPage(): React.ReactElement {
               setMode(isSignup ? 'login' : 'signup');
               setError(null);
             }}
-            className="mt-4 w-full text-center text-sm text-text-secondary hover:text-text-primary"
+            className="mt-4 w-full text-center text-large text-text-secondary hover:text-text-primary"
           >
             {isSignup ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
           </button>

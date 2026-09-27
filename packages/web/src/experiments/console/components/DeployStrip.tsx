@@ -19,7 +19,7 @@
  * the entire console down a line. Every load jiggled.
  *
  * This slot cannot do that. `ProjectHeader`'s top row already exists on every
- * frame and its height is set by the project name, which is `text-xl` against
+ * frame and its height is set by the project name, which is `text-title` against
  * this strip's 11px — so the strip fills horizontal space the row was already
  * spending on nothing, and can neither move what is beside it (the name
  * truncates, the strip takes the slack as `flex-1`) nor change the row's height.
@@ -84,14 +84,14 @@ export function DeployStrip(): ReactElement | null {
   return (
     <div
       data-testid="deploy-strip"
-      className="flex min-w-0 flex-1 items-center justify-end gap-2 self-center text-[11px] leading-none"
+      className="flex min-w-0 flex-1 items-center justify-end gap-2 self-center text-small leading-none"
       aria-live="polite"
     >
       <span
         aria-hidden="true"
         className={`inline-block size-2 shrink-0 rounded-full ${TONE_DOT[view.tone]}`}
       />
-      <span className={`shrink-0 font-semibold ${TONE_TEXT[view.tone]}`}>{view.label}</span>
+      <span className={`shrink-0 font-medium ${TONE_TEXT[view.tone]}`}>{view.label}</span>
       {view.sha !== null ? (
         <code className="hidden shrink-0 tabular-nums text-text-tertiary sm:inline">
           {view.sha}

@@ -6,14 +6,12 @@
 import type { ChangeEvent, ReactElement, ReactNode } from 'react';
 
 const INPUT_CLASS =
-  'w-full rounded-[8px] border border-border bg-surface px-2 py-1.5 text-[12.5px] text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-accent-bright/60';
+  'w-full rounded-[8px] border border-border bg-surface px-2 py-1.5 text-body text-text-primary outline-none transition-colors placeholder:text-text-tertiary focus:border-accent-bright/60';
 
 export function Field({ label, children }: { label: string; children: ReactNode }): ReactElement {
   return (
     <label className="flex flex-col gap-1">
-      <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-text-tertiary">
-        {label}
-      </span>
+      <span className="text-mini font-medium text-text-tertiary">{label}</span>
       {children}
     </label>
   );
@@ -129,7 +127,7 @@ export function CheckboxField({
         }}
         className="h-3.5 w-3.5 accent-(--accent-bright)"
       />
-      <span className="text-[12.5px] text-text-secondary">{label}</span>
+      <span className="text-body text-text-secondary">{label}</span>
     </label>
   );
 }

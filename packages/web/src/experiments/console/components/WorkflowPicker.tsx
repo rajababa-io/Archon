@@ -254,11 +254,11 @@ export function WorkflowPicker({
           else setOpen(true);
         }}
         onKeyDown={handleTriggerKey}
-        className="flex h-9 min-w-[140px] items-center gap-2 rounded border border-border bg-surface px-3 text-sm text-text-primary transition-colors hover:bg-surface-hover disabled:opacity-50"
+        className="flex h-9 min-w-[140px] items-center gap-2 rounded border border-border bg-surface px-3 text-large text-text-primary transition-colors hover:bg-surface-hover disabled:opacity-50"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        <span className="flex-1 truncate text-left font-mono">{current?.name ?? '—'}</span>
+        <span className="flex-1 truncate text-left">{current?.name ?? '—'}</span>
         <span
           aria-hidden="true"
           className="text-text-tertiary transition-transform"
@@ -285,14 +285,14 @@ export function WorkflowPicker({
                   }}
                   onKeyDown={handleSearchKey}
                   placeholder="Filter workflows…"
-                  className="h-7 w-full rounded border border-border bg-surface px-2 font-mono text-[12px] text-text-primary placeholder:text-text-tertiary focus:border-border-bright focus:outline-none"
+                  className="h-7 w-full rounded border border-border bg-surface px-2 text-body text-text-primary placeholder:text-text-tertiary focus:border-border-bright focus:outline-none"
                 />
               </div>
 
               <div ref={listRef} className="flex flex-1 flex-col overflow-y-auto py-1">
                 {filtered.length === 0 ? (
-                  <div className="px-3 py-4 text-[12px] text-text-tertiary">
-                    No workflows match <span className="font-mono">{query}</span>.
+                  <div className="px-3 py-2.5 text-body text-text-tertiary">
+                    No workflows match <span>{query}</span>.
                   </div>
                 ) : (
                   filtered.map((w, i) => {
@@ -310,8 +310,8 @@ export function WorkflowPicker({
                         {header !== null ? (
                           <div
                             role="presentation"
-                            className={`px-3 pb-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-text-tertiary ${
-                              i === 0 ? 'pt-1' : 'mt-1 border-t border-border/60 pt-2'
+                            className={`px-3 pb-1 text-mini font-medium text-text-tertiary ${
+                              i === 0 ? 'pt-1' : 'mt-1 border-t border-border/60 pt-1.25'
                             }`}
                           >
                             {header}
@@ -329,16 +329,14 @@ export function WorkflowPicker({
                           onMouseEnter={() => {
                             setCursor(i);
                           }}
-                          className={`flex h-11 w-full shrink-0 items-center gap-3 px-3 text-left transition-colors ${
+                          className={`flex h-11 w-full shrink-0 items-center gap-2.25 px-3 text-left transition-colors ${
                             active ? 'bg-surface-hover' : ''
                           }`}
                         >
                           <div className="flex min-w-0 flex-1 items-baseline gap-2">
-                            <span className="shrink-0 font-mono text-[13px] text-text-primary">
-                              {w.name}
-                            </span>
+                            <span className="shrink-0 text-body text-text-primary">{w.name}</span>
                             {desc.length > 0 ? (
-                              <span className="min-w-0 truncate text-[11px] text-text-tertiary">
+                              <span className="min-w-0 truncate text-small text-text-tertiary">
                                 {desc}
                               </span>
                             ) : null}
@@ -349,23 +347,18 @@ export function WorkflowPicker({
                             // aria-label on it is dropped by assistive tech.
                             <span
                               role="img"
-                              className="shrink-0 font-mono text-[11px] text-warning"
+                              className="shrink-0 text-small text-warning"
                               title={w.parseWarnings.join('\n')}
                               aria-label={`Ignored keys: ${w.parseWarnings.join('; ')}`}
                             >
                               ⚠
                             </span>
                           ) : null}
-                          <span
-                            className={`shrink-0 text-[9px] uppercase tracking-[0.16em] ${sourceBadgeClass(w.source)}`}
-                          >
+                          <span className={`shrink-0 text-mini ${sourceBadgeClass(w.source)}`}>
                             {w.source}
                           </span>
                           {selected ? (
-                            <span
-                              aria-hidden
-                              className="shrink-0 font-mono text-[11px] text-accent-bright"
-                            >
+                            <span aria-hidden className="shrink-0 text-small text-accent-bright">
                               ✓
                             </span>
                           ) : null}
@@ -376,7 +369,7 @@ export function WorkflowPicker({
                 )}
               </div>
 
-              <div className="border-t border-border/60 px-3 py-1.5 font-mono text-[10px] text-text-tertiary">
+              <div className="border-t border-border/60 px-3 py-1.5 text-mini text-text-tertiary">
                 {filtered.length.toString()} of {workflows.length.toString()} · ↑↓ navigate · ↵
                 select · esc close
               </div>

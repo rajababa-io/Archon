@@ -50,12 +50,21 @@ interface WorkflowsResponse {
 export interface WorkflowListResult {
   workflows: Workflow[];
   recommended: string[];
+  /** Top-level node count per workflow name — what the Workflows page lists as steps. */
+  stepCounts: Record<string, number>;
 }
 
 export async function listWorkflows(cwd?: string): Promise<WorkflowListResult> {
   const qs = cwd !== undefined ? `?cwd=${encodeURIComponent(cwd)}` : '';
   const res = await requestJson<WorkflowsResponse>(`/api/workflows${qs}`);
-  return { workflows: res.workflows.map(toWorkflow), recommended: res.recommended ?? [] };
+  const stepCounts: Record<string, number> = {};
+  for (const entry of res.workflows)
+    stepCounts[entry.workflow.name] = entry.workflow.nodes?.length ?? 0;
+  return {
+    workflows: res.workflows.map(toWorkflow),
+    recommended: res.recommended ?? [],
+    stepCounts,
+  };
 }
 
 function nodeKind(n: RawNode): WorkflowGraphNode['kind'] {

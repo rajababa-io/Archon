@@ -99,23 +99,23 @@ export function GithubIdentityPanel(): ReactElement | null {
   if (error !== undefined) {
     return (
       <SettingsSection title="GitHub Identity">
-        <p className="font-mono text-[11px] text-error">{error.message}</p>
+        <p className="text-small text-error">{error.message}</p>
       </SettingsSection>
     );
   }
   if (status === undefined) {
     return (
       <SettingsSection title="GitHub Identity">
-        <p className="font-mono text-[11px] text-text-tertiary">Loading…</p>
+        <p className="text-small text-text-tertiary">Loading…</p>
       </SettingsSection>
     );
   }
 
   return (
     <SettingsSection title="GitHub Identity">
-      <div className="flex flex-col gap-3 text-[12px]">
+      <div className="flex flex-col gap-x-2.25 gap-y-1.75 text-body">
         {status.connected ? (
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2.25">
             <span className="text-text-secondary">
               Connected as{' '}
               <span className="font-medium text-text-primary">@{status.githubLogin}</span>
@@ -124,13 +124,13 @@ export function GithubIdentityPanel(): ReactElement | null {
               type="button"
               onClick={() => void disconnect()}
               disabled={disconnecting}
-              className="shrink-0 rounded border border-border px-2.5 py-1 text-[11px] text-text-secondary transition-colors hover:border-border-bright hover:text-text-primary disabled:opacity-40"
+              className="shrink-0 rounded border border-border px-2.5 py-1 text-small text-text-secondary transition-colors hover:border-border-bright hover:text-text-primary disabled:opacity-40"
             >
               {disconnecting ? 'Disconnecting…' : 'Disconnect'}
             </button>
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center justify-between gap-2.25">
             <span className="text-text-secondary">
               Connect your GitHub account so PR comments and commits attribute to you.
             </span>
@@ -138,7 +138,7 @@ export function GithubIdentityPanel(): ReactElement | null {
               type="button"
               onClick={() => void connect()}
               disabled={phase === 'pending'}
-              className="brand-bar shrink-0 rounded px-3 py-0.5 text-[11px] font-medium text-white transition-all hover:brightness-110 disabled:opacity-40"
+              className="brand-bar shrink-0 rounded px-3 py-0.5 text-small font-medium text-white transition-all hover:brightness-110 disabled:opacity-40"
             >
               {phase === 'pending' ? 'Connecting…' : 'Connect GitHub'}
             </button>
@@ -156,10 +156,7 @@ export function GithubIdentityPanel(): ReactElement | null {
             >
               {verificationUri}
             </a>{' '}
-            and enter code:{' '}
-            <span className="font-mono font-semibold tracking-widest text-text-primary">
-              {userCode}
-            </span>
+            and enter code: <span className="font-medium text-text-primary">{userCode}</span>
             <span className="ml-2 text-text-tertiary">(polling…)</span>
           </div>
         ) : null}
@@ -167,7 +164,7 @@ export function GithubIdentityPanel(): ReactElement | null {
         {/* `message` is only ever set by a failed connect OR disconnect (both clear
             it on start), so render it whenever present — gating on `phase === 'error'`
             silently swallowed disconnect failures. */}
-        {message !== null ? <p className="font-mono text-[11px] text-error">{message}</p> : null}
+        {message !== null ? <p className="text-small text-error">{message}</p> : null}
       </div>
     </SettingsSection>
   );

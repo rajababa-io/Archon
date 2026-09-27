@@ -35,18 +35,16 @@ export function NotificationsPanel(): ReactElement {
   const note = NOTE[state];
   return (
     <SettingsSection title="Notifications" scope="this browser">
-      <div className="flex items-start gap-[18px] py-[5px]">
+      <div className="flex items-start gap-[13.5px] py-[5px]">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium text-text-primary">
+          <div className="text-body font-medium text-text-primary">
             Tell me when a chat finishes or asks
           </div>
-          <div className="mt-[3px] text-[12px] leading-relaxed text-text-tertiary">
+          <div className="mt-[3px] text-body leading-relaxed text-text-tertiary">
             Only while this tab is hidden, only for the project&rsquo;s chat page you left open, and
             only the chat&rsquo;s name — never what it said. Click one to open that chat.
           </div>
-          {note !== null ? (
-            <div className="mt-[6px] font-mono text-[11px] text-warning">{note}</div>
-          ) : null}
+          {note !== null ? <div className="mt-[6px] text-small text-warning">{note}</div> : null}
         </div>
         <div className="shrink-0 pt-[2px]">
           <Switch

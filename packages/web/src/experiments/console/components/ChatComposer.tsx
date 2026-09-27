@@ -359,7 +359,7 @@ export function ChatComposer({
           className="mb-[10px]"
         />
         <div
-          className={`relative flex items-end gap-[0.625rem] rounded-[var(--radius-panel)] border bg-[color:var(--surface-elevated)] py-[0.5rem] pl-[14px] pr-[8px] transition-[border-color,box-shadow] focus-within:border-[color:color-mix(in_oklch,var(--accent),transparent_40%)] focus-within:shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_92%)]${
+          className={`relative flex items-end gap-[0.625rem] rounded-[var(--radius-panel)] border bg-[color:var(--surface-elevated)] py-[0.5rem] pl-[11px] pr-[8px] transition-[border-color,box-shadow] focus-within:border-[color:color-mix(in_oklch,var(--accent),transparent_40%)] focus-within:shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_92%)]${
             dragging ? ' shadow-[0_0_0_4px_color-mix(in_oklch,var(--accent),transparent_92%)]' : ''
           }`}
           style={{
@@ -412,7 +412,7 @@ export function ChatComposer({
                 slash.reopen();
                 textareaRef.current?.focus();
               }}
-              className="flex h-[22px] items-center justify-center rounded-md px-[0.125rem] text-[length:var(--text-large)] leading-none transition-colors hover:bg-[color:var(--surface-hover)] hover:text-text-primary disabled:cursor-default disabled:opacity-50"
+              className="flex h-[22px] items-center justify-center rounded-md px-[0.125rem] text-large leading-none transition-colors hover:bg-[color:var(--surface-hover)] hover:text-text-primary disabled:cursor-default disabled:opacity-50"
             >
               /
             </button>
@@ -436,7 +436,7 @@ export function ChatComposer({
             aria-activedescendant={menuOpen ? slashOptionId(menuId, slash.active) : undefined}
             rows={1}
             placeholder={placeholder}
-            className="min-h-0 flex-1 resize-none bg-transparent py-[0.4375rem] text-[length:var(--text-medium)] leading-[1.5] text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
+            className="min-h-0 flex-1 resize-none bg-transparent py-[0.4375rem] text-large leading-[1.5] text-text-primary placeholder:text-text-tertiary focus:outline-none disabled:opacity-50"
             style={{ maxHeight: `${MAX_HEIGHT.toString()}px` }}
           />
           {working ? (
@@ -447,14 +447,11 @@ export function ChatComposer({
                   onClick={submit}
                   disabled={disabled}
                   title="Queue · Enter — sent when the agent finishes"
-                  className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-text-primary transition-colors hover:bg-[color:var(--surface-hover)] disabled:opacity-45"
+                  className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border px-[var(--bubble-x)] text-body font-medium text-text-primary transition-colors hover:bg-[color:var(--surface-hover)] disabled:opacity-45"
                   style={{ borderColor: 'var(--border-bright)' }}
                 >
                   Queue
-                  <span
-                    aria-hidden
-                    className="font-mono text-[length:var(--text-micro)] opacity-70"
-                  >
+                  <span aria-hidden className="text-mini opacity-70">
                     ↵
                   </span>
                 </button>
@@ -465,7 +462,7 @@ export function ChatComposer({
                 disabled={onStop === undefined || stopping}
                 title={stopping ? 'Stopping…' : 'Stop the agent'}
                 aria-label={stopping ? 'Stopping' : 'Stop'}
-                className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border border-error/50 bg-error/10 px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-error transition-colors hover:bg-error/20 disabled:opacity-60"
+                className="flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] border border-error/50 bg-error/10 px-[var(--bubble-x)] text-body font-medium text-error transition-colors hover:bg-error/20 disabled:opacity-60"
               >
                 <Square aria-hidden className="h-3 w-3 fill-current" />
                 {stopping ? 'Stopping…' : 'Stop'}
@@ -477,27 +474,27 @@ export function ChatComposer({
               onClick={submit}
               disabled={disabled || value.trim().length === 0}
               title="Send · Enter"
-              className="brand-bar flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] px-[var(--bubble-x)] text-[length:var(--text-body)] font-bold text-white shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--accent),transparent_30%)] transition-[filter,transform] hover:brightness-110 active:translate-y-[1px] disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
+              className="brand-bar flex h-[36px] shrink-0 items-center gap-[0.4375rem] rounded-[var(--radius-panel)] px-[var(--bubble-x)] text-body font-medium text-white shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--accent),transparent_30%)] transition-[filter,transform] hover:brightness-110 active:translate-y-[1px] disabled:opacity-45 disabled:shadow-none disabled:hover:brightness-100"
             >
               Send
-              <span aria-hidden className="font-mono text-[length:var(--text-micro)] opacity-70">
+              <span aria-hidden className="text-mini opacity-70">
                 ↵
               </span>
             </button>
           )}
         </div>
-        <div className="mt-[9px] flex items-center justify-between px-[0.125rem] font-mono text-[length:var(--text-micro)] text-text-tertiary">
+        <div className="mt-[9px] flex items-center justify-between px-[0.125rem] text-mini text-text-tertiary">
           <span />
           <span>
             <span
-              className="mr-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] font-mono text-[length:var(--text-micro)] text-text-secondary"
+              className="mr-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] text-mini text-text-secondary"
               style={{ borderColor: 'var(--border-bright)' }}
             >
               ↵
             </span>
             {working ? 'queue' : 'send'}{' '}
             <span
-              className="ml-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] font-mono text-[length:var(--text-micro)] text-text-secondary"
+              className="ml-1 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] text-mini text-text-secondary"
               style={{ borderColor: 'var(--border-bright)' }}
             >
               ⇧↵

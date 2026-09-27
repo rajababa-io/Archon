@@ -38,7 +38,7 @@ export function CodeBlock({ children }: { children?: ReactNode }): ReactElement 
   return (
     <div className="relative my-2">
       <div
-        className="flex items-center justify-between rounded-t-[8px] border border-b-0 bg-surface-elevated px-2.5 py-1 font-mono text-[10.5px] text-text-tertiary"
+        className="flex items-center justify-between rounded-t-[8px] border border-b-0 bg-surface-elevated px-2.5 py-1 text-mini text-text-tertiary"
         style={{ borderColor: 'var(--border)' }}
       >
         <span>{language}</span>
@@ -70,7 +70,7 @@ export function CodeBlock({ children }: { children?: ReactNode }): ReactElement 
       </span>
       <pre
         ref={preRef}
-        className="overflow-x-auto rounded-b-[8px] border bg-surface-inset p-2 text-[12px] leading-relaxed"
+        className="overflow-x-auto rounded-b-[8px] border bg-surface-inset p-2 text-body leading-relaxed"
         style={{ borderColor: 'var(--border)' }}
       >
         {children}

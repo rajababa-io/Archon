@@ -33,13 +33,11 @@ export function AttachedFiles({
           {files.map((f, i) => (
             <span
               key={`${f.name}-${String(i)}`}
-              className="flex items-center gap-[0.375rem] rounded-[var(--radius-card)] border bg-[color:var(--surface-elevated)] py-[0.25rem] pl-[9px] pr-[5px] text-[length:var(--text-small)]"
+              className="flex items-center gap-[0.375rem] rounded-[var(--radius-card)] border bg-[color:var(--surface-elevated)] py-[0.25rem] pl-[9px] pr-[5px] text-small"
               style={{ borderColor: 'var(--border-bright)' }}
             >
               <span className="max-w-[180px] truncate text-text-primary">{f.name}</span>
-              <span className="font-mono text-[length:var(--text-micro)] text-text-tertiary">
-                {formatBytes(f.size)}
-              </span>
+              <span className="text-mini text-text-tertiary">{formatBytes(f.size)}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -48,7 +46,7 @@ export function AttachedFiles({
                 aria-label={`Remove ${f.name}`}
                 className="rounded p-[0.0625rem] text-text-tertiary transition-colors hover:bg-[color:var(--surface-hover)] hover:text-text-primary"
               >
-                <span aria-hidden className="text-[length:var(--text-micro)] leading-none">
+                <span aria-hidden className="text-mini leading-none">
                   ✕
                 </span>
               </button>
@@ -57,11 +55,7 @@ export function AttachedFiles({
         </div>
       ) : null}
       {error !== null ? (
-        <div
-          className={`font-mono text-[length:var(--text-micro)] text-error${files.length > 0 ? ' mt-[8px]' : ''}`}
-        >
-          {error}
-        </div>
+        <div className={`text-mini text-error${files.length > 0 ? ' mt-[8px]' : ''}`}>{error}</div>
       ) : null}
     </div>
   );

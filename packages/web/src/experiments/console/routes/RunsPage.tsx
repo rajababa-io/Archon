@@ -190,12 +190,10 @@ interface SectionHeaderProps {
 
 function SectionHeader({ label, count }: SectionHeaderProps): ReactElement {
   return (
-    <div className="mb-3 flex items-center gap-2.5 px-0.5">
-      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.13em] text-text-tertiary">
-        {label}
-      </span>
+    <div className="mb-2 flex items-center gap-2 px-0.5">
+      <span className="text-small font-medium text-text-tertiary">{label}</span>
       <span
-        className="rounded-full border bg-surface-elevated px-2 py-px font-mono text-[10.5px] tabular-nums text-text-secondary"
+        className="rounded-full border bg-surface-elevated px-2 py-px text-mini tabular-nums text-text-secondary"
         style={{ borderColor: 'var(--border)' }}
       >
         {count}
@@ -248,11 +246,11 @@ function RunsFeed({
   const showActiveSection = active.length > 0 || draftProject !== null;
 
   return (
-    <div className="flex flex-col gap-[26px]">
+    <div className="flex flex-col gap-x-[19.5px] gap-y-[15.5px]">
       {showActiveSection ? (
         <section>
           <SectionHeader label="Active" count={active.length} />
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-x-2 gap-y-1.25">
             {draftProject !== null ? (
               <DraftRunCard projectId={draftProject.id} projectCwd={draftProject.path} />
             ) : null}
@@ -273,7 +271,7 @@ function RunsFeed({
       {recent.length > 0 ? (
         <section>
           <SectionHeader label="Recent" count={recent.length} />
-          <div className="flex flex-col overflow-hidden rounded-[12px] border border-border bg-surface">
+          <div className="flex flex-col overflow-hidden rounded-lg border border-border bg-surface">
             {recent.map(run => (
               <RecentRunRow
                 key={run.id}
@@ -288,7 +286,7 @@ function RunsFeed({
 
       {/* A cap that is not stated reads as completeness. */}
       {total > runs.length ? (
-        <p className="text-[11.5px] text-text-tertiary">
+        <p className="text-small text-text-tertiary">
           Showing the {runs.length} most recent of {total} runs.
         </p>
       ) : null}
@@ -535,7 +533,7 @@ export function RunsPage(): ReactElement {
     <section className="flex h-full flex-col">
       {/* Status sub-tabs and search on one strip. The project name, path and
           Runs/Chat tabs moved to the layout's header — see ProjectLayout. */}
-      <div className="flex min-w-0 shrink-0 items-center gap-4 border-b border-border px-6">
+      <div className="flex min-w-0 shrink-0 items-center gap-3 border-b border-border px-4.75">
         {/* The chips scroll inside their own strip rather than pushing the
             search box off the right edge. At 768px the five chips plus a
             300px search box are 170px wider than the viewport, and the whole
@@ -543,14 +541,14 @@ export function RunsPage(): ReactElement {
         <div className="scroll-x-quiet min-w-0 flex-1">
           <FilterChips value={filter} onChange={setFilter} counts={counts} />
         </div>
-        <div className="shrink-0 py-2">
+        <div className="shrink-0 py-1.25">
           <div
-            className="flex h-[38px] w-[300px] max-w-[34vw] shrink-0 items-center gap-2 rounded-[10px] border bg-surface-elevated px-3 text-text-tertiary transition-colors focus-within:text-text-secondary"
+            className="flex h-[38px] w-[300px] max-w-[34vw] shrink-0 items-center gap-2 rounded-lg border bg-surface-elevated px-3 text-text-tertiary transition-colors focus-within:text-text-secondary"
             // Inline because the console scope's wildcard border-color rule
             // repaints Tailwind border utilities (see theme.css).
             style={{ borderColor: 'var(--border)' }}
           >
-            <span aria-hidden className="font-mono text-[13px] leading-none">
+            <span aria-hidden className="text-body leading-none">
               ⌕
             </span>
             <input
@@ -571,7 +569,7 @@ export function RunsPage(): ReactElement {
               aria-label="Search runs"
               placeholder="Search workflow, project, run id…"
               spellCheck={false}
-              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-text-primary outline-none placeholder:text-text-tertiary"
+              className="min-w-0 flex-1 bg-transparent text-body text-text-primary outline-none placeholder:text-text-tertiary"
             />
           </div>
         </div>
@@ -589,7 +587,7 @@ export function RunsPage(): ReactElement {
         }}
       />
 
-      <div className="flex-1 overflow-y-auto px-[30px] pb-[30px] pt-[22px]">
+      <div className="flex-1 overflow-y-auto px-[23.5px] pb-[18.5px] pt-[13.5px]">
         {error !== undefined && !demoMode ? (
           <EmptyState title="Could not load runs." hint={error.message} />
         ) : loading && !demoMode ? (

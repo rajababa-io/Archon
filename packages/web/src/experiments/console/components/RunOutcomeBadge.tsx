@@ -13,7 +13,7 @@ export function RunOutcomeBadge({ outcome }: { outcome: RunOutcome }): ReactElem
       data-run-outcome={outcome}
       aria-label={`Authored outcome: ${outcome}`}
       title="Workflow-authored outcome"
-      className={`shrink-0 rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.04em] ${outcomeClass[outcome]}`}
+      className={`shrink-0 rounded-full border px-2 py-0.5 text-mini font-medium ${outcomeClass[outcome]}`}
     >
       Outcome: {outcome}
     </span>

@@ -36,11 +36,11 @@ function FileChips({ files }: { files: Message['files'] }): ReactElement {
         <span
           key={`${f.name}-${String(i)}`}
           title={`${f.name} · ${formatBytes(f.size)}\nSent to the agent. The file was deleted from the server once it was read — this is a record of the upload, not a copy of it.`}
-          className="flex items-center gap-[0.375rem] rounded-[var(--radius-card)] border border-border-bright bg-[color:var(--surface-elevated)] px-[0.5rem] py-[0.2rem] text-[length:var(--text-micro)]"
+          className="flex items-center gap-[0.375rem] rounded-[var(--radius-card)] border border-border-bright bg-[color:var(--surface-elevated)] px-[0.5rem] py-[0.2rem] text-mini"
         >
           <Paperclip aria-hidden className="h-[0.75rem] w-[0.75rem] text-text-tertiary" />
           <span className="max-w-[180px] truncate text-text-secondary">{f.name}</span>
-          <span className="font-mono text-text-tertiary">{formatBytes(f.size)}</span>
+          <span className="text-text-tertiary">{formatBytes(f.size)}</span>
         </span>
       ))}
     </div>
@@ -59,7 +59,7 @@ function ProgressNote({ content }: { content: string }): ReactElement {
   const [open, setOpen] = useState(false);
   const firstLine = content.split('\n', 1)[0] ?? '';
   return (
-    <div className="max-w-[74ch] min-w-0 text-[length:var(--text-small)] text-text-tertiary">
+    <div className="max-w-[74ch] min-w-0 text-small text-text-tertiary">
       <button
         type="button"
         aria-expanded={open}
@@ -68,7 +68,7 @@ function ProgressNote({ content }: { content: string }): ReactElement {
         }}
         className="flex w-full min-w-0 items-baseline gap-[0.4rem] text-left hover:text-text-secondary"
       >
-        <span aria-hidden className="shrink-0 font-mono">
+        <span aria-hidden className="shrink-0">
           {open ? '▾' : '▸'}
         </span>
         {open ? (
@@ -88,7 +88,7 @@ function ProgressNote({ content }: { content: string }): ReactElement {
 
 function ErrorBlock({ message }: { message: string }): ReactElement {
   return (
-    <div className="rounded-[var(--radius-card)] border border-error/40 bg-error/10 px-[0.6rem] py-[0.4rem] font-mono text-[length:var(--text-small)] text-error">
+    <div className="rounded-[var(--radius-card)] border border-error/40 bg-error/10 px-[0.6rem] py-[0.4rem] text-small text-error">
       {message}
     </div>
   );
@@ -125,7 +125,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
     <time
       dateTime={group.timestamp}
       title={clock}
-      className="font-mono text-[length:var(--text-micro)] text-text-tertiary tabular-nums"
+      className="text-mini text-text-tertiary tabular-nums"
     >
       {clock}
     </time>
@@ -143,7 +143,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
               // collapses into one run-on line. Deliberately not markdown —
               // people paste terminal output, paths and code into chat, and
               // markdown would eat the underscores and asterisks in them.
-              className="max-w-[64ch] rounded-[var(--radius-panel)_var(--radius-panel)_var(--radius-control)_var(--radius-panel)] px-[var(--bubble-x)] py-[var(--bubble-y)] text-[length:var(--text-medium)] leading-[1.55] break-words whitespace-pre-wrap"
+              className="max-w-[64ch] rounded-[var(--radius-panel)_var(--radius-panel)_var(--radius-control)_var(--radius-panel)] px-[var(--bubble-x)] py-[var(--bubble-y)] text-large leading-[1.55] break-words whitespace-pre-wrap"
               style={{
                 background: 'color-mix(in oklch, var(--accent), transparent 88%)',
                 border: '1px solid color-mix(in oklch, var(--accent), transparent 58%)',
@@ -169,7 +169,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
     <div className="group relative flex flex-col gap-[var(--msg-gap)]">
       <header className="flex items-baseline gap-[0.5rem]">
         <span
-          className="font-mono text-[length:var(--text-micro)] font-semibold uppercase tracking-[0.11em]"
+          className="text-mini font-medium"
           // System is deliberately quieter than the agent: it narrates the
           // conversation rather than taking part in it, and painting it as
           // loudly would invert the hierarchy.
@@ -186,7 +186,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
             copy(group.messages.map(m => m.content).join('\n\n'));
           }}
           aria-label="Copy message as markdown"
-          className={`ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] border border-border-bright px-[0.45rem] py-[0.1rem] text-[length:var(--text-micro)] transition-opacity focus:opacity-100 group-hover:opacity-100 ${
+          className={`ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] border border-border-bright px-[0.45rem] py-[0.1rem] text-mini transition-opacity focus:opacity-100 group-hover:opacity-100 ${
             copyState === 'idle' ? 'opacity-0' : 'opacity-100'
           } ${copyState === 'copied' ? 'text-success' : 'text-text-secondary hover:text-text-primary'}`}
         >
@@ -207,7 +207,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
               <ProgressNote content={content} />
             ) : content.length > 0 ? (
               <div
-                className={`max-w-[74ch] min-w-0 text-[length:var(--text-medium)] leading-[1.62] ${
+                className={`max-w-[74ch] min-w-0 text-large leading-[1.62] ${
                   isSystem ? 'text-text-secondary' : 'text-text-primary'
                 }`}
               >

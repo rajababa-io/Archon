@@ -54,21 +54,19 @@ export const MD_COMPONENTS: Components = {
       return <code className={className}>{children}</code>;
     }
     return (
-      <code className="rounded bg-surface-inset px-1 py-[1px] font-mono text-[12px] text-text-primary">
+      <code className="rounded bg-surface-inset px-1 py-[1px] text-body text-text-primary">
         {children}
       </code>
     );
   },
   h1: ({ children }) => (
-    <h1 className="mt-2 mb-1.5 text-[14px] font-semibold text-text-primary">{children}</h1>
+    <h1 className="mt-2 mb-1.5 text-large font-medium text-text-primary">{children}</h1>
   ),
   h2: ({ children }) => (
-    <h2 className="mt-2 mb-1 text-[13px] font-semibold text-text-primary">{children}</h2>
+    <h2 className="mt-2 mb-1 text-body font-medium text-text-primary">{children}</h2>
   ),
   h3: ({ children }) => (
-    <h3 className="mt-1.5 mb-0.5 text-[12px] font-semibold uppercase tracking-wider text-text-secondary">
-      {children}
-    </h3>
+    <h3 className="mt-1.5 mb-0.5 text-body font-medium text-text-secondary">{children}</h3>
   ),
   p: ({ children }) => <p className="my-1 leading-relaxed">{children}</p>,
   ul: ({ children }) => (

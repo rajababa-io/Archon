@@ -74,7 +74,7 @@ const IDLE_LIST_KEY = 'workflows:idle';
 
 function EmptyState({ children }: { children: ReactNode }): ReactElement {
   return (
-    <div className="flex h-full items-center justify-center p-8 text-center text-[12.5px] text-text-tertiary">
+    <div className="flex h-full items-center justify-center p-8 text-center text-body text-text-tertiary">
       <div className="max-w-md">{children}</div>
     </div>
   );
@@ -112,7 +112,9 @@ export function BuilderConnected(): ReactElement {
   // Workflow list for the open-picker + rename collision checks.
   const listKey = cwd !== undefined ? K.workflows(cwd) : IDLE_LIST_KEY;
   const listView = useEntity<WorkflowListResult>(listKey, () =>
-    cwd !== undefined ? listWorkflows(cwd) : Promise.resolve({ workflows: [], recommended: [] })
+    cwd !== undefined
+      ? listWorkflows(cwd)
+      : Promise.resolve({ workflows: [], recommended: [], stepCounts: {} })
   );
   const existingNames = useMemo(
     () => (listView.data?.workflows ?? []).map(w => w.name),
@@ -376,6 +378,19 @@ export function BuilderConnected(): ReactElement {
     });
   }, [cwd, existingNames, navigate, projectQuery]);
 
+  // `?new=1` is how the Workflows page's "New workflow" arrives: it opens the
+  // same create flow as the header's New, once the project's list has loaded
+  // (the name-collision check reads it), then drops the flag so a reload or a
+  // Back does not prompt again.
+  const wantsNew = searchParams.get('new') === '1';
+  useEffect(() => {
+    if (!wantsNew || cwd === undefined || listView.data === undefined) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('new');
+    setSearchParams(next, { replace: true });
+    doNew();
+  }, [wantsNew, cwd, listView.data, searchParams, setSearchParams, doNew]);
+
   // --- Navigation controls (dirty-guarded) ---------------------------------
   const onPickProject = useCallback(
     (id: string): void => {
@@ -428,13 +443,13 @@ export function BuilderConnected(): ReactElement {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-wrap items-center gap-3 border-b border-border px-4 py-2">
-        <h1 className="text-[14px] font-semibold text-text-primary">Workflow Builder</h1>
-        <span className="rounded-full border border-border px-2 py-0.5 font-mono text-[10px] uppercase tracking-widest text-text-tertiary">
+      <header className="flex flex-wrap items-center gap-x-2.25 gap-y-1.75 border-b border-border px-3 py-1.25">
+        <h1 className="text-large font-medium text-text-primary">Workflow Builder</h1>
+        <span className="rounded-full border border-border px-2 py-0.5 text-mini text-text-tertiary">
           beta
         </span>
 
-        <label className="flex items-center gap-2 text-[11.5px] text-text-tertiary">
+        <label className="flex items-center gap-2 text-small text-text-tertiary">
           Project
           <SelectShell className="max-w-[220px]">
             <select
@@ -455,7 +470,7 @@ export function BuilderConnected(): ReactElement {
         </label>
 
         {cwd !== undefined ? (
-          <label className="flex items-center gap-2 text-[11.5px] text-text-tertiary">
+          <label className="flex items-center gap-2 text-small text-text-tertiary">
             Workflow
             <SelectShell className="max-w-[220px]">
               <select
@@ -482,7 +497,7 @@ export function BuilderConnected(): ReactElement {
             onClick={(): void => {
               confirmIfDirty(doNew);
             }}
-            className="rounded-[8px] border border-border bg-surface px-2.5 py-1 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            className="rounded-[8px] border border-border bg-surface px-2.5 py-1 text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
             New
           </button>
@@ -505,7 +520,7 @@ export function BuilderConnected(): ReactElement {
               onClick={(): void => {
                 void doSave();
               }}
-              className="rounded-[8px] bg-accent-bright px-3 py-1 text-[12px] font-semibold text-white/95 transition-opacity hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
+              className="rounded-[8px] bg-accent-bright px-3 py-1 text-body font-medium text-white/95 transition-opacity hover:brightness-110 disabled:pointer-events-none disabled:opacity-40"
             >
               {saveLabel}
             </button>
@@ -516,7 +531,7 @@ export function BuilderConnected(): ReactElement {
                 onClick={(): void => {
                   void doRename();
                 }}
-                className="rounded-[8px] border border-border bg-surface px-2.5 py-1 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
+                className="rounded-[8px] border border-border bg-surface px-2.5 py-1 text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-40"
               >
                 Rename
               </button>
@@ -528,7 +543,7 @@ export function BuilderConnected(): ReactElement {
                 onClick={(): void => {
                   void doDelete();
                 }}
-                className="rounded-[8px] px-2.5 py-1 text-[12px] text-error transition-colors hover:bg-error/10 disabled:opacity-40"
+                className="rounded-[8px] px-2.5 py-1 text-body text-error transition-colors hover:bg-error/10 disabled:opacity-40"
               >
                 Delete
               </button>
@@ -540,15 +555,15 @@ export function BuilderConnected(): ReactElement {
       {listFetchError !== undefined ? (
         <div
           title={listFetchError.message}
-          className="border-b border-error/30 bg-error/10 px-4 py-1.5 font-mono text-[11px] text-error"
+          className="border-b border-error/30 bg-error/10 px-3 py-1.5 text-small text-error"
         >
           Failed to load: {listFetchError.message}
         </div>
       ) : null}
 
       {workflowOpen && readOnly ? (
-        <div className="border-b border-border bg-warning/10 px-4 py-1.5 text-[11.5px] text-text-secondary">
-          Bundled workflow — read-only. <span className="font-semibold">Save as</span> writes a
+        <div className="border-b border-border bg-warning/10 px-3 py-1.5 text-small text-text-secondary">
+          Bundled workflow — read-only. <span className="font-medium">Save as</span> writes a
           project override that shadows the bundled default.
         </div>
       ) : null}
@@ -562,8 +577,7 @@ export function BuilderConnected(): ReactElement {
         ) : workflowLoadError !== undefined ? (
           <EmptyState>
             <p>
-              Failed to load <span className="font-mono">{name}</span>:{' '}
-              {errorDetail(workflowLoadError)}
+              Failed to load <span>{name}</span>: {errorDetail(workflowLoadError)}
             </p>
             <p className="mt-2">
               The workflow may still exist — retry once the server is reachable.
@@ -572,8 +586,8 @@ export function BuilderConnected(): ReactElement {
         ) : notFound ? (
           <EmptyState>
             <p>
-              No workflow named <span className="font-mono">{name}</span> was found in{' '}
-              <span className="font-mono">{selectedProject.name}</span>.
+              No workflow named <span>{name}</span> was found in <span>{selectedProject.name}</span>
+              .
             </p>
             <p className="mt-2">
               It may live in a subfolder (not loadable via the single-name route) or not exist yet.
@@ -583,7 +597,7 @@ export function BuilderConnected(): ReactElement {
               onClick={(): void => {
                 confirmIfDirty(doNew);
               }}
-              className="mt-3 rounded-[8px] border border-border bg-surface px-2.5 py-1 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+              className="mt-2 rounded-[8px] border border-border bg-surface px-2.5 py-1 text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             >
               Create a new workflow
             </button>
@@ -592,20 +606,19 @@ export function BuilderConnected(): ReactElement {
           existingNames.length === 0 ? (
             <EmptyState>
               <p>
-                <span className="font-mono">{selectedProject.name}</span> has no project workflows
-                yet.
+                <span>{selectedProject.name}</span> has no project workflows yet.
               </p>
               <button
                 type="button"
                 onClick={doNew}
-                className="mt-3 rounded-[8px] border border-border bg-surface px-2.5 py-1 text-[12px] text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+                className="mt-2 rounded-[8px] border border-border bg-surface px-2.5 py-1 text-body text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
               >
                 Create the first workflow
               </button>
             </EmptyState>
           ) : (
             <EmptyState>
-              Pick a workflow from the <span className="font-semibold">Workflow</span> menu above to
+              Pick a workflow from the <span className="font-medium">Workflow</span> menu above to
               start editing, or create a new one.
             </EmptyState>
           )

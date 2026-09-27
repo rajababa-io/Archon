@@ -37,17 +37,15 @@ export function PendingInputBanner({
   if (runs.length === 0) return null;
 
   return (
-    <div className="shrink-0 border-b border-warning/25 bg-warning/[0.04] px-6 py-3">
+    <div className="shrink-0 border-b border-warning/25 bg-warning/[0.04] px-4.75 py-1.75">
       <div className="mb-2 flex items-center gap-2">
-        <span aria-hidden className="text-[13px] leading-none text-warning">
+        <span aria-hidden className="text-body leading-none text-warning">
           ⚠
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-warning">
-          Needs your input
-        </span>
-        <span className="font-mono text-[11px] tabular-nums text-warning/70">{runs.length}</span>
+        <span className="text-mini font-medium text-warning">Needs your input</span>
+        <span className="text-small tabular-nums text-warning/70">{runs.length}</span>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-x-2 gap-y-1.25">
         {runs.map(run => (
           <PendingInputCard
             key={run.id}
@@ -76,31 +74,29 @@ function PendingInputCard({ run, showProject, onDismiss }: PendingInputCardProps
       className="relative overflow-hidden rounded border border-warning/40 bg-surface"
     >
       <StatusStrip status="paused" />
-      <div className="py-3 pl-4 pr-3">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+      <div className="py-1.75 pl-3 pr-3">
+        <div className="flex flex-wrap items-center gap-x-2.25 gap-y-1">
           <span
             aria-hidden
             className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-warning"
           />
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-warning">
-            {statusLabel.paused}
-          </span>
+          <span className="shrink-0 text-mini font-medium text-warning">{statusLabel.paused}</span>
           <span className="mx-1 h-3 w-px shrink-0 bg-border" aria-hidden />
-          <span className="text-sm font-medium text-text-primary">{run.workflow}</span>
-          <span className="font-mono text-[11px] text-text-tertiary">{shortRunId(run.id)}</span>
+          <span className="text-large font-medium text-text-primary">{run.workflow}</span>
+          <span className="text-small text-text-tertiary">{shortRunId(run.id)}</span>
           {showProject && run.projectName !== null ? (
-            <span className="truncate text-[11px] text-text-secondary">· {run.projectName}</span>
+            <span className="truncate text-small text-text-secondary">· {run.projectName}</span>
           ) : null}
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-2.25">
             <OriginBadge origin={run.origin} />
-            <span className="font-mono text-[11px] tabular-nums text-text-tertiary">{elapsed}</span>
+            <span className="text-small tabular-nums text-text-tertiary">{elapsed}</span>
             <button
               type="button"
               onClick={() => {
                 onDismiss(run.id);
               }}
               title="Hide until next load — the run stays paused"
-              className="rounded border border-border px-2 py-0.5 text-[11px] text-text-tertiary transition-colors hover:border-border-bright hover:bg-surface-hover hover:text-text-primary"
+              className="rounded border border-border px-2 py-0.5 text-small text-text-tertiary transition-colors hover:border-border-bright hover:bg-surface-hover hover:text-text-primary"
             >
               Dismiss
             </button>

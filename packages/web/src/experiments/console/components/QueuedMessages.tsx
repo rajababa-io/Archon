@@ -36,7 +36,7 @@ export function QueuedMessages({
         return (
           <li key={message.id} className="flex w-full flex-col items-end gap-[0.25rem]">
             <div
-              className="max-w-[64ch] rounded-[var(--radius-panel)_var(--radius-panel)_var(--radius-control)_var(--radius-panel)] px-[var(--bubble-x)] py-[var(--bubble-y)] text-[length:var(--text-medium)] leading-[1.55] break-words whitespace-pre-wrap text-text-secondary"
+              className="max-w-[64ch] rounded-[var(--radius-panel)_var(--radius-panel)_var(--radius-control)_var(--radius-panel)] px-[var(--bubble-x)] py-[var(--bubble-y)] text-large leading-[1.55] break-words whitespace-pre-wrap text-text-secondary"
               style={{
                 border: '1px dashed color-mix(in oklch, var(--accent), transparent 45%)',
                 background: 'color-mix(in oklch, var(--accent), transparent 95%)',
@@ -44,8 +44,8 @@ export function QueuedMessages({
             >
               {message.text.trim()}
             </div>
-            <div className="flex items-center gap-[0.5rem] font-mono text-[length:var(--text-micro)] text-text-tertiary">
-              <span className="uppercase tracking-[0.11em]">
+            <div className="flex items-center gap-[0.5rem] text-mini text-text-tertiary">
+              <span>
                 Queued
                 {message.files.length > 0
                   ? ` · ${String(message.files.length)} file${message.files.length === 1 ? '' : 's'}`

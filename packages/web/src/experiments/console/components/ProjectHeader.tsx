@@ -80,15 +80,15 @@ export function ProjectHeader(): ReactElement {
   const needsYou = activityNeedsYou(counts);
 
   return (
-    <header className="flex shrink-0 flex-col gap-3 border-b border-border px-6 pb-0 pt-4">
-      <div className="flex items-start justify-between gap-4">
-        <span className="flex min-w-0 items-center gap-2.5">
+    <header className="flex shrink-0 flex-col gap-x-2.25 gap-y-1.75 border-b border-border px-4.75 pb-0 pt-2.5">
+      <div className="flex items-start justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2">
           {projectId !== undefined ? (
             <span aria-hidden className="flex shrink-0 items-center">
               <Glyph seed={projectId} glyph={identity.glyph} color={color} size={24} />
             </span>
           ) : null}
-          <h1 title={project?.name} className="truncate text-xl font-semibold text-text-primary">
+          <h1 title={project?.name} className="truncate text-title font-semibold text-text-primary">
             {projectId === undefined ? 'All projects' : label === '' ? 'Project' : label}
           </h1>
           {/* Whether this project wants something. Beside the name because
@@ -104,7 +104,7 @@ export function ProjectHeader(): ReactElement {
 
         {activity !== null ? (
           <span
-            className="flex shrink-0 items-center gap-1.5 font-mono text-[10.5px] font-bold uppercase tracking-[0.12em]"
+            className="flex shrink-0 items-center gap-1.5 text-mini font-medium"
             // --brand-* are fills with no light-mode value; text must use the
             // semantic tokens, which are tuned per mode and verified at AA.
             style={{ color: needsYou ? 'var(--warning)' : 'var(--running)' }}
@@ -125,9 +125,9 @@ export function ProjectHeader(): ReactElement {
           the header a different height from a project that is. A spacer sized
           to match the tab row by hand held that invariant before, and had
           already drifted 1.5px off the tabs it was copying. */}
-      <div className="flex min-h-[26px] items-end justify-between gap-4">
+      <div className="flex min-h-[26px] items-end justify-between gap-3">
         {projectId === undefined ? (
-          <p className="min-w-0 truncate pb-1 text-xs text-text-tertiary">
+          <p className="min-w-0 truncate pb-1 text-small text-text-tertiary">
             {allProjectsSubtitle(projects?.length ?? 0, counts)}
           </p>
         ) : (
@@ -137,7 +137,10 @@ export function ProjectHeader(): ReactElement {
                 too — this corner holds the header's second line of context in
                 every state. The trimmed label is what you read; the full path
                 stays on the title for anyone who wants all of it. */}
-            <p title={project?.path} className="min-w-0 truncate pb-1 text-xs text-text-tertiary">
+            <p
+              title={project?.path}
+              className="min-w-0 truncate pb-1 text-small text-text-tertiary"
+            >
               {project?.path === undefined ? 'Loading…' : headerPathLabel(project.path)}
             </p>
           </>

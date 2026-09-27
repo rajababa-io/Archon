@@ -27,7 +27,7 @@ export function ThemeCustomiser({ value }: { value: ThemeInput }): ReactElement 
   const lifted = rawRatio !== null && rawRatio < AA;
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border py-3.5 pl-4">
+    <div className="flex flex-col gap-x-2.25 gap-y-1.75 border-t border-border py-2.25 pl-3">
       <ColorField
         label="Accent"
         hint="Used as a fill exactly as picked. Text derived from it is lifted to stay readable."
@@ -44,14 +44,14 @@ export function ThemeCustomiser({ value }: { value: ThemeInput }): ReactElement 
           set({ background });
         }}
       />
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[13px] font-medium text-text-primary">Contrast</div>
-          <div className="mt-0.5 text-[11.5px] text-text-tertiary">
+          <div className="text-body font-medium text-text-primary">Contrast</div>
+          <div className="mt-0.5 text-small text-text-tertiary">
             Spreads the surfaces apart. Text stays at {AA}:1 whatever this says.
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2.5">
+        <div className="flex shrink-0 items-center gap-2">
           <input
             type="range"
             min={0}
@@ -64,22 +64,18 @@ export function ThemeCustomiser({ value }: { value: ThemeInput }): ReactElement 
             }}
             className="w-[160px] accent-[color:var(--accent)]"
           />
-          <span className="w-7 text-right font-mono text-[11px] text-text-secondary tabular-nums">
+          <span className="w-7 text-right text-small text-text-secondary tabular-nums">
             {value.contrast}
           </span>
         </div>
       </div>
-      <p className="text-[11.5px] leading-relaxed text-text-tertiary">
+      <p className="text-small leading-relaxed text-text-tertiary">
         {lifted && brightRgb !== null && surfaceHover !== null ? (
           <>
-            Your accent reads at{' '}
-            <span className="font-mono text-warning">{rawRatio.toFixed(2)}:1</span> as text, below
-            the {AA}:1 floor, so labels use{' '}
-            <span className="font-mono" style={{ color: tokens['accent-bright'] }}>
-              {tokens['accent-bright']}
-            </span>{' '}
-            at{' '}
-            <span className="font-mono text-success">
+            Your accent reads at <span className="text-warning">{rawRatio.toFixed(2)}:1</span> as
+            text, below the {AA}:1 floor, so labels use{' '}
+            <span style={{ color: tokens['accent-bright'] }}>{tokens['accent-bright']}</span> at{' '}
+            <span className="text-success">
               {contrastRatio(brightRgb, surfaceHover).toFixed(2)}:1
             </span>
             . Fills keep the colour you chose.
@@ -87,8 +83,8 @@ export function ThemeCustomiser({ value }: { value: ThemeInput }): ReactElement 
         ) : (
           <>
             Your accent reads at{' '}
-            <span className="font-mono text-success">{rawRatio?.toFixed(2) ?? '—'}:1</span> as text.
-            No lift needed.
+            <span className="text-success">{rawRatio?.toFixed(2) ?? '—'}:1</span> as text. No lift
+            needed.
           </>
         )}
       </p>
@@ -113,10 +109,10 @@ function ColorField({
 }): ReactElement {
   const valid = parseHex(value) !== null;
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-text-primary">{label}</div>
-        <div className="mt-0.5 text-[11.5px] text-text-tertiary">{hint}</div>
+        <div className="text-body font-medium text-text-primary">{label}</div>
+        <div className="mt-0.5 text-small text-text-tertiary">{hint}</div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <input
@@ -136,7 +132,7 @@ function ColorField({
           onChange={e => {
             onChange(e.target.value.toUpperCase());
           }}
-          className="w-[92px] rounded-[8px] border bg-surface-inset px-2 py-1 font-mono text-[11px] text-text-primary"
+          className="w-[92px] rounded-[8px] border bg-surface-inset px-2 py-1 text-small text-text-primary"
           // Invalid mid-typing is normal, so it is marked rather than rejected:
           // the generator falls back and the app keeps rendering.
           style={{ borderColor: valid ? 'var(--border)' : 'var(--warning)' }}

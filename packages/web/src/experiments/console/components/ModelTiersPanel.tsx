@@ -106,14 +106,14 @@ export function ModelTiersPanel(): ReactElement {
   if (loadError !== undefined) {
     return (
       <SettingsSection title="Model Tiers">
-        <p className="font-mono text-[11px] text-error">{loadError.message}</p>
+        <p className="text-small text-error">{loadError.message}</p>
       </SettingsSection>
     );
   }
   if (form === null || providers === undefined || config === undefined) {
     return (
       <SettingsSection title="Model Tiers">
-        <p className="font-mono text-[11px] text-text-tertiary">Loading…</p>
+        <p className="text-small text-text-tertiary">Loading…</p>
       </SettingsSection>
     );
   }
@@ -148,17 +148,16 @@ export function ModelTiersPanel(): ReactElement {
 
   return (
     <SettingsSection title="Model Tiers">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <p className="min-w-[260px] flex-1 text-[12.5px] leading-relaxed text-text-tertiary">
-          Bundled workflows resolve <code className="font-mono">small</code> /{' '}
-          <code className="font-mono">medium</code> / <code className="font-mono">large</code> to
+      <div className="mb-2.5 flex flex-wrap items-start justify-between gap-x-2.25 gap-y-1.75">
+        <p className="min-w-[260px] flex-1 text-body leading-relaxed text-text-tertiary">
+          Bundled workflows resolve <code>small</code> / <code>medium</code> / <code>large</code> to
           these models. Leave a row on “Default” to use the next layer’s preset.
           {scope === 'user' ? ' Your rows override the install rows for runs you start.' : ''}
         </p>
         {userScopeAvailable ? <ScopeToggle scope={scope} onChange={setScope} /> : null}
       </div>
 
-      <div className="flex flex-col gap-[11px]">
+      <div className="flex flex-col gap-x-[8px] gap-y-[6.5px]">
         {TIER_ORDER.map(tier => {
           const row = form[tier];
           const unset = row.provider === '';
@@ -166,9 +165,9 @@ export function ModelTiersPanel(): ReactElement {
           return (
             <div
               key={tier}
-              className="flex flex-wrap items-center gap-[14px] rounded-xl border border-border bg-surface-elevated p-4"
+              className="flex flex-wrap items-center gap-x-[10.5px] gap-y-[8.5px] rounded-lg border border-border bg-surface-elevated p-4"
             >
-              <div className="w-[78px] shrink-0 text-[13.5px] font-bold capitalize text-text-primary">
+              <div className="w-[78px] shrink-0 text-body font-medium capitalize text-text-primary">
                 {tier}
               </div>
               <SelectShell className="w-[160px] shrink-0">
@@ -247,21 +246,19 @@ export function ModelTiersPanel(): ReactElement {
       </div>
 
       {TIER_ORDER.filter(t => form[t].provider !== '').length === 1 ? (
-        <p className="mt-3 font-mono text-[11px] text-text-tertiary">
+        <p className="mt-2 text-small text-text-tertiary">
           Heads up: only one tier is set{scope === 'user' ? ' for you' : ''} — runs asking for the
           other tiers fall back to the nearest configured preset.
         </p>
       ) : null}
 
-      <div className="mt-[18px] flex items-center justify-end gap-3">
-        {saveError !== null ? (
-          <span className="font-mono text-[11px] text-error">{saveError}</span>
-        ) : null}
+      <div className="mt-[11.5px] flex items-center justify-end gap-2.25">
+        {saveError !== null ? <span className="text-small text-error">{saveError}</span> : null}
         <button
           type="button"
           onClick={() => void onSave()}
           disabled={!dirty || saving}
-          className="brand-bar rounded-[10px] px-[18px] py-2.5 text-[13px] font-bold text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
+          className="brand-bar rounded-lg px-[14px] py-1.5 text-body font-medium text-white shadow-[0_8px_22px_-10px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-40 disabled:shadow-none"
         >
           {saving ? 'Saving…' : 'Save changes'}
         </button>

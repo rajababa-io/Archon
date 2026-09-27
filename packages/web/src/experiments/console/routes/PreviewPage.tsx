@@ -117,13 +117,13 @@ function Swatch({ role, cssVar, note }: SwatchProps): ReactElement {
     backgroundColor: `var(${cssVar})`,
   };
   return (
-    <div className="flex items-center gap-3 rounded border border-border bg-surface px-3 py-2">
+    <div className="flex items-center gap-2.25 rounded border border-border bg-surface px-3 py-1.25">
       <div style={chipStyle} className="h-10 w-10 shrink-0 rounded" aria-hidden="true" />
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-medium text-text-primary">{role}</div>
-        <div className="font-mono text-[10px] text-text-tertiary">{cssVar}</div>
+        <div className="text-large font-medium text-text-primary">{role}</div>
+        <div className="text-mini text-text-tertiary">{cssVar}</div>
         {note !== undefined ? (
-          <div className="mt-0.5 text-[11px] text-text-secondary">{note}</div>
+          <div className="mt-0.5 text-small text-text-secondary">{note}</div>
         ) : null}
       </div>
     </div>
@@ -138,10 +138,8 @@ function Section({
   children: ReactElement | ReactElement[];
 }): ReactElement {
   return (
-    <section className="flex flex-col gap-3">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.2em] text-text-tertiary">
-        {title}
-      </h2>
+    <section className="flex flex-col gap-x-2.25 gap-y-1.75">
+      <h2 className="text-small font-medium text-text-tertiary">{title}</h2>
       {children}
     </section>
   );
@@ -157,8 +155,8 @@ function BuilderPreview(): ReactElement {
   const [fixtureKey, setFixtureKey] = useState<string>('mixed');
   const definition = FIXTURES[fixtureKey];
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap gap-2">
+    <div className="flex flex-col gap-x-2 gap-y-1.25">
+      <div className="flex flex-wrap gap-x-2 gap-y-1.25">
         {BUILDER_FIXTURE_KEYS.map(key => (
           <button
             key={key}
@@ -166,7 +164,7 @@ function BuilderPreview(): ReactElement {
             onClick={(): void => {
               setFixtureKey(key);
             }}
-            className={`rounded border px-2.5 py-1 font-mono text-[11.5px] transition-colors ${
+            className={`rounded border px-2.5 py-1 text-small transition-colors ${
               key === fixtureKey
                 ? 'border-accent-bright/60 bg-surface-elevated text-text-primary'
                 : 'border-border bg-surface text-text-secondary hover:bg-surface-hover'
@@ -184,7 +182,7 @@ function BuilderPreview(): ReactElement {
           />
         ) : null}
       </div>
-      <p className="text-[11px] text-text-tertiary">
+      <p className="text-small text-text-tertiary">
         Fixture-backed only — no server I/O. Drag from the palette, connect nodes, edit in the
         inspector, and watch the YAML tab update.
       </p>
@@ -305,14 +303,14 @@ function AskBrokenSample(): ReactElement | null {
 export function PreviewPage(): ReactElement {
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <header className="border-b border-border px-6 py-4">
-        <h1 className="text-base font-medium text-text-primary">Preview · warm palette</h1>
-        <p className="text-xs text-text-tertiary">
+      <header className="border-b border-border px-4.75 py-2.5">
+        <h1 className="text-large font-medium text-text-primary">Preview · warm palette</h1>
+        <p className="text-small text-text-tertiary">
           Living reference. Not linked from nav. Visit /console/_preview.
         </p>
       </header>
 
-      <main className="mx-auto flex w-full max-w-[1000px] flex-col gap-10 px-6 py-8">
+      <main className="mx-auto flex w-full max-w-[1000px] flex-col gap-x-7.5 gap-y-6 px-4.75 py-5">
         <Section title="Files tab · three layouts to choose from">
           <FilesMock />
         </Section>
@@ -322,7 +320,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Run cards · every status">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-x-2 gap-y-1.25">
             {SAMPLE_RUNS.map(run => (
               <RunCard key={run.id} run={run} showProject={true} />
             ))}
@@ -330,7 +328,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Project tiles · hash-based colors">
-          <div className="flex flex-wrap gap-3 rounded border border-border bg-surface p-4">
+          <div className="flex flex-wrap gap-x-2.25 gap-y-1.75 rounded border border-border bg-surface p-4">
             {SAMPLE_PROJECTS.map((p, i) => (
               <ProjectTile
                 key={p.id}
@@ -343,14 +341,14 @@ export function PreviewPage(): ReactElement {
               />
             ))}
           </div>
-          <p className="text-[11px] text-text-tertiary">
+          <p className="text-small text-text-tertiary">
             Color seeded deterministically from project id. First tile shown as the
             currently-selected scope.
           </p>
         </Section>
 
         <Section title="Origin badges">
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-x-2 gap-y-1.25">
             <OriginBadge origin="web" />
             <OriginBadge origin="cli" />
             <OriginBadge origin="slack" />
@@ -362,34 +360,34 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Buttons">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-x-2.25 gap-y-1.75">
             <button
               type="button"
-              className="rounded bg-accent-bright px-3 py-1.5 text-sm font-medium text-white/95 transition-opacity hover:brightness-110"
+              className="rounded bg-accent-bright px-3 py-1.5 text-large font-medium text-white/95 transition-opacity hover:brightness-110"
             >
               Primary · Add project
             </button>
             <button
               type="button"
-              className="rounded border border-border bg-surface px-3 py-1.5 text-sm text-text-primary transition-colors hover:bg-surface-hover"
+              className="rounded border border-border bg-surface px-3 py-1.5 text-large text-text-primary transition-colors hover:bg-surface-hover"
             >
               Secondary · Cancel
             </button>
             <button
               type="button"
-              className="rounded px-3 py-1.5 text-sm text-error hover:bg-error/10"
+              className="rounded px-3 py-1.5 text-large text-error hover:bg-error/10"
             >
               Destructive · Remove
             </button>
             <button
               type="button"
-              className="rounded bg-success/20 px-3 py-1.5 text-sm font-medium text-success hover:bg-success/30"
+              className="rounded bg-success/20 px-3 py-1.5 text-large font-medium text-success hover:bg-success/30"
             >
               Approve
             </button>
             <button
               type="button"
-              className="rounded px-3 py-1.5 text-sm text-error hover:underline"
+              className="rounded px-3 py-1.5 text-large text-error hover:underline"
             >
               Reject
             </button>
@@ -397,7 +395,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Surfaces">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-2.25 gap-y-1.75">
             <Swatch role="Surface" cssVar="--surface" note="main content bg" />
             <Swatch role="Surface inset" cssVar="--surface-inset" note="rail, inner wells" />
             <Swatch
@@ -414,7 +412,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Text">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-x-2.25 gap-y-1.75">
             <Swatch role="Text primary" cssVar="--text-primary" />
             <Swatch role="Text secondary" cssVar="--text-secondary" />
             <Swatch role="Text tertiary" cssVar="--text-tertiary" />
@@ -422,7 +420,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Accent (primary CTAs only)">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-3 gap-x-2.25 gap-y-1.75">
             <Swatch
               role="Accent bright"
               cssVar="--accent-bright"
@@ -434,7 +432,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Status">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          <div className="grid grid-cols-2 gap-x-2.25 gap-y-1.75 md:grid-cols-3">
             <Swatch
               role="Running"
               cssVar="--running"
@@ -463,7 +461,7 @@ export function PreviewPage(): ReactElement {
         </Section>
 
         <Section title="Borders">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-x-2.25 gap-y-1.75">
             <Swatch role="Border" cssVar="--border" />
             <Swatch role="Border bright" cssVar="--border-bright" />
           </div>

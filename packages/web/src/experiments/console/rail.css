@@ -107,8 +107,7 @@
   width: 26px;
   flex: 0 0 auto;
   text-align: right;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   font-variant-numeric: tabular-nums;
 }
 .rail-counts .cell.live {
@@ -170,8 +169,7 @@
   align-items: center;
   gap: 3px;
   flex: 0 0 auto;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   font-variant-numeric: tabular-nums;
 }
 .rail-cnt svg {
@@ -359,7 +357,6 @@
 .cust-lab {
   font-size: var(--text-body);
   color: var(--text-tertiary);
-  letter-spacing: 0.02em;
 }
 .cust-hex {
   font-family: ui-monospace, Menlo, monospace;
@@ -470,9 +467,9 @@
   color: var(--text-tertiary);
 }
 .pick-count {
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   color: var(--text-tertiary);
-  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 .pick-grid {
   display: grid;
@@ -484,7 +481,7 @@
 }
 .pick-grid.is-emoji {
   grid-template-columns: repeat(10, 1fr);
-  font-size: 18px;
+  font-size: var(--text-title);
 }
 .pick-grid button {
   aspect-ratio: 1;
@@ -576,7 +573,7 @@
    value here establishes a clipping box, which cuts off the resize handle
    straddling the right border. */
 .chatlist {
-  width: 236px;
+  width: 280px;
   flex: 0 0 auto;
   min-height: 0;
   padding: 8px 8px 8px 0;
@@ -588,8 +585,9 @@
   gap: 7px;
   padding: 2px 8px 7px;
 }
-/* A chat row is taller than a rail row because it carries two lines. It still
-   pins its height rather than letting the contents decide — see .rail-row.
+/* A chat row is ONE line — title, then its time on the right — so the list
+   scans like the project rail above it. It pins its height rather than letting
+   the contents decide — see .rail-row.
 
    The left gutter is 26px, not the rail's 17px. Two marks live in that column
    — the drag grip on hover, and the status dot — and at 17px the grip's right
@@ -598,32 +596,24 @@
    things and they have to read as two objects. 26px leaves 10px between
    them. */
 .chatlist .rail-row {
-  height: auto;
-  min-height: calc(17px + 2 * var(--row-y));
-  padding: 6px 8px 6px 26px;
-  align-items: flex-start;
+  padding: 0 8px 0 26px;
+}
+.chatlist .rail-row > button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 .chatlist .rail-grip-dots {
   left: 6px;
 }
 .chatlist .rail-row .rail-text {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  white-space: normal;
-  overflow: hidden;
+  flex: 1 1 auto;
+  min-width: 0;
   line-height: 1.35;
 }
 /* The kind glyph is smaller and quieter than a project's, so a chat and a
-   project read as different KINDS of thing rather than as two lists.
-
-   Centred on the title's FIRST LINE the same way `.chat-status` is, and for
-   the same reason: the row is `align-items: flex-start`, so a glyph with no
-   slot sits at the top of a two-line card rather than on the line it belongs
-   to. A hand-tuned `margin-top: 1px` was doing that job and was 1.28px out —
-   the line box is 17.55px and a 15px glyph needs 2.28px above it. Derived from
-   the two values that decide where the line sits, so it follows a change to
-   the title's size or leading instead of drifting from it. */
+   project read as different KINDS of thing rather than as two lists. A slot
+   one title line tall, so the glyph centres on the line it labels. */
 .chat-kind {
   flex: 0 0 auto;
   width: 15px;
@@ -641,12 +631,10 @@
    primitives/chat-status.ts, so the casing is a rendering choice made here
    rather than a second copy of the vocabulary. */
 .chat-stamp {
-  display: block;
+  flex: 0 0 auto;
   text-transform: lowercase;
-  margin-top: 2px;
-  font-size: var(--text-micro);
+  font-size: var(--text-small);
   color: var(--text-tertiary);
-  letter-spacing: 0.3px;
   font-variant-numeric: tabular-nums;
 }
 /* A dashed row, not a button in a header. It sits where a new chat will
@@ -661,7 +649,7 @@
   margin-bottom: 6px;
   border: 1px dashed var(--border-bright);
   border-radius: var(--radius-control, 6px);
-  font-size: var(--text-micro);
+  font-size: var(--text-mini);
   color: var(--text-tertiary);
   transition:
     color 0.11s,
@@ -733,12 +721,9 @@
 }
 .chatlist .rail-row > .chat-status {
   width: 8px;
-  /* Centred on the title's FIRST LINE, not on the row — a dot centred on a
-     two-line card floats between them. Derived from the two values that
-     decide where that line sits (see `.chatlist .rail-row .rail-text`)
-     rather than hand-tuned as a margin: a slot exactly one line box tall,
-     with `place-items: center` doing the arithmetic. Change the title's size
-     or leading and the dot follows instead of drifting. */
+  /* A slot exactly one title line tall, with `place-items: center` doing the
+     arithmetic, so a change to the title's size or leading moves the dot with
+     it instead of leaving it to drift. */
   height: calc(var(--text-body) * 1.35);
 }
 /* Every state is this dot. Size and radius are stated ONCE, so no state can
@@ -846,20 +831,16 @@
 
 /* Owner section label.
    The account a run of projects belongs to, in the console's section voice:
-   mono, uppercase, micro, tertiary — the same register as WHERE THIS PROJECT
-   IS and NEEDS YOU on the Overview, so it reads as a label rather than as
-   another row you could click. Indented to the icon column so the project
+   small, medium weight, tertiary, as written — so it reads as a label rather
+   than as another row you could click. Indented to the icon column so the project
    names below start where the label does. */
 .rail-owner {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 10px 7px 3px 17px;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  font-size: var(--text-small);
+  font-weight: 500;
   color: var(--text-tertiary);
   line-height: 1;
   user-select: none;

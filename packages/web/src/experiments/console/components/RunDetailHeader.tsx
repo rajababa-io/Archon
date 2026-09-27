@@ -49,7 +49,7 @@ export function RunDetailHeader({
   };
 
   return (
-    <header className="relative flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-surface-elevated px-6 py-2.5">
+    <header className="relative flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.25 border-b border-border bg-surface-elevated px-4.75 py-1.5">
       {/* Brand thread along the bottom edge — anchors the detail view. */}
       <span
         aria-hidden
@@ -60,11 +60,11 @@ export function RunDetailHeader({
           sit in the layout header above this bar, so repeating them here as a
           breadcrumb would say the same thing twice; what is missing without
           this is the step back out to the run list. */}
-      <div className="flex items-center gap-2 font-mono text-[12px]">
+      <div className="flex items-center gap-2 text-body">
         <Link
           to={projectId === undefined ? '/console' : `/console/p/${projectId}`}
           title={`Back to ${projectName} runs`}
-          className="rounded-[7px] border px-2 py-[3px] text-[11px] font-semibold text-text-secondary transition-colors hover:text-text-primary"
+          className="rounded-[7px] border px-2 py-[3px] text-small font-medium text-text-secondary transition-colors hover:text-text-primary"
           style={{ borderColor: 'var(--border-bright)' }}
         >
           <span aria-hidden>←</span> Runs
@@ -72,11 +72,11 @@ export function RunDetailHeader({
         <button
           type="button"
           onClick={() => void copyRunId()}
-          className="flex items-center gap-1 font-semibold transition-opacity hover:opacity-80"
+          className="flex items-center gap-1 font-medium transition-opacity hover:opacity-80"
           title="Copy full run id"
         >
           <span className="brand-text">{shortRunId(run.id)}</span>
-          <span aria-hidden className="font-mono text-[10px] text-text-tertiary">
+          <span aria-hidden className="text-mini text-text-tertiary">
             ⧉
           </span>
         </button>
@@ -102,9 +102,7 @@ export function RunDetailHeader({
             }`}
           />
         )}
-        <span
-          className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${statusTextClass[run.status]}`}
-        >
+        <span className={`text-small font-medium ${statusTextClass[run.status]}`}>
           {runStatusLabel(run)}
         </span>
       </div>
@@ -112,22 +110,19 @@ export function RunDetailHeader({
       <RunOutcomeBadge outcome={run.outcome} />
 
       {/* Workflow name */}
-      <span className="text-sm font-medium text-text-primary">{run.workflow}</span>
+      <span className="text-large font-medium text-text-primary">{run.workflow}</span>
 
       {/* Origin */}
       <OriginBadge origin={run.origin} />
 
       {/* Cost + elapsed + IDE — right-aligned */}
-      <div className="ml-auto flex items-center gap-3">
+      <div className="ml-auto flex items-center gap-2.25">
         {typeof run.costUsd === 'number' ? (
-          <span
-            className="font-mono text-[12px] tabular-nums text-text-secondary"
-            title="Total agent cost"
-          >
+          <span className="text-body tabular-nums text-text-secondary" title="Total agent cost">
             {formatCost(run.costUsd)}
           </span>
         ) : null}
-        <span className="font-mono text-[12px] tabular-nums text-text-tertiary">{elapsed}</span>
+        <span className="text-body tabular-nums text-text-tertiary">{elapsed}</span>
         {canOpenIde && run.workingPath !== null ? (
           <button
             type="button"
@@ -138,7 +133,7 @@ export function RunDetailHeader({
             aria-label="Open in IDE"
             className="rounded p-1 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
           >
-            <span aria-hidden className="font-mono text-[12px] leading-none">
+            <span aria-hidden className="text-body leading-none">
               ↗
             </span>
           </button>
@@ -150,9 +145,9 @@ export function RunDetailHeader({
           TODO(#1882): add a "from chat →" link back to the originating
           conversation once the console chat route supports deep-linking. */}
       {run.userMessage !== '' ? (
-        <div className="flex w-full min-w-0 items-baseline gap-2 text-[12px]">
-          <span className="shrink-0 font-mono text-text-tertiary">input</span>
-          <span className="truncate font-mono text-text-secondary" title={run.userMessage}>
+        <div className="flex w-full min-w-0 items-baseline gap-2 text-body">
+          <span className="shrink-0 text-text-tertiary">input</span>
+          <span className="truncate text-text-secondary" title={run.userMessage}>
             {run.userMessage}
           </span>
         </div>

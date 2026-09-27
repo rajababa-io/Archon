@@ -72,14 +72,14 @@ export function RunActionBar({ run }: RunActionBarProps): ReactElement | null {
   if (run.status === 'paused') return null;
 
   return (
-    <div className="sticky bottom-0 border-t border-border bg-surface px-[30px] py-3.5">
-      <div className="flex items-center gap-[11px]">
+    <div className="sticky bottom-0 border-t border-border bg-surface px-[23.5px] py-2.25">
+      <div className="flex items-center gap-[8px]">
         {run.status === 'running' ? (
           <button
             type="button"
             onClick={() => void call('cancel')}
             disabled={busy !== null}
-            className="rounded-[9px] border border-error/40 px-[18px] py-2.5 text-[13px] font-semibold text-error transition-colors hover:bg-error/10 disabled:opacity-50"
+            className="rounded-lg border border-error/40 px-[14px] py-1.5 text-body font-medium text-error transition-colors hover:bg-error/10 disabled:opacity-50"
           >
             {busy === 'cancel' ? 'Cancelling…' : 'Cancel'}
           </button>
@@ -90,7 +90,7 @@ export function RunActionBar({ run }: RunActionBarProps): ReactElement | null {
             type="button"
             onClick={() => void call('abandon')}
             disabled={busy !== null}
-            className="rounded-[9px] border bg-surface-elevated px-[18px] py-2.5 text-[13px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+            className="rounded-lg border bg-surface-elevated px-[14px] py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
             style={{ borderColor: 'var(--border-bright)' }}
           >
             {busy === 'abandon' ? 'Abandoning…' : 'Abandon'}
@@ -103,7 +103,7 @@ export function RunActionBar({ run }: RunActionBarProps): ReactElement | null {
               type="button"
               onClick={() => void call('resume')}
               disabled={busy !== null}
-              className="brand-bar rounded-[9px] px-5 py-2.5 text-[13px] font-bold text-white shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none"
+              className="brand-bar rounded-lg px-4 py-1.5 text-body font-medium text-white shadow-[0_6px_18px_-8px_color-mix(in_oklch,var(--accent),transparent_20%)] transition-all hover:-translate-y-px hover:brightness-110 disabled:translate-y-0 disabled:opacity-50 disabled:shadow-none"
             >
               {busy === 'resume' ? 'Resuming…' : 'Resume'}
             </button>
@@ -111,7 +111,7 @@ export function RunActionBar({ run }: RunActionBarProps): ReactElement | null {
               type="button"
               onClick={() => void call('abandon')}
               disabled={busy !== null}
-              className="rounded-[9px] border bg-surface-elevated px-[18px] py-2.5 text-[13px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
+              className="rounded-lg border bg-surface-elevated px-[14px] py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
               // Inline because the console scope's wildcard border-color rule
               // repaints Tailwind border utilities (see theme.css).
               style={{ borderColor: 'var(--border-bright)' }}
@@ -125,19 +125,19 @@ export function RunActionBar({ run }: RunActionBarProps): ReactElement | null {
           <button
             type="button"
             onClick={onRerun}
-            className="rounded-[9px] border bg-surface-elevated px-[18px] py-2.5 text-[13px] font-semibold text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
+            className="rounded-lg border bg-surface-elevated px-[14px] py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary"
             style={{ borderColor: 'var(--border-bright)' }}
           >
             Re-run
           </button>
         ) : run.status === 'completed' || run.status === 'cancelled' ? (
-          <span className="text-[12px] text-text-tertiary">
+          <span className="text-body text-text-tertiary">
             This run is {run.status}. Choose a project to start a new run.
           </span>
         ) : null}
 
         {error !== null ? (
-          <span className="ml-2 whitespace-pre-line font-mono text-[11px] text-error">{error}</span>
+          <span className="ml-2 whitespace-pre-line text-small text-error">{error}</span>
         ) : null}
       </div>
     </div>
