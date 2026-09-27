@@ -105,28 +105,26 @@ export interface ChatStatusSets {
   /**
    * Chats where the agent has declared the work finished and no human has
    * answered. Ranked BELOW `done` — a human's judgement settles the question
-   * the claim was asking — and ABOVE `unread` and `idle`, because "someone should decide" is
+   * the claim was asking — and ABOVE `waiting`, `unread` and `idle`, because "someone should decide" is
    * strictly more than "nothing is pending".
    */
   ready: ReadonlySet<string>;
   /**
    * Chats with a workflow run executing, read off the project's runs feed.
-   * Ranked directly above `waiting`: a run is the chat's own work carrying on
-   * without a turn, where a CI watch is the server waiting on someone else.
+   * Ranked directly above idle.
    */
   running: ReadonlySet<string>;
   /**
    * Chats with an open CI watch, read from /api/health beside `working`.
-   * Ranked LAST, directly above idle: it exists to stop idle claiming nothing
-   * is pending while the server is waiting on CI for the chat, and every other
-   * state says something more specific.
+   * Ranked directly above `unread`: a chat waiting on CI is still in flight,
+   * which is more to know than that it has replied since you last read it.
    */
   waiting: ReadonlySet<string>;
 }
 
 /**
- * Exclusive and ordered: awaiting, working, ready, unread, done, running,
- * waiting, idle — except that `done` always outranks `ready`.
+ * Exclusive and ordered: awaiting, working, ready, waiting, unread, done,
+ * running, idle — except that `done` always outranks `ready`.
  *
  * The two live states come first because they are about right now, and right
  * now outranks a claim about the work as a whole. Unread sits under both: a
@@ -157,12 +155,15 @@ export interface ChatStatusSets {
  * than simply ranking done above both: that would put done over unread too,
  * and a closed chat that has since spoken is worth looking at again.
  *
- * `waiting` replaces idle and nothing else. Under `working` because a turn in
- * flight is the chat itself moving, where waiting is the server holding a
- * promise for it; under `ready` because a chat that has claimed its work landed
- * is asking for a decision, which outranks a background wait.
+ * `waiting` sits above unread (#209). A chat that calls `watch_ci` almost always
+ * ends its turn with a reply, so ranked under unread the purple state was
+ * almost never seen, and a chat still in flight read as one merely unopened.
+ * Under `working` because a turn in flight is the chat itself moving, where
+ * waiting is the server holding a promise for it; under `ready` because a chat
+ * that has claimed its work landed is asking for a decision, which outranks a
+ * background wait.
  *
- * `running` sits with `waiting` and for the same reason: before it existed, a
+ * `running` takes idle's place: before it existed, a
  * chat whose run was executing for twenty minutes said "Nothing is running in
  * this chat" (#188). A run paused on a gate is not here — `awaiting` has it, and
  * outranks — so only a run that is actually moving lands in this set.
@@ -174,10 +175,10 @@ export function chatStatus(conversationId: string, sets: ChatStatusSets): ChatSt
   if (sets.awaiting.has(conversationId)) return 'awaiting';
   if (sets.working.has(conversationId)) return 'working';
   if (sets.ready.has(conversationId) && !sets.done.has(conversationId)) return 'ready';
+  if (sets.waiting.has(conversationId)) return 'waiting';
   if (sets.unread.has(conversationId)) return 'unread';
   if (sets.done.has(conversationId)) return 'done';
   if (sets.running.has(conversationId)) return 'running';
-  if (sets.waiting.has(conversationId)) return 'waiting';
   return 'idle';
 }
 
