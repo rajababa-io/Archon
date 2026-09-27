@@ -25,7 +25,7 @@ function getLog(): ReturnType<typeof createLogger> {
 
 const MAX_USER_CHARS = 1500;
 const MAX_REPLY_CHARS = 4000;
-const MAX_SUGGESTION_CHARS = 160;
+const MAX_SUGGESTION_CHARS = 120;
 const TIME_LIMIT_MS = 20_000;
 /** What the model answers when no next step is obvious. */
 const NO_SUGGESTION = 'NONE';
@@ -45,17 +45,19 @@ export function buildSuggestionPrompt(userMessage: string, reply: string): strin
   const user =
     userMessage.length <= MAX_USER_CHARS ? userMessage : `${userMessage.slice(0, MAX_USER_CHARS)}…`;
   return [
-    'Predict the next message the user will send to their coding agent in this chat.',
+    'You are guessing the next instruction a developer will type to their coding agent.',
+    "Below is their last message and the agent's reply.",
     '',
-    'Rules:',
-    '- Write it as the user would type it: short, imperative, at most 12 words.',
-    '- Only suggest a step that clearly follows from the exchange below.',
-    `- If no next step is obvious, answer exactly ${NO_SUGGESTION}.`,
-    '- Output only the message itself — no quotes, no explanation, no preamble.',
+    "Write the developer's most likely next instruction, in the developer's own words:",
+    '- an imperative command to the agent, 2 to 10 words, like "run the tests" or "open a PR for this";',
+    "- never repeat or paraphrase the agent's reply, and never ask the agent a question back;",
+    '- only a step that clearly follows from the reply.',
+    `If no next step is clear, answer exactly ${NO_SUGGESTION}.`,
+    'Output only the instruction — no quotes, no label, no explanation.',
     '',
-    '<user_message>',
+    '<developer_message>',
     user,
-    '</user_message>',
+    '</developer_message>',
     '',
     '<agent_reply>',
     tail(reply, MAX_REPLY_CHARS),
