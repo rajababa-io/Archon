@@ -113,6 +113,43 @@ test('the composer accepts text and enables Send only once there is some', async
   await expect(send).toBeEnabled();
 });
 
+test('New chat puts the cursor in the message box', async ({ page }) => {
+  await openChatScreen(page);
+  const composer = page.getByPlaceholder('Message the agent…');
+  // Focus elsewhere first: a composer that was already focused would pass
+  // without New chat doing anything.
+  await page.getByLabel('Chats').getByText(OTHER_CHAT_TITLE).click();
+  await expect(composer).not.toBeFocused();
+
+  await page.getByRole('button', { name: 'New chat' }).first().click();
+  await expect(composer).toBeFocused();
+
+  // Typing straight away lands in the box — the point of the focus.
+  await page.keyboard.type('straight in');
+  await expect(composer).toHaveValue('straight in');
+});
+
+test('C starts a new chat, and does nothing while typing', async ({ page }) => {
+  await openChatScreen(page);
+  const composer = page.getByPlaceholder('Message the agent…');
+  await expect(page.getByText(USER_TURN_TEXT)).toBeVisible();
+
+  // Typed into the box, `c` is a letter, not a shortcut.
+  await composer.fill('');
+  await composer.focus();
+  await page.keyboard.type('cc');
+  await expect(composer).toHaveValue('cc');
+  await expect(page.getByText(USER_TURN_TEXT)).toBeVisible();
+
+  // Outside the box it opens a new chat, and the cursor lands in its composer
+  // without the key itself being typed there.
+  await composer.blur();
+  await page.keyboard.press('c');
+  await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue('');
+});
+
 test('an ask block renders as clickable cards, not a JSON code block', async ({ page }) => {
   await openChatScreen(page);
 

@@ -474,7 +474,7 @@ export function ConversationRail({
           // still lands in that chat, so waiting buys nothing and makes the
           // project feel single-threaded when it is not.
           disabled={activeConvId === null}
-          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat'}
+          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat (C)'}
           className="newchat disabled:cursor-default disabled:opacity-40"
         >
           <Plus className="h-[13px] w-[13px]" />

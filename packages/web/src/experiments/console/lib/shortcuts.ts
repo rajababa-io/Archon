@@ -31,6 +31,7 @@ export const SHORTCUTS: readonly KeymapGroup[] = [
   {
     title: 'Chat',
     entries: [
+      { keys: ['c'], label: 'Start a new chat' },
       { keys: ['ArrowUp'], label: 'In the composer: previous sent message' },
       { keys: ['ArrowDown'], label: 'In the composer: next sent message, then your draft' },
       { keys: ['Alt+ArrowUp'], label: 'Scroll the transcript up' },
