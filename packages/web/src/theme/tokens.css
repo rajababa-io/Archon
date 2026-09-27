@@ -85,6 +85,10 @@
      to read as one. Declared anyway so a mark never has to know which mode it
      is in. See the light block for what this is for. */
   --warning-mark: var(--warning);
+  /* Waiting on CI — the one status hue nothing else uses. The status strip
+     prints its label in this colour too, so it is solved for text (4.5:1),
+     not just for the dot: 4.68:1 on the darkest dark-preset hover. */
+  --ci-wait: oklch(0.72 0.15 300);
   --error: oklch(0.68 0.2 18);
   --error-soft: oklch(0.68 0.2 18 / 0.14);
   /* The other six --node-* live in the production :root in index.css with one
@@ -115,6 +119,7 @@
      --surface-hover, the darkest thing either sits on: 3.23:1 there, 3.83:1
      on --surface. Raising it further is what breaks it. */
   --warning-mark: oklch(0.61 0.14 78);
+  --ci-wait: oklch(0.52 0.18 300); /* 4.67:1 on the darkest light-preset hover */
   --error: oklch(0.52 0.21 18); /* .54 read 4.34:1 on a stacked error tint */
   --error-soft: oklch(0.52 0.21 18 / 0.1);
   /* See the dark block: all six fail in light mode at their :root values.

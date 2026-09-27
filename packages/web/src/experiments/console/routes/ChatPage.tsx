@@ -25,6 +25,7 @@ import {
   chatStatus,
   completedIds,
   readyIds,
+  runningRunIds,
   unreadIds,
   type ChatStatus,
 } from '../primitives/chat-status';
@@ -430,6 +431,8 @@ export function ChatPage(): ReactElement {
         : skill.listRuns({ codebaseId: projectId, limit: skill.RUN_LIMIT })
   );
   const awaitingIds = useMemo(() => awaitingInputIds(runFeed?.runs ?? []), [runFeed?.runs]);
+  // The same feed, for chats whose run is moving rather than asking.
+  const runningIds = useMemo(() => runningRunIds(runFeed?.runs ?? []), [runFeed?.runs]);
 
   /**
    * Is THIS chat working?
@@ -516,8 +519,8 @@ export function ChatPage(): ReactElement {
   // The tab badge and the opt-in notification, read off every chat in the rail
   // by the rail's own rules. Clicking a notification opens its chat here.
   const railStatuses = useMemo(
-    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, ciWaiting),
-    [conversations, railLiveIds, awaitingIds, ciWaiting]
+    () => chatStatuses(conversations ?? [], railLiveIds, awaitingIds, runningIds, ciWaiting),
+    [conversations, railLiveIds, awaitingIds, runningIds, ciWaiting]
   );
   const railTitles = useMemo(
     () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
@@ -536,6 +539,7 @@ export function ChatPage(): ReactElement {
           unread,
           done: doneIds,
           ready: readySet,
+          running: runningIds,
           waiting: ciWaiting,
         });
 
@@ -836,6 +840,7 @@ export function ChatPage(): ReactElement {
         openCount={counts.open}
         liveIds={railLiveIds}
         awaitingIds={awaitingIds}
+        runningIds={runningIds}
         ciWaitingIds={ciWaiting}
         activeConvId={activeConvId}
         onSelect={selectConversation}

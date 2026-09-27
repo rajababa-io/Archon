@@ -44,10 +44,12 @@ describe('chatStatuses', () => {
         chat('asked', { askCandidate: ASK }),
         chat('new', { lastReadAt: null }),
         chat('ci'),
+        chat('run'),
         chat('quiet'),
       ],
       new Set(['work', 'gate']),
       new Set(['gate']),
+      new Set(['run', 'gate']),
       new Set(['ci'])
     );
     expect(Object.fromEntries(got)).toEqual({
@@ -56,6 +58,7 @@ describe('chatStatuses', () => {
       asked: 'awaiting',
       new: 'unread',
       ci: 'waiting',
+      run: 'running',
       quiet: 'idle',
     });
   });
