@@ -32,6 +32,7 @@ import { findCommandFiles } from '../utils/commands';
 import { createLogger } from '@archon/paths';
 import { resolveDefaultAssistant } from '../config/resolve-assistant';
 import { resolveGitHubTokenFromEnv } from '../github-auth/config';
+import { resolveBotGitHubToken } from '../workflows/store-adapter';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -100,18 +101,40 @@ const SELF_HOSTED_FORGE: {
   { label: 'forgejo', envVar: 'GITEA_TOKEN', buildCredentials: tokenAsUsername },
 ];
 
+/** Hostname of a clone URL, or of a bare host/path like "github.com/owner/repo". */
+function cloneHostname(url: string): string {
+  const parsed = safeParseUrl(url);
+  // Bare host/path form: take everything before the first slash
+  return parsed ? parsed.hostname.toLowerCase() : url.split('/')[0].toLowerCase();
+}
+
+/**
+ * GitHub App mode: clone credentials from the installation that covers this
+ * repository, or `undefined` so the caller falls back to env-var tokens.
+ *
+ * Asks `resolveBotGitHubToken` — the same owner the workflow engine asks — so
+ * cloning and running cannot disagree about which token speaks for a
+ * repository. It never throws: PAT and solo installs (no provider registered),
+ * a repository the App is not installed on, and a failed call all return
+ * `undefined`, and each of those should fall back to whatever env token exists.
+ *
+ * `x-access-token` is the username GitHub documents for installation tokens,
+ * and the one the credential helper already sends.
+ */
+async function resolveGitHubAppCredentials(
+  url: string,
+  owner: string,
+  repo: string
+): Promise<CloneCredentials | undefined> {
+  if (cloneHostname(url) !== 'github.com') return undefined;
+  const token = await resolveBotGitHubToken(owner, repo);
+  return token ? { username: 'x-access-token', password: token } : undefined;
+}
+
 /** Resolve forge-specific credentials without adding them to the repository URL. */
 export function resolveForgeAuth(url: string): CloneCredentials | undefined {
-  // Extract hostname from URL (or from bare host/path like "github.com/owner/repo")
-  let hostname: string;
-  const parsed = safeParseUrl(url);
-  if (parsed) {
-    hostname = parsed.hostname.toLowerCase();
-  } else {
-    // Bare host/path form: take everything before the first slash
-    hostname = url.split('/')[0].toLowerCase();
-  }
-  const authority = parsed?.host.toLowerCase() ?? hostname;
+  const hostname = cloneHostname(url);
+  const authority = safeParseUrl(url)?.host.toLowerCase() ?? hostname;
 
   // 1. Exact known-host match
   for (const entry of FORGE_AUTH) {
@@ -384,8 +407,11 @@ export async function cloneRepository(repoUrl: string): Promise<RegisterResult> 
   // Create project structure (source/, worktrees/, artifacts/, logs/)
   await ensureProjectStructure(ownerName, repoName);
 
-  // Resolve authentication without putting it into the repository URL.
-  const credentials = resolveForgeAuth(workingUrl);
+  // Resolve authentication without putting it into the repository URL. An App
+  // installation covering the repository wins; env-var tokens are the fallback.
+  const credentials =
+    (await resolveGitHubAppCredentials(workingUrl, ownerName, repoName)) ??
+    resolveForgeAuth(workingUrl);
 
   // Remove the empty source/ directory before cloning (git clone requires non-existent target)
   try {
