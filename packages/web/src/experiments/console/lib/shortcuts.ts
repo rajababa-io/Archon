@@ -37,7 +37,10 @@ export const SHORTCUTS: readonly KeymapGroup[] = [
       { keys: ['ArrowDown'], label: 'In the composer: next sent message, then your draft' },
       { keys: ['Alt+ArrowUp'], label: 'Scroll the transcript up' },
       { keys: ['Alt+ArrowDown'], label: 'Scroll the transcript down' },
-      { keys: ['Escape'], label: 'Leave the composer — then ↑/↓ scroll too' },
+      {
+        keys: ['Escape'],
+        label: 'Stop the agent while it works; otherwise leave the composer — then ↑/↓ scroll too',
+      },
     ],
   },
   {
