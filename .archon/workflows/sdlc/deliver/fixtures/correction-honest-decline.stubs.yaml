@@ -47,6 +47,7 @@ review__publish:
   action: correct
   findings_summary: "stub: 1 Important finding open"
   report: { type: archon_artifact, run_id: "fixture-run", path: "review/report.md" }
+pr-open: "pr-open: https://github.com/example/repo/pull/1 is still open."
 ci-note: "CI state for this pull request (head abc123def456): Concluded non-green checks:\n- test (windows-latest) (fail)"
 fix__implement:
   done: true
