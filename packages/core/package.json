@@ -150,6 +150,9 @@
       "src/db/resource-slots.postgres.integration.test.ts"
     ],
     [
+      "src/db/conversations.title-pin.postgres.integration.test.ts"
+    ],
+    [
       "src/db/workflows.adoption-timestamp.integration.test.ts"
     ],
     [
@@ -169,6 +172,9 @@
     ],
     [
       "src/services/title-generator.test.ts"
+    ],
+    [
+      "src/services/title-generator.pin-race.integration.test.ts"
     ],
     [
       "src/services/run-live-owner.test.ts"

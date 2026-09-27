@@ -10,8 +10,8 @@ mock.module('@archon/paths', () => ({
 }));
 
 // DB mock
-const mockUpdateConversationTitle = mock(() => Promise.resolve()) as Mock<
-  (id: string, title: string) => Promise<void>
+const mockUpdateConversationTitle = mock(() => Promise.resolve(true)) as Mock<
+  (id: string, title: string, writer: string) => Promise<boolean>
 >;
 
 const mockGetConversationById = mock(() =>
@@ -87,7 +87,7 @@ describe('title-generator', () => {
       getType: () => 'claude',
     }));
 
-    mockUpdateConversationTitle.mockImplementation(() => Promise.resolve());
+    mockUpdateConversationTitle.mockImplementation(() => Promise.resolve(true));
 
     // Clean env
     delete process.env.TITLE_GENERATION_MODEL;
@@ -97,7 +97,11 @@ describe('title-generator', () => {
     await generateAndSetTitle('conv-1', 'Summarize the README of this project', 'claude', '/tmp');
 
     expect(mockUpdateConversationTitle).toHaveBeenCalledTimes(1);
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-1', 'Summarize Project README');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-1',
+      'Summarize Project README',
+      'automation'
+    );
   });
 
   test('strips surrounding quotes from AI response', async () => {
@@ -108,7 +112,11 @@ describe('title-generator', () => {
 
     await generateAndSetTitle('conv-2', 'Summarize the README', 'claude', '/tmp');
 
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-2', 'Summarize Project README');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-2',
+      'Summarize Project README',
+      'automation'
+    );
   });
 
   test('strips "Title: " prefix from AI response', async () => {
@@ -119,7 +127,11 @@ describe('title-generator', () => {
 
     await generateAndSetTitle('conv-3', 'Debug the auth module', 'claude', '/tmp');
 
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-3', 'Debug Auth Module');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-3',
+      'Debug Auth Module',
+      'automation'
+    );
   });
 
   test('handles empty AI response with fallback to truncated message', async () => {
@@ -129,7 +141,11 @@ describe('title-generator', () => {
 
     await generateAndSetTitle('conv-4', 'Help me debug this issue', 'claude', '/tmp');
 
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-4', 'Help me debug this issue');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-4',
+      'Help me debug this issue',
+      'automation'
+    );
   });
 
   test('handles AI client error with fallback to truncated message', async () => {
@@ -140,7 +156,11 @@ describe('title-generator', () => {
     await generateAndSetTitle('conv-5', 'Fix the login bug', 'claude', '/tmp');
 
     // Should not throw — fire-and-forget safe
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-5', 'Fix the login bug');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-5',
+      'Fix the login bug',
+      'automation'
+    );
   });
 
   test('includes workflow name in prompt when provided', async () => {
@@ -261,7 +281,11 @@ describe('title-generator', () => {
 
     await generateAndSetTitle('conv-13', 'Debug the auth module', 'claude', '/tmp');
 
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-13', 'Debug Auth Module');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-13',
+      'Debug Auth Module',
+      'automation'
+    );
   });
 
   test('strips trailing punctuation from title', async () => {
@@ -272,7 +296,11 @@ describe('title-generator', () => {
 
     await generateAndSetTitle('conv-14', 'Fix the login bug', 'claude', '/tmp');
 
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-14', 'Fix Login Bug');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-14',
+      'Fix Login Bug',
+      'automation'
+    );
   });
 
   test('takes only first line of multi-line response', async () => {
@@ -283,7 +311,11 @@ describe('title-generator', () => {
 
     await generateAndSetTitle('conv-15', 'Fix the login bug', 'claude', '/tmp');
 
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('conv-15', 'Fix Login Bug');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'conv-15',
+      'Fix Login Bug',
+      'automation'
+    );
   });
 
   test('long user message is truncated in fallback', async () => {
@@ -319,7 +351,11 @@ describe('reconsiderConversationTitle', () => {
 
   test('renames when the model says the topic moved', async () => {
     await reconsiderConversationTitle('c1', 'claude', '/tmp');
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('c1', 'SSE Fan-out And Deploy');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'c1',
+      'SSE Fan-out And Deploy',
+      'automation'
+    );
   });
 
   test('KEEP leaves the title alone', async () => {
@@ -346,7 +382,11 @@ describe('reconsiderConversationTitle', () => {
       Promise.resolve({ id: 'c1', title: 'My Own Name', title_pinned: true })
     );
     await reconsiderConversationTitle('c1', 'claude', '/tmp', { force: true });
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('c1', 'SSE Fan-out And Deploy');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'c1',
+      'SSE Fan-out And Deploy',
+      'request'
+    );
   });
 
   test('off the turn boundary it does not call the model at all', async () => {
@@ -358,7 +398,11 @@ describe('reconsiderConversationTitle', () => {
   test('force ignores the turn boundary', async () => {
     mockListMessages.mockImplementation(() => Promise.resolve(manyTurns.slice(0, 6)));
     await reconsiderConversationTitle('c1', 'claude', '/tmp', { force: true });
-    expect(mockUpdateConversationTitle).toHaveBeenCalledWith('c1', 'SSE Fan-out And Deploy');
+    expect(mockUpdateConversationTitle).toHaveBeenCalledWith(
+      'c1',
+      'SSE Fan-out And Deploy',
+      'request'
+    );
   });
 
   test('an untitled chat is left to generateAndSetTitle', async () => {

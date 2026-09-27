@@ -3290,7 +3290,11 @@ export function registerApiRoutes(
 
         // Set placeholder title immediately so the sidebar never shows "Untitled conversation"
         const placeholderTitle = message.length > 60 ? message.slice(0, 60) + '...' : message;
-        await conversationDb.updateConversationTitle(conversation.id, placeholderTitle);
+        await conversationDb.updateConversationTitle(
+          conversation.id,
+          placeholderTitle,
+          'automation'
+        );
 
         // Generate proper AI title for non-command messages (fire-and-forget, overwrites placeholder).
         // Resolve the `small` tier (config tiers + per-user prefs) instead of the raw
@@ -3348,11 +3352,9 @@ export function registerApiRoutes(
       }
       if (title !== undefined) {
         // A rename through this route is a person choosing the name, so pin it.
-        // Automatic re-titling reads the pin and leaves the row alone; without
-        // it the two writers are indistinguishable and the edit gets undone.
-        await conversationDb.updateConversationTitle(conv.id, title.slice(0, 255), {
-          pinned: true,
-        });
+        // Automatic titling only writes unpinned rows; without the pin the two
+        // writers are indistinguishable and the edit gets undone.
+        await conversationDb.updateConversationTitle(conv.id, title.slice(0, 255), 'person');
       }
       // `undefined` leaves the color alone; an explicit `null` clears it. The
       // schema already constrained any non-null value to CONVERSATION_COLORS.

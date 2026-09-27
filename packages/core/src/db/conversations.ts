@@ -385,33 +385,51 @@ export async function touchConversation(id: string): Promise<void> {
 }
 
 /**
- * Update conversation title.
+ * Who is writing a conversation title, which decides what the pin means to it.
  *
- * `pinned` records WHO chose the name, and is the whole reason automatic
- * re-titling is safe to turn on: the AI generator and a human rename write this
- * same column through this same function, so without it nothing downstream can
- * tell a generated title from one someone typed, and the re-titler would
- * silently undo the rename.
+ * - `person` — a human rename. Writes and pins.
+ * - `automation` — a generated title (first title, placeholder, drift re-title).
+ *   Writes only while the row is unpinned, and leaves the pin as it is.
+ * - `request` — an explicit re-title a person asked for (`/retitle`). Overrides
+ *   the pin without clearing it: the chat was still named on a person's say-so.
+ */
+export type ConversationTitleWriter = 'person' | 'automation' | 'request';
+
+/**
+ * Update conversation title. Returns whether the title was written.
  *
- * Pass `true` from a human rename, leave it out for a generated one. It is
- * never cleared here — a chat a person has named stays named until they say
- * otherwise, and an explicit re-title request overrides the flag rather than
- * erasing what it records.
+ * `title_pinned` records WHO chose the name, and is the whole reason automatic
+ * titling is safe: the AI generator and a human rename write this same column,
+ * so without it nothing downstream can tell a generated title from one someone
+ * typed, and automation would silently undo the rename.
+ *
+ * For `automation` the pin check is part of the UPDATE itself, not a read made
+ * beforehand. Title generation waits seconds on a model call, and a rename that
+ * lands during that wait has to win — a check made before the call cannot see
+ * it, and the write would overwrite the rename while the row still says pinned.
+ * `false` means the row is pinned and nothing was written.
+ *
+ * The pin is never cleared here — a chat a person has named stays named until
+ * they say otherwise.
  */
 export async function updateConversationTitle(
   id: string,
   title: string,
-  options?: { pinned?: boolean }
-): Promise<void> {
+  writer: ConversationTitleWriter
+): Promise<boolean> {
   const dialect = getDialect();
-  const pin = options?.pinned === true ? ', title_pinned = TRUE' : '';
+  const pin = writer === 'person' ? ', title_pinned = TRUE' : '';
+  // NULL means not pinned (migration 029), so `IS NOT TRUE`, never `= FALSE`.
+  const guard = writer === 'automation' ? ' AND title_pinned IS NOT TRUE' : '';
   const result = await pool.query(
-    `UPDATE remote_agent_conversations SET title = $1${pin}, updated_at = ${dialect.now()} WHERE id = $2`,
+    `UPDATE remote_agent_conversations SET title = $1${pin}, updated_at = ${dialect.now()} WHERE id = $2${guard}`,
     [title, id]
   );
-  if (result.rowCount === 0) {
-    throw new ConversationNotFoundError(id);
-  }
+  if (result.rowCount > 0) return true;
+  // Zero rows under the guard is either "pinned" or "no such chat"; only the
+  // second is an error.
+  if (writer === 'automation' && (await getConversationById(id))) return false;
+  throw new ConversationNotFoundError(id);
 }
 
 /**
