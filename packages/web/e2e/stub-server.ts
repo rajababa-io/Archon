@@ -26,6 +26,8 @@ import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AUTH_STATUS,
+  CHANGES,
+  CHANGE_DIFF,
   CHATS,
   CHAT_ID,
   CONVERSATION_COUNTS,
@@ -174,6 +176,18 @@ function handleApi(
       locked: false,
     };
     sendJson(res, lock);
+    return;
+  }
+
+  // The chat checkout's uncommitted changes, and one file's diff. Every chat
+  // shows the same fixed change set; the panel test reads one file of it.
+  if (method === 'GET' && /^\/api\/conversations\/[^/]+\/changes$/.test(path)) {
+    sendJson(res, CHANGES);
+    return;
+  }
+  if (method === 'GET' && /^\/api\/conversations\/[^/]+\/changes\/diff$/.test(path)) {
+    if (url.searchParams.get('path') === CHANGE_DIFF.path) sendJson(res, CHANGE_DIFF);
+    else sendJson(res, { error: 'No uncommitted change at that path' }, 404);
     return;
   }
 

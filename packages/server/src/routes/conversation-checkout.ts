@@ -11,6 +11,7 @@
 import { resolve } from 'path';
 import { getGitCheckoutIdentity, readCheckoutStatus, toRepoPath } from '@archon/git';
 import { createLogger } from '@archon/paths';
+import { conversationCheckout } from '@archon/core/utils/conversation-checkout';
 
 /** Lazy — a module-level logger would capture the level before tests set it. */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -55,9 +56,10 @@ export async function readConversationCheckout(
   git: CheckoutGit = defaultGit
 ): Promise<ConversationCheckout> {
   // No project: the orchestrator runs the chat in Archon's own workspaces
-  // folder, which has no branch worth naming.
-  if (codebase === null) return UNKNOWN;
-  const path = conversation.cwd ?? codebase.default_cwd;
+  // folder, which has no branch worth naming. The folder rule itself is
+  // `conversationCheckout`, the one the orchestrator's turn uses.
+  const path = conversationCheckout(conversation, codebase ?? undefined);
+  if (path === null || codebase === null) return UNKNOWN;
 
   const [status, identity] = await Promise.allSettled([
     git.readCheckoutStatus(toRepoPath(path)),

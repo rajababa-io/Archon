@@ -1487,6 +1487,120 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/conversations/{id}/changes': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Uncommitted changes in the checkout this chat's agent runs in */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Changed files with line counts */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ConversationChangesResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/conversations/{id}/changes/diff': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One changed file's diff in this chat's checkout */
+    get: {
+      parameters: {
+        query: {
+          path: string;
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Unified diff */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ConversationChangeDiffResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/conversations/{id}/queue/{queuedId}': {
     parameters: {
       query?: never;
@@ -4662,6 +4776,39 @@ export interface components {
         size: number;
       }[];
       queuedAt: string;
+    };
+    ConversationChangesResponse:
+      | {
+          /** @enum {string} */
+          state: 'unscoped';
+        }
+      | {
+          /** @enum {string} */
+          state: 'not-a-checkout';
+          path: string;
+        }
+      | {
+          /** @enum {string} */
+          state: 'ok';
+          root: string;
+          branch: string | null;
+          head: string | null;
+          files: components['schemas']['ChangedFile'][];
+          omitted: number;
+        };
+    ChangedFile: {
+      path: string;
+      oldPath: string | null;
+      /** @enum {string} */
+      status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'other';
+      additions: number | null;
+      deletions: number | null;
+    };
+    ConversationChangeDiffResponse: {
+      path: string;
+      patch: string;
+      binary: boolean;
+      truncated: boolean;
     };
     WithdrawQueuedResponse:
       | {

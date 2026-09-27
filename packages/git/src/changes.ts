@@ -1,0 +1,311 @@
+import { readFile, stat } from 'fs/promises';
+import { join } from 'path';
+import { execFileAsync } from './exec';
+
+/**
+ * The uncommitted changes in one checkout, read without touching it.
+ *
+ * "Uncommitted" means the working tree and the index against HEAD, plus
+ * untracked files that are not ignored — everything `git status` would show,
+ * which is what an agent's edits look like before anything commits them.
+ * Committed work is not here: which base a branch should be compared with is a
+ * judgement (dev? main? the fork point?), and this module does not guess it.
+ *
+ * READ-ONLY by construction: every git call runs with `--no-optional-locks`,
+ * so not even the index stat-refresh that `git status` normally writes back is
+ * performed. The caller is a viewer, and a viewer that took `index.lock` could
+ * fail an agent's own `git add` mid-turn.
+ */
+
+/** Git's well-known empty tree — the base for a repository with no commit yet. */
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
+
+/** Rows listed before the rest are counted but not named. */
+export const MAX_CHANGED_FILES = 500;
+/** Diff lines returned for one file before it is cut, with a note saying so. */
+export const MAX_DIFF_LINES = 4000;
+/** An untracked file larger than this is listed but not counted or shown. */
+const MAX_UNTRACKED_BYTES = 1024 * 1024;
+/** Output ceiling for one git call. Past it the call fails and is reported as too large. */
+const MAX_GIT_OUTPUT = 32 * 1024 * 1024;
+
+export type ChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked' | 'other';
+
+export interface ChangedFile {
+  /** Path relative to the repository root, after any rename. */
+  path: string;
+  /** The path before a rename; null for every other status. */
+  oldPath: string | null;
+  status: ChangeStatus;
+  /** Lines added and removed; null for a binary or oversized file. */
+  additions: number | null;
+  deletions: number | null;
+}
+
+export interface WorkingChanges {
+  /** The repository root the paths are relative to. */
+  root: string;
+  /** Checked-out branch, or null when HEAD is detached or unborn. */
+  branch: string | null;
+  /** HEAD commit, or null in a repository with no commit yet. */
+  head: string | null;
+  files: ChangedFile[];
+  /** How many changed files exist beyond `files` — listed as a count, not by name. */
+  omitted: number;
+}
+
+export interface FileDiff {
+  path: string;
+  /** Unified diff text, possibly cut at MAX_DIFF_LINES. Empty for a binary file. */
+  patch: string;
+  binary: boolean;
+  /** True when `patch` is not the whole diff. */
+  truncated: boolean;
+}
+
+/** Why a directory has no changes to read. */
+export class NotAGitCheckoutError extends Error {
+  constructor(readonly path: string) {
+    super(`Not a git checkout: ${path}`);
+    this.name = 'NotAGitCheckoutError';
+  }
+}
+
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync('git', ['--no-optional-locks', '-C', cwd, ...args], {
+    maxBuffer: MAX_GIT_OUTPUT,
+    timeout: 30_000,
+  });
+  return stdout;
+}
+
+/** Resolve the repository root and HEAD, or throw NotAGitCheckoutError. */
+async function repoState(
+  cwd: string
+): Promise<{ root: string; head: string | null; branch: string | null }> {
+  let root: string;
+  try {
+    root = (await git(cwd, ['rev-parse', '--show-toplevel'])).trim();
+  } catch {
+    // rev-parse fails for a missing directory and for a plain one alike; both
+    // mean there is no checkout here to show changes for.
+    throw new NotAGitCheckoutError(cwd);
+  }
+  // `--verify -q` exits non-zero without a message when HEAD is unborn.
+  const head = await git(root, ['rev-parse', '--verify', '-q', 'HEAD']).then(
+    out => out.trim() || null,
+    () => null
+  );
+  const branch = await git(root, ['symbolic-ref', '-q', '--short', 'HEAD']).then(
+    out => out.trim() || null,
+    () => null
+  );
+  return { root, head, branch };
+}
+
+/** Split `-z` output into its NUL-separated fields, dropping the trailing empty one. */
+function nulFields(out: string): string[] {
+  const fields = out.split('\0');
+  if (fields.at(-1) === '') fields.pop();
+  return fields;
+}
+
+function statusFromLetter(letter: string): ChangeStatus {
+  switch (letter[0]) {
+    case 'A':
+      return 'added';
+    case 'M':
+      return 'modified';
+    case 'D':
+      return 'deleted';
+    case 'R':
+      return 'renamed';
+    default:
+      return 'other';
+  }
+}
+
+/**
+ * Tracked changes: `--name-status` for what happened to each path, `--numstat`
+ * for how many lines. Two calls because neither format carries both, and both
+ * list the same paths in the same order under the same `-M`.
+ */
+async function trackedChanges(root: string, base: string): Promise<ChangedFile[]> {
+  const [nameStatus, numstat] = await Promise.all([
+    git(root, ['diff', '--name-status', '-z', '-M', base]),
+    git(root, ['diff', '--numstat', '-z', '-M', base]),
+  ]);
+
+  const files: ChangedFile[] = [];
+  const statusFields = nulFields(nameStatus);
+  for (let i = 0; i < statusFields.length; ) {
+    const letter = statusFields[i++] ?? '';
+    if (letter.startsWith('R') || letter.startsWith('C')) {
+      const oldPath = statusFields[i++] ?? '';
+      const path = statusFields[i++] ?? '';
+      files.push({
+        path,
+        oldPath,
+        status: statusFromLetter(letter),
+        additions: null,
+        deletions: null,
+      });
+    } else {
+      const path = statusFields[i++] ?? '';
+      files.push({
+        path,
+        oldPath: null,
+        status: statusFromLetter(letter),
+        additions: null,
+        deletions: null,
+      });
+    }
+  }
+
+  // numstat -z: "add\tdel\tpath\0", or for a rename "add\tdel\t\0old\0new\0".
+  // Binary files report "-" for both counts, which stays null.
+  const counts = new Map<string, { additions: number | null; deletions: number | null }>();
+  const numFields = nulFields(numstat);
+  for (let i = 0; i < numFields.length; ) {
+    const [add = '-', del = '-', inlinePath = ''] = (numFields[i++] ?? '').split('\t');
+    let path = inlinePath;
+    if (path === '') {
+      i++; // old path
+      path = numFields[i++] ?? '';
+    }
+    counts.set(path, {
+      additions: add === '-' ? null : Number(add),
+      deletions: del === '-' ? null : Number(del),
+    });
+  }
+  for (const file of files) {
+    const c = counts.get(file.path);
+    if (c) {
+      file.additions = c.additions;
+      file.deletions = c.deletions;
+    }
+  }
+  return files;
+}
+
+/** Read an untracked file for display, or say why it cannot be shown. */
+async function readUntracked(
+  root: string,
+  path: string
+): Promise<{ kind: 'text'; text: string } | { kind: 'binary' } | { kind: 'too-large' }> {
+  const full = join(root, path);
+  const info = await stat(full);
+  if (!info.isFile()) return { kind: 'binary' };
+  if (info.size > MAX_UNTRACKED_BYTES) return { kind: 'too-large' };
+  const buffer = await readFile(full);
+  // A NUL byte is git's own binary heuristic, and the byte that would corrupt a JSON body.
+  if (buffer.includes(0)) return { kind: 'binary' };
+  return { kind: 'text', text: buffer.toString('utf-8') };
+}
+
+function lineCount(text: string): number {
+  if (text === '') return 0;
+  const lines = text.split('\n').length;
+  return text.endsWith('\n') ? lines - 1 : lines;
+}
+
+async function untrackedChanges(root: string): Promise<ChangedFile[]> {
+  const out = await git(root, ['ls-files', '--others', '--exclude-standard', '-z']);
+  return Promise.all(
+    nulFields(out).map(async (path): Promise<ChangedFile> => {
+      let additions: number | null = null;
+      try {
+        const read = await readUntracked(root, path);
+        if (read.kind === 'text') additions = lineCount(read.text);
+      } catch {
+        // Vanished between the listing and the read — an agent mid-edit. The
+        // row stays, uncounted, rather than failing the whole listing.
+      }
+      return {
+        path,
+        oldPath: null,
+        status: 'untracked',
+        additions,
+        deletions: additions === null ? null : 0,
+      };
+    })
+  );
+}
+
+/** List every uncommitted change in the checkout at `cwd`. */
+export async function readWorkingChanges(cwd: string): Promise<WorkingChanges> {
+  const { root, head, branch } = await repoState(cwd);
+  const [tracked, untracked] = await Promise.all([
+    trackedChanges(root, head ?? EMPTY_TREE),
+    untrackedChanges(root),
+  ]);
+  const all = [...tracked, ...untracked].sort((a, b) => a.path.localeCompare(b.path));
+  return {
+    root,
+    branch,
+    head,
+    files: all.slice(0, MAX_CHANGED_FILES),
+    omitted: Math.max(0, all.length - MAX_CHANGED_FILES),
+  };
+}
+
+function cutPatch(patch: string): { patch: string; truncated: boolean } {
+  const lines = patch.split('\n');
+  if (lines.length <= MAX_DIFF_LINES) return { patch, truncated: false };
+  return { patch: lines.slice(0, MAX_DIFF_LINES).join('\n') + '\n', truncated: true };
+}
+
+function untrackedPatch(path: string, text: string): string {
+  const count = lineCount(text);
+  const body = text
+    .split('\n')
+    .slice(0, count)
+    .map(line => `+${line}`)
+    .join('\n');
+  const noEol = text !== '' && !text.endsWith('\n') ? '\n\\ No newline at end of file' : '';
+  return (
+    `diff --git a/${path} b/${path}\nnew file\n--- /dev/null\n+++ b/${path}\n` +
+    (count > 0 ? `@@ -0,0 +1,${String(count)} @@\n${body}${noEol}\n` : '')
+  );
+}
+
+/**
+ * The diff of one changed file.
+ *
+ * Takes the ChangedFile row rather than a bare path on purpose: the caller
+ * must have found the path in `readWorkingChanges` first, so this can only
+ * ever show a file git itself reported as changed — never an arbitrary path
+ * a request named.
+ */
+export async function readWorkingFileDiff(cwd: string, file: ChangedFile): Promise<FileDiff> {
+  const { root, head } = await repoState(cwd);
+
+  if (file.status === 'untracked') {
+    const read = await readUntracked(root, file.path);
+    if (read.kind === 'binary')
+      return { path: file.path, patch: '', binary: true, truncated: false };
+    if (read.kind === 'too-large')
+      return { path: file.path, patch: '', binary: false, truncated: true };
+    return { path: file.path, binary: false, ...cutPatch(untrackedPatch(file.path, read.text)) };
+  }
+
+  // numstat reports "-" for a binary file's counts, so a tracked row with no
+  // counts is binary — decided from git's structured output, not its prose.
+  if (file.additions === null) {
+    return { path: file.path, patch: '', binary: true, truncated: false };
+  }
+
+  const paths = file.oldPath !== null ? [file.oldPath, file.path] : [file.path];
+  let patch: string;
+  try {
+    patch = await git(root, ['diff', '-M', head ?? EMPTY_TREE, '--', ...paths]);
+  } catch (error) {
+    // Past MAX_GIT_OUTPUT the diff is refused rather than read whole: showing a
+    // note beats freezing the panel on a generated file.
+    if ((error as { code?: string }).code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER') {
+      return { path: file.path, patch: '', binary: false, truncated: true };
+    }
+    throw error;
+  }
+  return { path: file.path, binary: false, ...cutPatch(patch) };
+}

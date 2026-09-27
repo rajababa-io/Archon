@@ -15,6 +15,8 @@ import {
   ASK_QUESTION,
   ASK_SECOND_OPTION_LABEL,
   ASSISTANT_PROSE,
+  CHANGED_FILE,
+  CHANGED_LINE,
   CHAT_TITLE,
   OTHER_CHAT_TEXT,
   OTHER_CHAT_TITLE,
@@ -192,4 +194,28 @@ test('an answer the server queues shows once, as queued', async ({ page }) => {
 
   // The card's own title, plus the queued bubble. A third is the echo.
   await expect(page.getByText(ASK_QUESTION)).toHaveCount(2);
+});
+
+test('the Changes panel lists changed files with counts and shows a diff', async ({ page }) => {
+  await openChatScreen(page);
+
+  // Collapsed by default, carrying the count — so it is findable without
+  // taking the chat's width.
+  const tab = page.getByRole('button', { name: 'Show changes (2 files)' });
+  await expect(tab).toBeVisible();
+  await tab.click();
+
+  const panel = page.getByRole('complementary', { name: 'Changes' });
+  const row = panel.getByRole('button', { name: new RegExp(CHANGED_FILE) });
+  await expect(row).toBeVisible();
+  // The counts, not just the name: a list of bare paths says nothing about size.
+  await expect(row).toContainText('+2');
+  await expect(row).toContainText('−1');
+
+  // The diff itself, by a line only the diff holds.
+  await row.click();
+  await expect(panel.getByText(CHANGED_LINE)).toBeVisible();
+
+  // Read-only: nothing in the panel stages, reverts, or commits.
+  await expect(panel.getByRole('button', { name: /stage|revert|commit|discard/i })).toHaveCount(0);
 });

@@ -1,0 +1,193 @@
+/**
+ * Uncommitted changes against real git.
+ *
+ * The Changes panel's whole claim is "this is what git says changed", so the
+ * tests run git for real: the `-z` field layouts, the rename pairing between
+ * `--name-status` and `--numstat`, and the binary "-" counts are git's
+ * behavior, not something a mock could assert.
+ */
+import { describe, expect, test } from 'bun:test';
+import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { trackTempRoots } from '@archon/paths/test-utils';
+import {
+  MAX_DIFF_LINES,
+  NotAGitCheckoutError,
+  readWorkingChanges,
+  readWorkingFileDiff,
+  type ChangedFile,
+} from './changes';
+
+const trackTempRoot = trackTempRoots();
+
+function git(cwd: string, ...args: string[]): string {
+  const result = Bun.spawnSync(['git', '-c', 'user.email=t@e.com', '-c', 'user.name=T', ...args], {
+    cwd,
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
+  }
+  return result.stdout.toString().trim();
+}
+
+function repo(): string {
+  const root = trackTempRoot(mkdtempSync(join(tmpdir(), 'working-changes-')));
+  git(root, 'init', '-q', '-b', 'main');
+  writeFileSync(join(root, 'kept.txt'), 'one\ntwo\nthree\n');
+  writeFileSync(join(root, 'gone.txt'), 'bye\n');
+  writeFileSync(join(root, 'moved.txt'), 'a\nb\nc\nd\ne\nf\ng\nh\n');
+  git(root, 'add', '.');
+  git(root, 'commit', '-q', '-m', 'base');
+  return root;
+}
+
+function row(files: ChangedFile[], path: string): ChangedFile {
+  const found = files.find(f => f.path === path);
+  if (!found) throw new Error(`no row for ${path}: ${JSON.stringify(files)}`);
+  return found;
+}
+
+describe('readWorkingChanges', () => {
+  test('lists modified, deleted, renamed, staged-new and untracked files with counts', async () => {
+    const root = repo();
+    writeFileSync(join(root, 'kept.txt'), 'one\n2\nthree\nfour\n');
+    git(root, 'rm', '-q', 'gone.txt');
+    git(root, 'mv', 'moved.txt', 'renamed.txt');
+    writeFileSync(join(root, 'staged.txt'), 'x\n');
+    git(root, 'add', 'staged.txt');
+    writeFileSync(join(root, 'fresh.txt'), 'l1\nl2\nl3');
+    writeFileSync(join(root, '.gitignore'), 'ignored.txt\n');
+    writeFileSync(join(root, 'ignored.txt'), 'nope\n');
+
+    const changes = await readWorkingChanges(root);
+
+    expect(changes.branch).toBe('main');
+    expect(changes.head).toMatch(/^[0-9a-f]{40}$/);
+    expect(changes.omitted).toBe(0);
+    expect(row(changes.files, 'kept.txt')).toMatchObject({
+      status: 'modified',
+      additions: 2,
+      deletions: 1,
+    });
+    expect(row(changes.files, 'gone.txt')).toMatchObject({
+      status: 'deleted',
+      additions: 0,
+      deletions: 1,
+    });
+    expect(row(changes.files, 'renamed.txt')).toMatchObject({
+      status: 'renamed',
+      oldPath: 'moved.txt',
+      additions: 0,
+      deletions: 0,
+    });
+    expect(row(changes.files, 'staged.txt')).toMatchObject({ status: 'added', additions: 1 });
+    expect(row(changes.files, 'fresh.txt')).toMatchObject({
+      status: 'untracked',
+      additions: 3,
+      deletions: 0,
+    });
+    expect(changes.files.some(f => f.path === 'ignored.txt')).toBe(false);
+  });
+
+  test('a clean checkout has no rows', async () => {
+    const changes = await readWorkingChanges(repo());
+    expect(changes.files).toEqual([]);
+  });
+
+  test('reports from the repository root when given a subdirectory', async () => {
+    const root = repo();
+    const sub = join(root, 'sub');
+    Bun.spawnSync(['mkdir', sub]);
+    writeFileSync(join(sub, 'deep.txt'), 'deep\n');
+    const changes = await readWorkingChanges(sub);
+    expect(changes.files.map(f => f.path)).toEqual(['sub/deep.txt']);
+  });
+
+  test('works in a repository with no commit yet', async () => {
+    const root = trackTempRoot(mkdtempSync(join(tmpdir(), 'working-changes-unborn-')));
+    git(root, 'init', '-q', '-b', 'main');
+    writeFileSync(join(root, 'a.txt'), 'a\n');
+    git(root, 'add', 'a.txt');
+    const changes = await readWorkingChanges(root);
+    expect(changes.head).toBeNull();
+    expect(row(changes.files, 'a.txt')).toMatchObject({ status: 'added', additions: 1 });
+  });
+
+  test('refuses a directory that is not a checkout', async () => {
+    const plain = trackTempRoot(mkdtempSync(join(tmpdir(), 'working-changes-plain-')));
+    await expect(readWorkingChanges(plain)).rejects.toBeInstanceOf(NotAGitCheckoutError);
+  });
+
+  test('leaves the index untouched', async () => {
+    const root = repo();
+    writeFileSync(join(root, 'kept.txt'), 'changed\n');
+    const index = join(root, '.git', 'index');
+    const before = readFileSync(index);
+    const mtime = statSync(index).mtimeMs;
+    await readWorkingChanges(root);
+    expect(readFileSync(index).equals(before)).toBe(true);
+    expect(statSync(index).mtimeMs).toBe(mtime);
+  });
+});
+
+describe('readWorkingFileDiff', () => {
+  test('shows a tracked file diff against HEAD', async () => {
+    const root = repo();
+    writeFileSync(join(root, 'kept.txt'), 'one\n2\nthree\n');
+    const { files } = await readWorkingChanges(root);
+    const diff = await readWorkingFileDiff(root, row(files, 'kept.txt'));
+    expect(diff.binary).toBe(false);
+    expect(diff.truncated).toBe(false);
+    expect(diff.patch).toContain('-two');
+    expect(diff.patch).toContain('+2');
+  });
+
+  test('shows an untracked file as all additions', async () => {
+    const root = repo();
+    writeFileSync(join(root, 'fresh.txt'), 'l1\nl2');
+    const { files } = await readWorkingChanges(root);
+    const diff = await readWorkingFileDiff(root, row(files, 'fresh.txt'));
+    expect(diff.patch).toContain('@@ -0,0 +1,2 @@\n+l1\n+l2\n\\ No newline at end of file');
+  });
+
+  test('shows a rename with both paths', async () => {
+    const root = repo();
+    git(root, 'mv', 'moved.txt', 'renamed.txt');
+    const { files } = await readWorkingChanges(root);
+    const diff = await readWorkingFileDiff(root, row(files, 'renamed.txt'));
+    expect(diff.patch).toContain('rename from moved.txt');
+    expect(diff.patch).toContain('rename to renamed.txt');
+  });
+
+  test('marks binary files instead of returning their bytes', async () => {
+    const root = repo();
+    writeFileSync(join(root, 'blob.bin'), Buffer.from([0, 1, 2, 0]));
+    git(root, 'add', 'blob.bin');
+    writeFileSync(join(root, 'loose.bin'), Buffer.from([0, 9, 0]));
+    const { files } = await readWorkingChanges(root);
+    expect(row(files, 'blob.bin').additions).toBeNull();
+    expect(await readWorkingFileDiff(root, row(files, 'blob.bin'))).toMatchObject({
+      binary: true,
+      patch: '',
+    });
+    expect(await readWorkingFileDiff(root, row(files, 'loose.bin'))).toMatchObject({
+      binary: true,
+      patch: '',
+    });
+  });
+
+  test('cuts a long diff and says so', async () => {
+    const root = repo();
+    const big = Array.from({ length: MAX_DIFF_LINES + 50 }, (_, i) => `line ${String(i)}`).join(
+      '\n'
+    );
+    writeFileSync(join(root, 'kept.txt'), big);
+    const { files } = await readWorkingChanges(root);
+    const diff = await readWorkingFileDiff(root, row(files, 'kept.txt'));
+    expect(diff.truncated).toBe(true);
+    expect(diff.patch.split('\n').length).toBeLessThanOrEqual(MAX_DIFF_LINES + 1);
+  });
+});

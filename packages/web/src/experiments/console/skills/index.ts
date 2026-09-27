@@ -22,6 +22,7 @@ export * from './startRun';
 export * from './messages';
 export * from './conversations';
 export * from './checkout';
+export * from './changes';
 export * from './envVars';
 export * from './settings';
 export * from './providers';

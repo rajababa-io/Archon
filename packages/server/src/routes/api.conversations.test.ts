@@ -1,5 +1,5 @@
 import { describe, test, expect, mock, beforeAll, afterAll } from 'bun:test';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OpenAPIHono } from '@hono/zod-openapi';
@@ -20,6 +20,7 @@ const mockFindConversationByPlatformId = mock(
       platform_type: string;
       deleted_at: Date | null;
       codebase_id: string | null;
+      cwd?: string | null;
     }
 );
 const mockSoftDeleteConversation = mock(async (_id: string) => {});
@@ -123,9 +124,12 @@ mock.module('@archon/core/db/messages', () => ({
     async (_ids: readonly string[]) => new Map<string, { role: string; content: string }>()
   ),
 }));
+const mockGetCodebase = mock(
+  async (_id: string) => null as null | { id: string; default_cwd: string }
+);
 mock.module('@archon/core/db/codebases', () => ({
   listCodebases: mock(async () => [{ default_cwd: '/tmp/project' }]),
-  getCodebase: mock(async () => null),
+  getCodebase: mockGetCodebase,
 }));
 
 import { registerApiRoutes } from './api';
@@ -1251,5 +1255,99 @@ describe('POST /api/conversations with file attachments', () => {
 
     const response = await app.request('/api/conversations', { method: 'POST', body: form });
     expect(response.status).toBe(200);
+  });
+});
+
+describe('GET /api/conversations/:id/changes', () => {
+  let repo = '';
+  let plain = '';
+
+  const git = (...args: string[]): void => {
+    const r = Bun.spawnSync(['git', '-c', 'user.email=t@e.com', '-c', 'user.name=T', ...args], {
+      cwd: repo,
+    });
+    if (r.exitCode !== 0) throw new Error(`git ${args.join(' ')}: ${r.stderr.toString()}`);
+  };
+
+  beforeAll(async () => {
+    repo = await mkdtemp(join(tmpdir(), 'conv-changes-'));
+    plain = await mkdtemp(join(tmpdir(), 'conv-changes-plain-'));
+    git('init', '-q', '-b', 'main');
+    await writeFile(join(repo, 'a.txt'), 'one\n');
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    await writeFile(join(repo, 'a.txt'), 'one\ntwo\n');
+    await mkdir(join(repo, 'wt'));
+  });
+  afterAll(async () => {
+    await removeTempTree(repo);
+    await removeTempTree(plain);
+  });
+
+  const scoped = (cwd: string | null) => ({ ...MOCK_CONV, codebase_id: 'cb-1', cwd });
+
+  test("lists the changes in the project's checkout", async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => scoped(null));
+    mockGetCodebase.mockImplementationOnce(async () => ({ id: 'cb-1', default_cwd: repo }));
+
+    const response = await listApp().request('/api/conversations/web-test-abc/changes');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      state: string;
+      files: { path: string; additions: number }[];
+    };
+    expect(body.state).toBe('ok');
+    expect(body.files).toEqual([
+      expect.objectContaining({ path: 'a.txt', status: 'modified', additions: 1, deletions: 0 }),
+    ]);
+  });
+
+  test("reads the conversation's own cwd over the project root", async () => {
+    // The agent runs in `cwd` when the chat is bound to one; a panel that read
+    // the project root instead would show a tree the agent never touched.
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => scoped(plain));
+    mockGetCodebase.mockImplementationOnce(async () => ({ id: 'cb-1', default_cwd: repo }));
+
+    const response = await listApp().request('/api/conversations/web-test-abc/changes');
+    expect(await response.json()).toEqual({ state: 'not-a-checkout', path: plain });
+  });
+
+  test('a chat with no project says so rather than guessing a directory', async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => MOCK_CONV);
+
+    const response = await listApp().request('/api/conversations/web-test-abc/changes');
+    expect(await response.json()).toEqual({ state: 'unscoped' });
+  });
+
+  test('an unknown conversation is a 404', async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => null);
+    const response = await listApp().request('/api/conversations/web-nope/changes');
+    expect(response.status).toBe(404);
+  });
+
+  test('returns the diff of a listed file', async () => {
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => scoped(null));
+    mockGetCodebase.mockImplementationOnce(async () => ({ id: 'cb-1', default_cwd: repo }));
+
+    const response = await listApp().request(
+      '/api/conversations/web-test-abc/changes/diff?path=a.txt'
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { patch: string; truncated: boolean };
+    expect(body.patch).toContain('+two');
+    expect(body.truncated).toBe(false);
+  });
+
+  test('refuses a path git does not list as changed', async () => {
+    // The route only ever reads files git reported, so a request cannot name
+    // its way to anything else — including a path outside the checkout.
+    for (const path of ['../../etc/passwd', 'unchanged.txt']) {
+      mockFindConversationByPlatformId.mockImplementationOnce(async () => scoped(null));
+      mockGetCodebase.mockImplementationOnce(async () => ({ id: 'cb-1', default_cwd: repo }));
+      const response = await listApp().request(
+        `/api/conversations/web-test-abc/changes/diff?path=${encodeURIComponent(path)}`
+      );
+      expect(response.status).toBe(404);
+    }
   });
 });
