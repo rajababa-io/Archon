@@ -6072,6 +6072,7 @@ export interface components {
       nudgeAtPercent: number;
       handoffAtPercent: number;
       autoHandoff: boolean;
+      ciWaitAlarmMinutes: number;
     };
     UpdateAssistantConfigBody: {
       assistant?: string;
@@ -6095,6 +6096,7 @@ export interface components {
       nudgeAtPercent?: number;
       handoffAtPercent?: number;
       autoHandoff?: boolean;
+      ciWaitAlarmMinutes?: number;
     };
     ProviderListResponse: {
       providers: components['schemas']['ProviderInfo'][];
@@ -6205,6 +6207,9 @@ export interface components {
       wsl_distro?: string;
       activePlatforms?: string[];
       ciWaitingConversationIds?: string[];
+      ciWaitingSince?: {
+        [key: string]: string;
+      };
       drain?: {
         /** @enum {string} */
         state: 'draining' | 'drained';

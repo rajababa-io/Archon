@@ -146,7 +146,7 @@ import {
 } from '@archon/workflows/schemas/workflow-run';
 import type { WorkflowRun } from '@archon/workflows/schemas/workflow-run';
 import type { MessageRow } from '@archon/core/schemas/message';
-import { listCiWaitingPlatformConversationIds, type CiWatch } from '@archon/core/db/ci-watches';
+import { listCiWaitingChats, type CiWatch } from '@archon/core/db/ci-watches';
 import type { CiWatchDelivery } from '@archon/core/services/ci-watch';
 import type { DashboardWorkflowRun } from '@archon/core/schemas/workflow-run';
 import { findCommandFiles } from '@archon/core/utils/commands';
@@ -2157,6 +2157,11 @@ const getHealthRoute = createRoute({
               // halves of "is anything happening here" arrive together.
               // Omitted when the read fails — health must answer regardless.
               ciWaitingConversationIds: z.array(z.string()).optional(),
+              // When each of those chats started waiting (ISO, oldest open
+              // watch), keyed by the same platform id, so the chip can say how
+              // long and turn amber past the Settings alarm. A separate map
+              // rather than a reshaped list keeps older bundles reading the ids.
+              ciWaitingSince: z.record(z.string(), z.string()).optional(),
               // Present only while the server is draining for a restart (see
               // /internal/drain). `holding` names each reason the box is not yet
               // drained, so an operator watching a deploy wait can see what it is
@@ -7127,8 +7132,13 @@ export function registerApiRoutes(
     }
 
     let ciWaitingConversationIds: string[] | undefined;
+    let ciWaitingSince: Record<string, string> | undefined;
     try {
-      ciWaitingConversationIds = await listCiWaitingPlatformConversationIds();
+      const waiting = await listCiWaitingChats();
+      ciWaitingConversationIds = waiting.map(w => w.platformConversationId);
+      ciWaitingSince = Object.fromEntries(
+        waiting.map(w => [w.platformConversationId, w.since.toISOString()])
+      );
     } catch (err) {
       getLog().warn({ err }, 'api.ci_waiting_read_failed');
     }
@@ -7175,6 +7185,7 @@ export function registerApiRoutes(
       ...(wslDistro ? { wsl_distro: wslDistro } : {}),
       activePlatforms: activePlatforms ? [...activePlatforms] : ['Web'],
       ...(ciWaitingConversationIds ? { ciWaitingConversationIds } : {}),
+      ...(ciWaitingSince ? { ciWaitingSince } : {}),
       ...(drain ? { drain } : {}),
       ...(deploy ? { deploy } : {}),
       ...(schema ? { schema } : {}),

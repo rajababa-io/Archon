@@ -218,6 +218,13 @@ export interface ChatsConfig {
    * @default true
    */
   autoHandoff?: boolean;
+  /**
+   * Minutes a chat may sit on "Waiting on CI" before the console marks the
+   * wait as overdue. Display only: the watch still fires, and still expires,
+   * on its own schedule.
+   * @default 20
+   */
+  ciWaitAlarmMinutes?: number;
 }
 
 /**
@@ -514,4 +521,5 @@ export interface SafeChatsConfig {
   nudgeAtPercent: number;
   handoffAtPercent: number;
   autoHandoff: boolean;
+  ciWaitAlarmMinutes: number;
 }

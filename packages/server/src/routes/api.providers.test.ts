@@ -21,7 +21,12 @@ import {
 // Mock setup — must be before dynamic imports
 // ---------------------------------------------------------------------------
 
-const DEFAULT_CHATS = { nudgeAtPercent: 40, handoffAtPercent: 50, autoHandoff: true };
+const DEFAULT_CHATS = {
+  nudgeAtPercent: 40,
+  handoffAtPercent: 50,
+  autoHandoff: true,
+  ciWaitAlarmMinutes: 20,
+};
 const mockLoadConfig = mock(async () => ({
   assistants: { claude: { model: 'sonnet' } },
   worktree: { baseBranch: 'main' },
@@ -485,6 +490,18 @@ describe('PATCH /api/config/chats', () => {
     expect(mockUpdateGlobalConfig).not.toHaveBeenCalled();
   });
 
+  test('the CI wait alarm saves in whole minutes up to the 24-hour expiry', async () => {
+    expect((await patch({ ciWaitAlarmMinutes: 30 })).status).toBe(200);
+    const arg = mockUpdateGlobalConfig.mock.calls[0]?.[0] as { chats: Record<string, unknown> };
+    expect(arg.chats).toEqual({ ciWaitAlarmMinutes: 30 });
+    mockUpdateGlobalConfig.mockClear();
+    // Each of these is a number the resolver would swap for the default.
+    expect((await patch({ ciWaitAlarmMinutes: 0 })).status).toBe(400);
+    expect((await patch({ ciWaitAlarmMinutes: 1441 })).status).toBe(400);
+    expect((await patch({ ciWaitAlarmMinutes: 2.5 })).status).toBe(400);
+    expect(mockUpdateGlobalConfig).not.toHaveBeenCalled();
+  });
+
   test('a nudge at or above the handoff point → 400, no write', async () => {
     const res = await patch({ nudgeAtPercent: 60, handoffAtPercent: 55 });
     expect(res.status).toBe(400);
@@ -502,14 +519,14 @@ describe('PATCH /api/config/chats', () => {
     // Raising only the nudge is valid in isolation and invalid against the
     // handoff point already on file. Checking the body alone would let the
     // pair be walked into an unusable state one field per request.
-    onFile({ nudgeAtPercent: 40, handoffAtPercent: 50, autoHandoff: true });
+    onFile({ ...DEFAULT_CHATS, nudgeAtPercent: 40, handoffAtPercent: 50 });
     const res = await patch({ nudgeAtPercent: 70 });
     expect(res.status).toBe(400);
     expect(mockUpdateGlobalConfig).not.toHaveBeenCalled();
   });
 
   test('a lone nudge below the stored handoff point is allowed', async () => {
-    onFile({ nudgeAtPercent: 40, handoffAtPercent: 80, autoHandoff: true });
+    onFile({ ...DEFAULT_CHATS, nudgeAtPercent: 40, handoffAtPercent: 80 });
     const res = await patch({ nudgeAtPercent: 70 });
     expect(res.status).toBe(200);
     expect(mockUpdateGlobalConfig).toHaveBeenCalledTimes(1);

@@ -167,4 +167,54 @@ describe('ChatStatusStrip', () => {
     expect(html).toContain('disabled');
     expect(html).not.toContain('details');
   });
+
+  // A CI wait whose webhook never came looks exactly like one about to finish;
+  // the clock is what tells them apart (#196).
+  test('a CI wait shows how long it has been waiting', () => {
+    const html = renderToStaticMarkup(
+      <ChatStatusStrip
+        status="waiting"
+        ciSince={Date.now() - 5 * 60_000}
+        ciAlarmMinutes={20}
+        trace={[]}
+        expanded={false}
+        onToggle={noop}
+      />
+    );
+    expect(html).toContain('Waiting on CI');
+    expect(html).toContain('5m');
+    expect(html).not.toContain('overdue');
+    expect(html).not.toContain('var(--warning)');
+  });
+
+  test('a CI wait past the alarm turns amber and says overdue', () => {
+    const html = renderToStaticMarkup(
+      <ChatStatusStrip
+        status="waiting"
+        ciSince={Date.now() - 25 * 60_000}
+        ciAlarmMinutes={20}
+        trace={[]}
+        expanded={false}
+        onToggle={noop}
+      />
+    );
+    expect(html).toContain('25m');
+    expect(html).toContain('overdue');
+    expect(html).toContain('var(--warning)');
+  });
+
+  test('with no start time from the server, a CI wait shows no clock rather than a wrong one', () => {
+    const html = renderToStaticMarkup(
+      <ChatStatusStrip
+        status="waiting"
+        ciAlarmMinutes={20}
+        trace={[]}
+        expanded={false}
+        onToggle={noop}
+      />
+    );
+    expect(html).toContain('Waiting on CI');
+    expect(html).not.toContain('overdue');
+    expect(html).not.toMatch(/\d+m \d+s/);
+  });
 });

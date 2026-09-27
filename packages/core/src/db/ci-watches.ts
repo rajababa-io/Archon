@@ -140,13 +140,28 @@ export async function cancelCiWatchesForConversation(conversationId: string): Pr
   return result.rowCount;
 }
 
-/** Platform ids of chats with an open watch — the ids the console rail keys its rows by. */
-export async function listCiWaitingPlatformConversationIds(): Promise<string[]> {
-  const result = await pool.query<{ platform_conversation_id: string }>(
-    `SELECT DISTINCT c.platform_conversation_id
+export interface CiWaitingChat {
+  /** The id the console rail keys its rows by. */
+  platformConversationId: string;
+  /**
+   * When the chat's OLDEST open watch was opened. The oldest, because a watch
+   * still open long after a newer one was added is itself the thing worth
+   * noticing — a newer start time would hide it.
+   */
+  since: Date;
+}
+
+/** Chats with an open watch, and how long each has been waiting. */
+export async function listCiWaitingChats(): Promise<CiWaitingChat[]> {
+  const result = await pool.query<{ platform_conversation_id: string; since: Date | string }>(
+    `SELECT c.platform_conversation_id, MIN(w.created_at) AS since
      FROM remote_agent_ci_watches w
      JOIN remote_agent_conversations c ON c.id = w.conversation_id
-     WHERE w.status = 'open'`
+     WHERE w.status = 'open'
+     GROUP BY c.platform_conversation_id`
   );
-  return result.rows.map(r => r.platform_conversation_id);
+  return result.rows.map(r => ({
+    platformConversationId: r.platform_conversation_id,
+    since: toHydratedTimestamp(r.since),
+  }));
 }

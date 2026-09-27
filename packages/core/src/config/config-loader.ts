@@ -1022,5 +1022,6 @@ function toSafeChats(resolved: ResolvedChatsConfig): SafeChatsConfig {
     nudgeAtPercent: resolved.nudgeAtPercent,
     handoffAtPercent: resolved.handoffAtPercent,
     autoHandoff: resolved.autoHandoff,
+    ciWaitAlarmMinutes: resolved.ciWaitAlarmMinutes,
   };
 }
