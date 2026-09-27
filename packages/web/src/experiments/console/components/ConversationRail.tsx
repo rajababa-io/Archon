@@ -16,13 +16,10 @@ import {
 } from '../primitives/conversation';
 import { relativeTime } from '../lib/format';
 import {
-  askAwaitingIds,
   chatStatus,
   markUnreadBlocker,
-  completedIds,
-  readyIds,
-  unreadIds,
   STATUS_TITLE,
+  type ChatStatusSets,
 } from '../primitives/chat-status';
 import { MenuCheckItem, MenuItem, RowMenu } from './RowMenu';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
@@ -41,7 +38,6 @@ import {
 } from '../lib/chat-order';
 
 /** Shared empty set, so an absent prop does not allocate one per row per render. */
-const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /**
  * Bounds for the chat rail, narrower than the project rail's on both ends.
@@ -104,22 +100,13 @@ interface ConversationRailProps {
    * clamping it to uselessness or making every card a different height.
    */
   /**
-   * Chats the server is working on RIGHT NOW. A card carries a live dot while
-   * it is in here, so you can tell from the rail that a chat you are not
-   * looking at is still moving — and, just as importantly, that a still one
-   * is genuinely idle rather than merely unobserved.
+   * Every chat's status inputs, built once by the page with `chatStatusSets`.
+   *
+   * One object rather than the feeds it is made from, so the rail cannot
+   * assemble its own copy: it did, and the status bar's copy drifted from it
+   * (#217). The dot here and the bar under the open chat read the same sets.
    */
-  liveIds?: ReadonlySet<string>;
-  /**
-   * Chats with a run paused on an approval — your move, not the machine's.
-   * Kept separate from `liveIds` because the two come from different places:
-   * working is the server's conversation lock, awaiting belongs to a run.
-   */
-  awaitingIds?: ReadonlySet<string>;
-  /** Chats with a workflow run executing, off the same runs feed as `awaitingIds`. */
-  runningIds?: ReadonlySet<string>;
-  /** Chats the server is watching CI for, from the same health read as `liveIds`. */
-  ciWaitingIds?: ReadonlySet<string>;
+  statusSets: ChatStatusSets;
   /** Which lifecycle scope the list is showing; the rail does not fetch. */
   scope: ChatScope;
   onScopeChange: (scope: ChatScope) => void;
@@ -172,10 +159,7 @@ export function ConversationRail({
   omitted,
   pendingNew,
   projectId,
-  liveIds,
-  awaitingIds,
-  runningIds,
-  ciWaitingIds,
+  statusSets,
 }: ConversationRailProps): ReactElement {
   /* No filter box: a permanent text field for one project's chats was chrome.
      Finding a chat by name is the ⌘K palette's job, across every project. */
@@ -279,31 +263,6 @@ export function ConversationRail({
     () => (pending === null ? arranged : applyChatOrder(arranged, pending)),
     [arranged, pending]
   );
-
-  /**
-   * Two routes to one meaning. A paused gate belongs to a RUN and arrives as a
-   * prop; an unanswered question belongs to the last MESSAGE and is read off
-   * the conversation itself. A reader scanning the rail does not care which —
-   * both say it is your move — so they merge before the mark is drawn.
-   */
-  const awaiting = useMemo(() => {
-    const ids = askAwaitingIds(conversations);
-    for (const id of awaitingIds ?? EMPTY_SET) ids.add(id);
-    return ids;
-  }, [conversations, awaitingIds]);
-
-  /** Finished chats, read off the rows the rail already has. */
-  const done = useMemo(() => completedIds(conversations), [conversations]);
-  const ready = useMemo(() => readyIds(conversations), [conversations]);
-
-  /**
-   * Chats that have spoken since the reader last reached the bottom of them.
-   *
-   * Read off the same rows, and deliberately NOT merged into `awaiting` above:
-   * the two share a colour but not a rank, since a chat still streaming is
-   * unfinished rather than missed. `chatStatus` owns that precedence.
-   */
-  const unread = useMemo(() => unreadIds(conversations), [conversations]);
 
   // The server has caught up; stop overriding it. Anything else — a failed
   // write — leaves the arrangement on screen and the error on the page.
@@ -549,15 +508,7 @@ export function ConversationRail({
 
         {visible.map((c, index) => {
           const isActive = c.id === activeConvId;
-          const status = chatStatus(c.id, {
-            working: liveIds ?? EMPTY_SET,
-            awaiting,
-            unread,
-            done,
-            ready,
-            running: runningIds ?? EMPTY_SET,
-            waiting: ciWaitingIds ?? EMPTY_SET,
-          });
+          const status = chatStatus(c.id, statusSets);
           const shift =
             dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
           return (

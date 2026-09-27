@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { ChatStatus } from './chat-status';
+import { chatStatusSets, type ChatStatus } from './chat-status';
 import { alertText, badgeText, chatAlerts, chatStatuses, wantingCount } from './tab-signal';
 
 const m = (entries: Record<string, ChatStatus>): Map<string, ChatStatus> =>
@@ -37,20 +37,23 @@ function chat(
 
 describe('chatStatuses', () => {
   test('uses the rail precedence for every chat', () => {
+    const rows = [
+      chat('work'),
+      chat('gate'),
+      chat('asked', { askCandidate: ASK }),
+      chat('new', { lastReadAt: null }),
+      chat('ci'),
+      chat('run'),
+      chat('quiet'),
+    ];
     const got = chatStatuses(
-      [
-        chat('work'),
-        chat('gate'),
-        chat('asked', { askCandidate: ASK }),
-        chat('new', { lastReadAt: null }),
-        chat('ci'),
-        chat('run'),
-        chat('quiet'),
-      ],
-      new Set(['work', 'gate']),
-      new Set(['gate']),
-      new Set(['run', 'gate']),
-      new Set(['ci'])
+      rows,
+      chatStatusSets(rows, {
+        working: new Set(['work', 'gate']),
+        runAwaiting: new Set(['gate']),
+        running: new Set(['run', 'gate']),
+        waiting: new Set(['ci']),
+      })
     );
     expect(Object.fromEntries(got)).toEqual({
       work: 'working',
