@@ -8,6 +8,8 @@
  * - Drain: stop admitting new turns so a deploy can replace the process
  */
 
+import { randomUUID } from 'node:crypto';
+
 import { createLogger } from '@archon/paths';
 
 import type { IPlatformAdapter } from '../types';
@@ -20,12 +22,72 @@ function getLog(): ReturnType<typeof createLogger> {
 }
 
 /**
+ * What a turn's handler is handed when it starts.
+ *
+ * `signal` is the one way to end a running turn early: `interrupt()` aborts it,
+ * and the handler passes it to its provider as the request's abort signal. The
+ * manager owns it rather than the caller because the manager is already the
+ * owner of "which turn is running for this conversation" — a second registry
+ * would be a second answer to the same question.
+ */
+export interface TurnContext {
+  signal: AbortSignal;
+}
+
+export type TurnHandler = (turn: TurnContext) => Promise<void>;
+
+/**
+ * A queued message as a sender may see it, so it can be shown while it waits
+ * and taken back before it is delivered.
+ *
+ * Only callers that can show a queue describe their messages; the rest queue
+ * anonymously and `listQueued` does not report them.
+ */
+export interface QueuedMessageInfo {
+  id: string;
+  text: string;
+  files: { name: string; mimeType: string; size: number }[];
+  queuedAt: string;
+}
+
+/** The describable part of a message, supplied by the caller at acquisition. */
+export interface QueueDescription {
+  text: string;
+  files?: QueuedMessageInfo['files'];
+  /**
+   * Runs when the message is withdrawn instead of delivered — whatever the
+   * handler would have cleaned up after itself (staged uploads) it now never
+   * will. Never runs for a delivered message.
+   */
+  onWithdraw?: () => Promise<void>;
+}
+
+/**
  * Represents a queued message waiting for processing
  */
 interface QueuedMessage {
-  handler: () => Promise<void>;
+  id: string;
+  handler: TurnHandler;
   timestamp: number;
+  description?: QueueDescription;
 }
+
+/** A turn executing now, and the switch that ends it early. */
+interface ActiveTurn {
+  promise: Promise<void>;
+  controller: AbortController;
+}
+
+/**
+ * The single answer to "take this queued message back": exactly one of these,
+ * decided synchronously against the queue, so a withdrawal racing delivery has
+ * one winner. `not-queued` covers the message having already been delivered —
+ * the manager keeps no record of delivered messages, so it cannot tell that
+ * apart from an id it never issued, and does not pretend to.
+ */
+export type WithdrawResult =
+  | { status: 'withdrawn'; message: QueuedMessageInfo }
+  | { status: 'not-queued' };
 
 /**
  * Result of acquiring a lock, indicating whether the message was started, queued,
@@ -33,6 +95,8 @@ interface QueuedMessage {
  */
 export interface LockAcquisitionResult {
   status: 'started' | 'queued-conversation' | 'queued-capacity' | 'refused-draining';
+  /** Set when queued: the id `withdraw` takes. */
+  queuedId?: string;
 }
 
 /**
@@ -93,11 +157,20 @@ function toDrainStatus(state: DrainState): DrainStatus {
   };
 }
 
+function toQueuedInfo(message: QueuedMessage, description: QueueDescription): QueuedMessageInfo {
+  return {
+    id: message.id,
+    text: description.text,
+    files: description.files ?? [],
+    queuedAt: new Date(message.timestamp).toISOString(),
+  };
+}
+
 /**
  * Manages conversation locks for concurrent message processing
  */
 export class ConversationLockManager {
-  private activeConversations: Map<string, Promise<void>>;
+  private activeConversations: Map<string, ActiveTurn>;
   private messageQueues: Map<string, QueuedMessage[]>;
   private maxConcurrent: number;
   private drainState: DrainState | undefined;
@@ -107,7 +180,7 @@ export class ConversationLockManager {
    * @param maxConcurrent - Maximum number of concurrent conversations (default: 10)
    */
   constructor(maxConcurrent = 10) {
-    this.activeConversations = new Map<string, Promise<void>>();
+    this.activeConversations = new Map<string, ActiveTurn>();
     this.messageQueues = new Map<string, QueuedMessage[]>();
     this.maxConcurrent = maxConcurrent;
     getLog().info({ maxConcurrent }, 'initialized');
@@ -120,10 +193,12 @@ export class ConversationLockManager {
    * This is the server's external admission point, so it is where drain refuses.
    * @param conversationId - Unique conversation identifier
    * @param handler - Async function to execute
+   * @param description - Makes the message visible and withdrawable while queued
    */
   async acquireLock(
     conversationId: string,
-    handler: () => Promise<void>
+    handler: TurnHandler,
+    description?: QueueDescription
   ): Promise<LockAcquisitionResult> {
     const draining = this.currentDrain();
     if (draining) {
@@ -134,7 +209,12 @@ export class ConversationLockManager {
       );
       return { status: 'refused-draining' };
     }
-    return this.admit(conversationId, handler);
+    return this.admit(conversationId, {
+      id: randomUUID(),
+      handler,
+      timestamp: Date.now(),
+      description,
+    });
   }
 
   /**
@@ -144,19 +224,19 @@ export class ConversationLockManager {
    */
   private async admit(
     conversationId: string,
-    handler: () => Promise<void>
+    message: QueuedMessage
   ): Promise<LockAcquisitionResult> {
     // Check if conversation already active - queue if yes
     if (this.activeConversations.has(conversationId)) {
-      this.queueMessage(conversationId, handler);
-      return { status: 'queued-conversation' };
+      this.queueMessage(conversationId, message);
+      return { status: 'queued-conversation', queuedId: message.id };
     }
 
     // Check if at max capacity - queue if yes
     if (this.activeConversations.size >= this.maxConcurrent) {
       getLog().info({ maxConcurrent: this.maxConcurrent, conversationId }, 'queued_at_capacity');
-      this.queueMessage(conversationId, handler);
-      return { status: 'queued-capacity' };
+      this.queueMessage(conversationId, message);
+      return { status: 'queued-capacity', queuedId: message.id };
     }
 
     // Execute immediately
@@ -166,7 +246,9 @@ export class ConversationLockManager {
     );
 
     // Store Promise in Map BEFORE awaiting (prevents race conditions)
-    const promise = handler()
+    const controller = new AbortController();
+    const promise = message
+      .handler({ signal: controller.signal })
       .catch(error => {
         getLog().error({ err: error, conversationId }, 'conversation_handler_error');
       })
@@ -189,7 +271,7 @@ export class ConversationLockManager {
         });
       });
 
-    this.activeConversations.set(conversationId, promise);
+    this.activeConversations.set(conversationId, { promise, controller });
 
     // Fire-and-forget: don't await here, return immediately
     return { status: 'started' };
@@ -198,17 +280,14 @@ export class ConversationLockManager {
   /**
    * Add message to conversation queue
    * @param conversationId - Unique conversation identifier
-   * @param handler - Async function to queue
+   * @param message - The message to queue, keeping the id and time it was accepted with
    */
-  private queueMessage(conversationId: string, handler: () => Promise<void>): void {
+  private queueMessage(conversationId: string, message: QueuedMessage): void {
     const queue = this.messageQueues.get(conversationId) ?? [];
     if (!this.messageQueues.has(conversationId)) {
       this.messageQueues.set(conversationId, queue);
     }
-    queue.push({
-      handler,
-      timestamp: Date.now(),
-    });
+    queue.push(message);
     getLog().debug({ conversationId, queueLength: queue.length }, 'message_queued');
   }
 
@@ -223,6 +302,11 @@ export class ConversationLockManager {
       return;
     }
 
+    // At capacity, leave the head where it is: processGlobalQueue starts it when a
+    // slot frees. Shifting it into admit() would re-queue it at the TAIL, behind
+    // messages sent after it.
+    if (this.activeConversations.size >= this.maxConcurrent) return;
+
     const next = queue.shift();
     if (!next) return;
     const waitTime = Date.now() - next.timestamp;
@@ -231,7 +315,58 @@ export class ConversationLockManager {
     // admit(), not acquireLock(): this message was accepted before drain began and the
     // sender was told so. Refusing it here would be the silent drop drain exists to
     // prevent — and it is what lets drain terminate, since queues only shrink.
-    await this.admit(conversationId, next.handler);
+    await this.admit(conversationId, next);
+  }
+
+  /**
+   * End this conversation's running turn early.
+   *
+   * Aborts the signal the turn's handler was started with; the handler's
+   * provider owns what "abort" means. The lock is NOT released here — it is
+   * released when the handler actually returns, exactly as for a turn that ended
+   * on its own, so a provider slow to honour the abort keeps the conversation
+   * busy rather than letting a second turn start on top of it.
+   *
+   * @returns The turn's completion, or `undefined` when nothing was running.
+   *   Queued messages are untouched; they are delivered once the turn ends.
+   */
+  interrupt(conversationId: string): Promise<void> | undefined {
+    const turn = this.activeConversations.get(conversationId);
+    if (!turn) return undefined;
+    if (!turn.controller.signal.aborted) {
+      getLog().info({ conversationId }, 'turn_interrupt_requested');
+      turn.controller.abort();
+    }
+    return turn.promise;
+  }
+
+  /** The described messages waiting for this conversation, oldest first. */
+  listQueued(conversationId: string): QueuedMessageInfo[] {
+    const queue = this.messageQueues.get(conversationId) ?? [];
+    return queue.flatMap(m => (m.description ? [toQueuedInfo(m, m.description)] : []));
+  }
+
+  /**
+   * Take a queued message back before it is delivered.
+   *
+   * Synchronous on purpose: delivery removes a message from the same array in
+   * `processQueue`, also without awaiting, so whichever of the two runs first
+   * wins and the other sees it gone. There is no state in which a message is
+   * both withdrawn and delivered.
+   */
+  withdraw(conversationId: string, id: string): WithdrawResult {
+    const queue = this.messageQueues.get(conversationId);
+    const index = queue?.findIndex(m => m.id === id && m.description !== undefined) ?? -1;
+    if (!queue || index === -1) return { status: 'not-queued' };
+    const [message] = queue.splice(index, 1);
+    if (queue.length === 0) this.messageQueues.delete(conversationId);
+    const description = message?.description;
+    if (!message || !description) return { status: 'not-queued' };
+    getLog().info({ conversationId, queuedId: id }, 'queued_message_withdrawn');
+    description.onWithdraw?.().catch((error: unknown) => {
+      getLog().warn({ err: error, conversationId, queuedId: id }, 'queued_withdraw_cleanup_failed');
+    });
+    return { status: 'withdrawn', message: toQueuedInfo(message, description) };
   }
 
   /**

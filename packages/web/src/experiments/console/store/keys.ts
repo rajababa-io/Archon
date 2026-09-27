@@ -33,6 +33,8 @@ export const K = {
    * gap until the page was reloaded.
    */
   conversationLock: (conversationId: string): string => `lock:${conversationId}`,
+  /** Messages waiting behind the running turn. Server-held; see `getConversationQueue`. */
+  conversationQueue: (conversationId: string): string => `queue:${conversationId}`,
   conversations: (projectId: string): string => `conversations:${projectId}`,
   countsGlobal: 'counts:global' as const,
   pendingRuns: 'pendingRuns' as const,

@@ -91,6 +91,61 @@ export const conversationLockResponseSchema = z
   })
   .openapi('ConversationLockResponse');
 
+/**
+ * POST /api/conversations/:id/interrupt response.
+ *
+ * `stopped` — the running turn received the abort and has ended; the lock is
+ * released. `stopping` — the abort was delivered but the turn has not ended
+ * yet; the provider owns how quickly it honours it, and the lock stays held
+ * until it does. `idle` — no turn was running, so there was nothing to stop.
+ */
+export const conversationInterruptResponseSchema = z
+  .object({
+    conversationId: z.string(),
+    status: z.enum(['stopped', 'stopping', 'idle']),
+  })
+  .openapi('ConversationInterruptResponse');
+
+/** A message waiting behind the running turn, as its sender sees it. */
+export const queuedMessageSchema = z
+  .object({
+    id: z.string(),
+    text: z.string(),
+    files: z.array(z.object({ name: z.string(), mimeType: z.string(), size: z.number() })),
+    queuedAt: z.string(),
+  })
+  .openapi('QueuedMessage');
+
+/**
+ * GET /api/conversations/:id/queue response — the messages accepted for this
+ * chat and not yet delivered, oldest first. Held in the server's memory, so a
+ * reload or a second tab reads the same list.
+ */
+export const conversationQueueResponseSchema = z
+  .object({
+    conversationId: z.string(),
+    messages: z.array(queuedMessageSchema),
+  })
+  .openapi('ConversationQueueResponse');
+
+/** Path params for DELETE /api/conversations/:id/queue/:queuedId. */
+export const queuedMessageParamsSchema = z.object({ id: z.string(), queuedId: z.string() });
+
+/**
+ * DELETE /api/conversations/:id/queue/:queuedId response.
+ *
+ * One of two outcomes, decided on the server: the message was still waiting and
+ * is now withdrawn (its text comes back, so an edit starts from what was
+ * actually queued), or it is no longer queued — delivered already, or never
+ * queued — and nothing changed.
+ */
+export const withdrawQueuedResponseSchema = z
+  .discriminatedUnion('status', [
+    z.object({ status: z.literal('withdrawn'), message: queuedMessageSchema }),
+    z.object({ status: z.literal('not-queued') }),
+  ])
+  .openapi('WithdrawQueuedResponse');
+
 /** POST /api/conversations request body. Uses strict() to reject unknown fields (e.g. conversationId). */
 export const createConversationBodySchema = z
   .object({
@@ -202,5 +257,7 @@ export const dispatchResponseSchema = z
   .object({
     accepted: z.boolean(),
     status: z.string(),
+    /** Present when the message was queued behind a running turn. */
+    queuedId: z.string().optional(),
   })
   .openapi('DispatchResponse');

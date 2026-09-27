@@ -494,4 +494,122 @@ describe('ConversationLockManager', () => {
       expect(sendMessage).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('interrupt', () => {
+    test("aborts the running turn's signal and keeps the lock until the handler returns", async () => {
+      const manager = new ConversationLockManager();
+      let signal: AbortSignal | undefined;
+      let finish!: () => void;
+      await manager.acquireLock('conv-a', async turn => {
+        signal = turn.signal;
+        await new Promise<void>(resolve => {
+          finish = resolve;
+        });
+      });
+
+      const ended = manager.interrupt('conv-a');
+      expect(ended).toBeDefined();
+      expect(signal?.aborted).toBe(true);
+      // The handler has not returned, so the conversation is still busy.
+      expect(manager.isActive('conv-a')).toBe(true);
+
+      finish();
+      await ended;
+      await drainUntil(() => !manager.isActive('conv-a'), 'lock released');
+    });
+
+    test('returns undefined when nothing is running', () => {
+      expect(new ConversationLockManager().interrupt('conv-a')).toBeUndefined();
+    });
+
+    test('gives each turn its own signal, so stopping one never pre-aborts the next', async () => {
+      const manager = new ConversationLockManager();
+      const log: string[] = [];
+      const signals: AbortSignal[] = [];
+      const first = gate(log, 'first');
+      const second = gate(log, 'second');
+      await manager.acquireLock('conv-a', async turn => {
+        signals.push(turn.signal);
+        await first.handler();
+      });
+      await manager.acquireLock('conv-a', async turn => {
+        signals.push(turn.signal);
+        await second.handler();
+      });
+
+      manager.interrupt('conv-a');
+      first.release();
+      await drainUntilStarted(log, 2);
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]?.aborted).toBe(false);
+      second.release();
+      await drainUntilIdle(manager);
+    });
+  });
+
+  describe('queued messages', () => {
+    test('lists described messages oldest first and omits anonymous ones', async () => {
+      const manager = new ConversationLockManager();
+      const log: string[] = [];
+      const running = gate(log, 'running');
+      await manager.acquireLock('conv-a', running.handler);
+      await manager.acquireLock('conv-a', gate(log, 'a').handler, { text: 'a' });
+      await manager.acquireLock('conv-a', gate(log, 'anon').handler);
+      await manager.acquireLock('conv-a', gate(log, 'b').handler, { text: 'b' });
+
+      expect(manager.listQueued('conv-a').map(m => m.text)).toEqual(['a', 'b']);
+      expect(manager.listQueued('conv-b')).toEqual([]);
+    });
+
+    test('withdrawn before delivery: never runs, cleanup runs, and a second withdraw finds nothing', async () => {
+      const manager = new ConversationLockManager();
+      const log: string[] = [];
+      const running = gate(log, 'running');
+      const onWithdraw = mock(async () => {});
+      await manager.acquireLock('conv-a', running.handler);
+      const queued = await manager.acquireLock('conv-a', gate(log, 'typo').handler, {
+        text: 'typo',
+        onWithdraw,
+      });
+
+      const result = manager.withdraw('conv-a', queued.queuedId ?? '');
+      expect(result).toMatchObject({ status: 'withdrawn', message: { text: 'typo' } });
+      expect(onWithdraw).toHaveBeenCalledTimes(1);
+      expect(manager.withdraw('conv-a', queued.queuedId ?? '')).toEqual({ status: 'not-queued' });
+
+      running.release();
+      await drainUntilIdle(manager);
+      expect(log).toEqual(['running']);
+    });
+
+    test('delivered first: withdraw reports not-queued and cleanup never runs', async () => {
+      const manager = new ConversationLockManager();
+      const log: string[] = [];
+      const running = gate(log, 'running');
+      const next = gate(log, 'next');
+      const onWithdraw = mock(async () => {});
+      await manager.acquireLock('conv-a', running.handler);
+      const queued = await manager.acquireLock('conv-a', next.handler, {
+        text: 'next',
+        onWithdraw,
+      });
+
+      running.release();
+      await drainUntilStarted(log, 2);
+      expect(manager.withdraw('conv-a', queued.queuedId ?? '')).toEqual({ status: 'not-queued' });
+      expect(onWithdraw).not.toHaveBeenCalled();
+      next.release();
+      await drainUntilIdle(manager);
+      expect(log).toEqual(['running', 'next']);
+    });
+
+    test('an anonymous queued message cannot be withdrawn', async () => {
+      const manager = new ConversationLockManager();
+      const log: string[] = [];
+      const running = gate(log, 'running');
+      await manager.acquireLock('conv-a', running.handler);
+      const queued = await manager.acquireLock('conv-a', gate(log, 'anon').handler);
+      expect(manager.withdraw('conv-a', queued.queuedId ?? '')).toEqual({ status: 'not-queued' });
+    });
+  });
 });

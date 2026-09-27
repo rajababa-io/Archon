@@ -57,6 +57,13 @@ export interface HandleMessageContext {
    */
   readonly userId?: string;
   /**
+   * Ends this chat turn early when aborted — the signal the conversation lock
+   * manager started the turn with. Reaches the chat turn's own provider query
+   * and nothing else: a workflow the turn dispatched runs under its own
+   * lifecycle and keeps its own cancel.
+   */
+  readonly abortSignal?: AbortSignal;
+  /**
    * Declared workflow inputs supplied by the caller (#2554), keyed by input name.
    *
    * Set ONLY by the `POST /api/workflows/:name/run` route, whose body carries an

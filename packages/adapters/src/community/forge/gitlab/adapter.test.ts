@@ -9,7 +9,7 @@ import type { Codebase, Conversation } from '@archon/core';
 import {
   DRAIN_REFUSAL_NOTICE,
   notifyDrainRefusal,
-  type LockAcquisitionResult,
+  type ConversationLockManager as ConversationLockManagerType,
 } from '@archon/core/utils/conversation-lock';
 
 type FetchCall = (...args: Parameters<typeof fetch>) => ReturnType<typeof fetch>;
@@ -157,7 +157,7 @@ function createAdapter(options?: {
   gitlabUrl?: string;
   botMention?: string;
   lockManager?: {
-    acquireLock: (id: string, handler: () => Promise<void>) => Promise<LockAcquisitionResult>;
+    acquireLock: ConversationLockManagerType['acquireLock'];
   };
 }): InstanceType<typeof GitLabAdapter> {
   const lockManager = options?.lockManager ?? new ConversationLockManager();

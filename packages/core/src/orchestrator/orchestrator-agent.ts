@@ -1980,6 +1980,7 @@ export async function handleMessage(
     isolationHints,
     attachedFiles,
     userId,
+    abortSignal,
   } = context ?? {};
   // Anchor "is this a slash command" at the true start of the message —
   // leading whitespace (e.g. from a platform that doesn't pre-trim after
@@ -2541,6 +2542,7 @@ export async function handleMessage(
       protectedEnvKeys: protectedEnvKeys.length > 0 ? protectedEnvKeys : undefined,
       model: chatRequest.model,
       systemPrompt,
+      abortSignal,
     };
     if (chatRequest.preset) {
       applyPresetToRequestOptions(providerKey, chatRequest.preset, requestOptions);
@@ -2838,6 +2840,10 @@ export async function handleMessage(
       }
     }
 
+    // A provider may honour an abort by ending its stream rather than throwing;
+    // the turn was still cut short, and the transcript must say so either way.
+    if (abortSignal?.aborted) await announceInterrupted(platform, conversationId);
+
     // Direct-chat turns may have written to source/. If there is local-only state
     // (uncommitted edits, unpushed commits), surface a one-line reminder so the
     // user can push or commit + push before the next worktree creation or
@@ -2857,6 +2863,13 @@ export async function handleMessage(
     getLog().debug({ conversationId }, 'orchestrator_message_completed');
   } catch (error) {
     const err = toError(error);
+    // The error an abort surfaces is the stop the user asked for, not a failure
+    // to explain — reporting it as one would bury the marker under an error.
+    if (abortSignal?.aborted) {
+      getLog().info({ conversationId, err }, 'orchestrator_turn_interrupted');
+      await announceInterrupted(platform, conversationId);
+      return;
+    }
     getLog().error({ err, conversationId }, 'orchestrator_message_failed');
     const userMessage = classifyAndFormatError(err, platform);
     try {
@@ -3495,6 +3508,28 @@ async function maybeNudgeHandoff(
     );
   } catch (error) {
     getLog().warn({ err: toError(error), conversationId }, 'handoff_nudge_failed');
+  }
+}
+
+/** What the transcript records on a turn the user stopped. */
+export const TURN_INTERRUPTED_NOTICE = 'Interrupted — you stopped this turn.';
+
+/**
+ * Mark the turn as stopped, below whatever it had already said. Durable where
+ * the platform can manage it: the partial reply stays in the history, so the
+ * marker that explains why it ends mid-thought has to stay with it. Never
+ * throws — the turn is already over and there is nothing left to fail.
+ */
+async function announceInterrupted(
+  platform: IPlatformAdapter,
+  conversationId: string
+): Promise<void> {
+  try {
+    await notice(platform, conversationId, TURN_INTERRUPTED_NOTICE, {
+      category: 'turn_interrupted',
+    });
+  } catch (error) {
+    getLog().warn({ err: toError(error), conversationId }, 'turn_interrupted_notice_failed');
   }
 }
 

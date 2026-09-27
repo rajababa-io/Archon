@@ -40,6 +40,7 @@ import type {
   ConversationLockManager,
   AttachedFile,
   HandleMessageContext,
+  TurnContext,
   GlobalConfig,
   TiersPatch,
   UserRole,
@@ -342,6 +343,10 @@ import {
   listConversationsQuerySchema,
   conversationIdParamsSchema,
   conversationLockResponseSchema,
+  conversationInterruptResponseSchema,
+  conversationQueueResponseSchema,
+  queuedMessageParamsSchema,
+  withdrawQueuedResponseSchema,
   conversationSchema,
   createConversationBodySchema,
   createConversationResponseSchema,
@@ -766,6 +771,65 @@ const getConversationLockRoute = createRoute({
     200: {
       content: { 'application/json': { schema: conversationLockResponseSchema } },
       description: 'Current lock state',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+/**
+ * How long the interrupt route waits for the turn to end before answering
+ * `stopping`. Only chooses which answer is sent — the lock is released by the
+ * turn itself, whenever it ends.
+ */
+const INTERRUPT_WAIT_MS = 5000;
+
+const interruptConversationRoute = createRoute({
+  method: 'post',
+  path: '/api/conversations/{id}/interrupt',
+  tags: ['Conversations'],
+  summary: "Stop the conversation's running turn",
+  description:
+    'Aborts the running chat turn through its provider. Output already streamed is kept and ' +
+    'the turn is marked interrupted. Workflow runs the turn started are not affected. Queued ' +
+    'messages stay queued and are delivered once the turn ends.',
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: conversationInterruptResponseSchema } },
+      description: 'Outcome of the stop request',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const getConversationQueueRoute = createRoute({
+  method: 'get',
+  path: '/api/conversations/{id}/queue',
+  tags: ['Conversations'],
+  summary: 'Messages waiting behind the running turn',
+  request: { params: conversationIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: conversationQueueResponseSchema } },
+      description: 'Queued messages, oldest first',
+    },
+    404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const withdrawQueuedMessageRoute = createRoute({
+  method: 'delete',
+  path: '/api/conversations/{id}/queue/{queuedId}',
+  tags: ['Conversations'],
+  summary: 'Take a queued message back before it is delivered',
+  request: { params: queuedMessageParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: withdrawQueuedResponseSchema } },
+      description: 'Withdrawn, or no longer queued',
     },
     404: jsonError('Not found'),
     500: jsonError('Server error'),
@@ -2813,20 +2877,65 @@ export function registerApiRoutes(
     };
   }
 
+  /**
+   * Tell the chat's stream its queue changed. A trigger, not a payload: the
+   * queue's authority is the lock manager, and the console refetches it.
+   */
+  function emitQueueChanged(conversationId: string): void {
+    webAdapter
+      .emitSSE(
+        conversationId,
+        JSON.stringify({ type: 'conversation_queue', conversationId, timestamp: Date.now() })
+      )
+      .catch((err: unknown) => {
+        getLog().warn({ err, conversationId }, 'queue_event_emit_failed');
+      });
+  }
+
+  /**
+   * A message the user typed, as opposed to a turn the server started for them
+   * (a gate resume). Only these can wait visibly in the queue and be taken back,
+   * and only these are written to the transcript — at DELIVERY, not at send, so
+   * a message withdrawn while queued never appears and the transcript's order
+   * is the order the agent actually read them in.
+   */
+  interface UserTurn {
+    persist: () => Promise<void>;
+    files: { name: string; mimeType: string; size: number }[];
+  }
+
   async function dispatchToOrchestrator(
     conversationId: string,
     message: string,
     extraContext?: Omit<HandleMessageContext, 'isolationHints'>,
-    filesToCleanup?: { files: AttachedFile[]; uploadDir: string }
-  ): Promise<{ accepted: boolean; status: string }> {
-    const result = await lockManager.acquireLock(conversationId, async () => {
+    filesToCleanup?: { files: AttachedFile[]; uploadDir: string },
+    userTurn?: UserTurn
+  ): Promise<{ accepted: boolean; status: string; queuedId?: string }> {
+    // Set once acquireLock returns. A turn that starts immediately runs its
+    // handler before that, so it reads false; a queued one starts later and
+    // reads true — which is exactly when leaving the queue is news.
+    let wasQueued = false;
+    const cleanupStaged = async (): Promise<void> => {
+      if (filesToCleanup)
+        await cleanupUploads(
+          filesToCleanup.files,
+          filesToCleanup.uploadDir,
+          warnCleanup(conversationId)
+        );
+    };
+    const handler = async ({ signal }: TurnContext): Promise<void> => {
       // Emit lock:true at handler start so the UI knows processing has begun.
       // Fire-and-forget — if no SSE stream is connected yet, the event is buffered.
       webAdapter.emitLockEvent(conversationId, true);
       try {
+        if (userTurn) {
+          await userTurn.persist();
+          if (wasQueued) emitQueueChanged(conversationId);
+        }
         await handleMessage(webAdapter, conversationId, message, {
           isolationHints: { workflowType: 'thread', workflowId: conversationId },
           ...extraContext,
+          abortSignal: signal,
         });
       } catch (error) {
         getLog().error({ err: error, conversationId }, 'handle_message_failed');
@@ -2848,29 +2957,33 @@ export function registerApiRoutes(
         // Clean up uploaded files AFTER handleMessage completes so the AI subprocess
         // has had a chance to read them. Doing this in the HTTP handler's finally block
         // would delete files while the fire-and-forget lock handler is still running.
-        if (filesToCleanup) {
-          await cleanupUploads(
-            filesToCleanup.files,
-            filesToCleanup.uploadDir,
-            warnCleanup(conversationId)
-          );
-        }
+        await cleanupStaged();
       }
-    });
+    };
+    const result = await lockManager.acquireLock(
+      conversationId,
+      handler,
+      userTurn
+        ? {
+            text: message,
+            files: userTurn.files,
+            // Withdrawn means the handler never runs, so nothing else will remove
+            // what the upload staged.
+            onWithdraw: cleanupStaged,
+          }
+        : undefined
+    );
 
     if (result.status === 'refused-draining') {
       // The handler never ran, so nothing else will remove what the upload staged and
       // no lock event was ever emitted to pair a release with.
-      if (filesToCleanup)
-        await cleanupUploads(
-          filesToCleanup.files,
-          filesToCleanup.uploadDir,
-          warnCleanup(conversationId)
-        );
+      await cleanupStaged();
       return { accepted: false, status: result.status };
     }
 
     if (result.status === 'queued-conversation' || result.status === 'queued-capacity') {
+      wasQueued = true;
+      if (userTurn) emitQueueChanged(conversationId);
       // Intentionally fire-and-forget: the lock-acquire signal (locked: true) is sent
       // optimistically so the UI shows a queued state immediately. It is not awaited
       // because we want the HTTP response to return before the SSE write completes.
@@ -2880,7 +2993,11 @@ export function registerApiRoutes(
       webAdapter.emitLockEvent(conversationId, true);
     }
 
-    return { accepted: true, status: result.status };
+    return {
+      accepted: true,
+      status: result.status,
+      ...(result.queuedId === undefined ? {} : { queuedId: result.queuedId }),
+    };
   }
 
   /**
@@ -3652,14 +3769,15 @@ export function registerApiRoutes(
       }
     }
 
-    // Persist user message and pass DB ID to adapter for assistant message persistence
-    if (conv) {
-      // Omit path from persisted metadata — the on-disk file is ephemeral and will be
-      // deleted after the AI processes it; storing stale paths would confuse future readers.
-      const meta =
-        savedFiles.length > 0
-          ? { files: savedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size })) }
-          : undefined;
+    // Omit path from persisted metadata — the on-disk file is ephemeral and will be
+    // deleted after the AI processes it; storing stale paths would confuse future readers.
+    const fileMeta = savedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size }));
+    // Persist the user message when its turn STARTS, and pass the DB ID to the adapter
+    // for assistant message persistence. A message queued behind a running turn is
+    // therefore not in the history until it is delivered — see `UserTurn`.
+    const persistUserMessage = async (): Promise<void> => {
+      if (!conv) return;
+      const meta = fileMeta.length > 0 ? { files: fileMeta } : undefined;
       try {
         await messageDb.addMessage(conv.id, 'user', message, meta, userId);
       } catch (e: unknown) {
@@ -3674,11 +3792,11 @@ export function registerApiRoutes(
             })
           );
         } catch (sseErr: unknown) {
-          getLog().error({ err: sseErr, conversationId: conv?.id }, 'sse_warning_double_failure');
+          getLog().error({ err: sseErr, conversationId: conv.id }, 'sse_warning_double_failure');
         }
       }
-      webAdapter.setConversationDbId(conversationId, conv.id);
-    }
+    };
+    if (conv) webAdapter.setConversationDbId(conversationId, conv.id);
 
     // Pass savedFiles to dispatchToOrchestrator so cleanup happens inside the lock handler,
     // AFTER handleMessage completes — not in the HTTP handler's finally block where the
@@ -3693,10 +3811,73 @@ export function registerApiRoutes(
       conversationId,
       message,
       extraContext,
-      filesToCleanup
+      filesToCleanup,
+      { persist: persistUserMessage, files: fileMeta }
     );
     if (!result.accepted) return apiError(c, 503, DRAIN_REFUSAL_NOTICE);
     return c.json(result);
+  });
+
+  // POST /api/conversations/:id/interrupt - Stop the running turn
+  registerOpenApiRoute(interruptConversationRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const turn = lockManager.interrupt(platformId);
+      if (turn === undefined)
+        return c.json({ conversationId: platformId, status: 'idle' as const });
+      // Wait briefly so the common case answers "stopped" rather than making the
+      // client wait for a lock event to learn it. A provider slower than this is
+      // reported as still stopping — never as stopped, because the lock is held
+      // until the turn really returns.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const ended = await Promise.race([
+        turn.then(() => true),
+        new Promise<false>(resolve => {
+          timer = setTimeout(() => {
+            resolve(false);
+          }, INTERRUPT_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+      return c.json({
+        conversationId: platformId,
+        status: ended ? 'stopped' : 'stopping',
+      } as const);
+    } catch (error) {
+      getLog().error({ err: error, platformId }, 'interrupt_conversation_failed');
+      return apiError(c, 500, 'Failed to stop the turn');
+    }
+  });
+
+  // GET /api/conversations/:id/queue - Messages waiting behind the running turn
+  registerOpenApiRoute(getConversationQueueRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      return c.json({ conversationId: platformId, messages: lockManager.listQueued(platformId) });
+    } catch (error) {
+      getLog().error({ err: error, platformId }, 'get_conversation_queue_failed');
+      return apiError(c, 500, 'Failed to read the queue');
+    }
+  });
+
+  // DELETE /api/conversations/:id/queue/:queuedId - Withdraw a queued message
+  registerOpenApiRoute(withdrawQueuedMessageRoute, async c => {
+    const platformId = c.req.param('id') ?? '';
+    const queuedId = c.req.param('queuedId') ?? '';
+    try {
+      const conv = await conversationDb.findConversationByPlatformId(platformId);
+      if (!conv) return apiError(c, 404, 'Conversation not found');
+      const result = lockManager.withdraw(platformId, queuedId);
+      if (result.status === 'withdrawn') emitQueueChanged(platformId);
+      return c.json(result);
+    } catch (error) {
+      getLog().error({ err: error, platformId, queuedId }, 'withdraw_queued_message_failed');
+      return apiError(c, 500, 'Failed to withdraw the message');
+    }
   });
 
   // GET /api/stream/__dashboard__ — multiplexed dashboard SSE (all workflow events)

@@ -201,6 +201,10 @@ export {
   DRAIN_REFUSAL_NOTICE,
   type DrainStatus,
   type LockAcquisitionResult,
+  type QueuedMessageInfo,
+  type QueueDescription,
+  type TurnContext,
+  type WithdrawResult,
   notifyDrainRefusal,
 } from './utils/conversation-lock';
 

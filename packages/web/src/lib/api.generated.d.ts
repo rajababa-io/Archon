@@ -1316,6 +1316,178 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/conversations/{id}/interrupt': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Stop the conversation's running turn
+     * @description Aborts the running chat turn through its provider. Output already streamed is kept and the turn is marked interrupted. Workflow runs the turn started are not affected. Queued messages stay queued and are delivered once the turn ends.
+     */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Outcome of the stop request */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ConversationInterruptResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/conversations/{id}/queue': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Messages waiting behind the running turn */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Queued messages, oldest first */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ConversationQueueResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/conversations/{id}/queue/{queuedId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Take a queued message back before it is delivered */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          queuedId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Withdrawn, or no longer queued */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['WithdrawQueuedResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/codebases': {
     parameters: {
       query?: never;
@@ -4351,7 +4523,37 @@ export interface components {
     DispatchResponse: {
       accepted: boolean;
       status: string;
+      queuedId?: string;
     };
+    ConversationInterruptResponse: {
+      conversationId: string;
+      /** @enum {string} */
+      status: 'stopped' | 'stopping' | 'idle';
+    };
+    ConversationQueueResponse: {
+      conversationId: string;
+      messages: components['schemas']['QueuedMessage'][];
+    };
+    QueuedMessage: {
+      id: string;
+      text: string;
+      files: {
+        name: string;
+        mimeType: string;
+        size: number;
+      }[];
+      queuedAt: string;
+    };
+    WithdrawQueuedResponse:
+      | {
+          /** @enum {string} */
+          status: 'withdrawn';
+          message: components['schemas']['QueuedMessage'];
+        }
+      | {
+          /** @enum {string} */
+          status: 'not-queued';
+        };
     CodebaseListResponse: components['schemas']['Codebase'][];
     Codebase: {
       id: string;

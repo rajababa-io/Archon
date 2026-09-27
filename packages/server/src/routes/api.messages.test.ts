@@ -158,6 +158,7 @@ mock.module('@archon/core/utils/commands', () => ({
 }));
 
 import { registerApiRoutes } from './api';
+import { ConversationLockManager as RealLockManager } from '@archon/core/utils/conversation-lock';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -681,5 +682,227 @@ describe('PATCH /api/conversations/:id', () => {
       body: 'not valid json {{{',
     });
     expect(response.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: stop, queue, withdraw — against the REAL lock manager
+// ---------------------------------------------------------------------------
+
+/**
+ * A handleMessage that records each message as it starts and stays in flight
+ * until the test releases it, so ordering is asserted from the log and never
+ * from a wall-clock margin.
+ */
+function gatedTurns(): {
+  started: string[];
+  signals: Map<string, AbortSignal>;
+  release: (message: string) => void;
+} {
+  const started: string[] = [];
+  const signals = new Map<string, AbortSignal>();
+  const gates = new Map<string, () => void>();
+  mockHandleMessage.mockImplementation((async (
+    _platform: unknown,
+    _conversationId: string,
+    message: string,
+    context?: { abortSignal?: AbortSignal }
+  ) => {
+    started.push(message);
+    if (context?.abortSignal) signals.set(message, context.abortSignal);
+    await new Promise<void>(resolve => {
+      gates.set(message, resolve);
+      // A turn ends when its provider honours the abort — modelled directly.
+      context?.abortSignal?.addEventListener('abort', () => {
+        resolve();
+      });
+    });
+  }) as unknown as () => Promise<void>);
+  return {
+    started,
+    signals,
+    release: message => {
+      gates.get(message)?.();
+    },
+  };
+}
+
+/** Let the manager's promise chain hand off to the next turn. */
+async function settle(predicate: () => boolean, what: string): Promise<void> {
+  for (let i = 0; i < 50; i++) {
+    if (predicate()) return;
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+  throw new Error(`never reached: ${what}`);
+}
+
+function makeRealApp(): { app: OpenAPIHono; manager: RealLockManager } {
+  const app = new OpenAPIHono({ defaultHook: validationErrorHook });
+  const mockWebAdapter = {
+    setConversationDbId: mock((_platformId: string, _dbId: string) => {}),
+    emitSSE: mock(async () => {}),
+    emitLockEvent: mock(async () => {}),
+  } as unknown as WebAdapter;
+  const manager = new RealLockManager();
+  registerApiRoutes(app, mockWebAdapter, manager as unknown as ConversationLockManager);
+  return { app, manager };
+}
+
+async function send(
+  app: OpenAPIHono,
+  message: string
+): Promise<{ accepted: boolean; status: string; queuedId?: string }> {
+  const response = await app.request('/api/conversations/web-test-abc/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  });
+  expect(response.status).toBe(200);
+  return (await response.json()) as { accepted: boolean; status: string; queuedId?: string };
+}
+
+async function queueTexts(app: OpenAPIHono): Promise<string[]> {
+  const response = await app.request('/api/conversations/web-test-abc/queue');
+  expect(response.status).toBe(200);
+  const body = (await response.json()) as { messages: { text: string }[] };
+  return body.messages.map(m => m.text);
+}
+
+function persistedUserTexts(): string[] {
+  return mockAddMessage.mock.calls.map(call => call[2]);
+}
+
+describe('message queue behind a running turn', () => {
+  beforeEach(() => {
+    mockFindConversationByPlatformId.mockReset();
+    mockFindConversationByPlatformId.mockImplementation(async () => MOCK_CONV);
+    mockHandleMessage.mockReset();
+    mockAddMessage.mockReset();
+  });
+
+  test('delivers queued messages in order, each exactly once, and lists them while waiting', async () => {
+    const turns = gatedTurns();
+    const { app, manager } = makeRealApp();
+
+    expect((await send(app, 'first')).status).toBe('started');
+    const second = await send(app, 'second');
+    const third = await send(app, 'third');
+    expect(second.status).toBe('queued-conversation');
+    expect(third.status).toBe('queued-conversation');
+    expect(second.queuedId).toBeString();
+
+    // Waiting messages are visible, oldest first — and not yet in the history.
+    expect(await queueTexts(app)).toEqual(['second', 'third']);
+    await settle(() => turns.started.length === 1, 'first turn started');
+    expect(persistedUserTexts()).toEqual(['first']);
+
+    turns.release('first');
+    await settle(() => turns.started.length === 2, 'second turn started');
+    expect(await queueTexts(app)).toEqual(['third']);
+
+    turns.release('second');
+    await settle(() => turns.started.length === 3, 'third turn started');
+    turns.release('third');
+    await settle(() => manager.getStats().active === 0, 'idle');
+
+    expect(turns.started).toEqual(['first', 'second', 'third']);
+    expect(persistedUserTexts()).toEqual(['first', 'second', 'third']);
+    expect(await queueTexts(app)).toEqual([]);
+  });
+
+  test('a message withdrawn before delivery is never delivered nor written to history', async () => {
+    const turns = gatedTurns();
+    const { app, manager } = makeRealApp();
+
+    await send(app, 'first');
+    const queued = await send(app, 'typo');
+
+    const response = await app.request(
+      `/api/conversations/web-test-abc/queue/${queued.queuedId ?? ''}`,
+      { method: 'DELETE' }
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ status: 'withdrawn', message: { text: 'typo' } });
+
+    turns.release('first');
+    await settle(() => manager.getStats().active === 0, 'idle');
+    expect(turns.started).toEqual(['first']);
+    expect(persistedUserTexts()).toEqual(['first']);
+  });
+
+  test('withdrawing a message that was already delivered changes nothing and says so', async () => {
+    const turns = gatedTurns();
+    const { app, manager } = makeRealApp();
+
+    await send(app, 'first');
+    const queued = await send(app, 'second');
+    turns.release('first');
+    await settle(() => turns.started.length === 2, 'second delivered');
+
+    const response = await app.request(
+      `/api/conversations/web-test-abc/queue/${queued.queuedId ?? ''}`,
+      { method: 'DELETE' }
+    );
+    expect(await response.json()).toEqual({ status: 'not-queued' });
+
+    turns.release('second');
+    await settle(() => manager.getStats().active === 0, 'idle');
+    // Delivered once, never withdrawn: one winner.
+    expect(turns.started).toEqual(['first', 'second']);
+  });
+});
+
+describe('POST /api/conversations/:id/interrupt', () => {
+  beforeEach(() => {
+    mockFindConversationByPlatformId.mockReset();
+    mockFindConversationByPlatformId.mockImplementation(async () => MOCK_CONV);
+    mockHandleMessage.mockReset();
+    mockAddMessage.mockReset();
+  });
+
+  test('aborts the running turn and releases the lock', async () => {
+    const turns = gatedTurns();
+    const { app } = makeRealApp();
+
+    await send(app, 'long task');
+    await settle(() => turns.signals.has('long task'), 'turn started with a signal');
+    expect(turns.signals.get('long task')?.aborted).toBe(false);
+
+    const response = await app.request('/api/conversations/web-test-abc/interrupt', {
+      method: 'POST',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ conversationId: 'web-test-abc', status: 'stopped' });
+    expect(turns.signals.get('long task')?.aborted).toBe(true);
+
+    const lock = await app.request('/api/conversations/web-test-abc/lock');
+    expect(await lock.json()).toEqual({ conversationId: 'web-test-abc', locked: false });
+  });
+
+  test('a queued message is delivered after the stopped turn, not aborted with it', async () => {
+    const turns = gatedTurns();
+    const { app } = makeRealApp();
+
+    await send(app, 'first');
+    await send(app, 'next');
+    await app.request('/api/conversations/web-test-abc/interrupt', { method: 'POST' });
+    await settle(() => turns.started.length === 2, 'queued message delivered');
+    expect(turns.signals.get('next')?.aborted).toBe(false);
+    turns.release('next');
+  });
+
+  test('says idle when nothing is running', async () => {
+    const { app } = makeRealApp();
+    const response = await app.request('/api/conversations/web-test-abc/interrupt', {
+      method: 'POST',
+    });
+    expect(await response.json()).toEqual({ conversationId: 'web-test-abc', status: 'idle' });
+  });
+
+  test('404s for a conversation that does not exist', async () => {
+    mockFindConversationByPlatformId.mockImplementation(async () => null);
+    const { app } = makeRealApp();
+    const response = await app.request('/api/conversations/nope/interrupt', { method: 'POST' });
+    expect(response.status).toBe(404);
   });
 });

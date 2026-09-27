@@ -110,7 +110,7 @@ export function applyLockEvent(conversationPlatformId: string, locked: boolean):
  * it a key. Restating the union by hand is how a reconnect silently
  * under-invalidates.
  */
-type ConversationTarget = 'messages' | 'lock';
+type ConversationTarget = 'messages' | 'lock' | 'queue';
 // Stated in full rather than widening ConversationTarget: the run stream feeds
 // a run detail page, which has no composer and so has nothing the lock answers
 // for. Giving it the key anyway would put a refetch in a recovery list for a
@@ -125,6 +125,12 @@ const CONVERSATION_EVENT_TARGETS = new Map<string, readonly ConversationTarget[]
   // — the table names what an event changes, and recovery always refetches
   // because a lock event emitted during a gap is exactly what was lost.
   ['conversation_lock', ['lock']],
+  // A queued message leaving the queue is also the moment it enters the
+  // history, so both are asked again.
+  ['conversation_queue', ['queue', 'messages']],
+  // Sent after a durable notice (a stopped turn's marker) is written, so the
+  // history has a new row to show.
+  ['system_status', ['messages']],
 ]);
 
 const RUN_EVENT_TARGETS = new Map<string, readonly RunTarget[]>([
@@ -163,6 +169,7 @@ function conversationStreamTargetKeys(
   return {
     messages: K.messages(conversationPlatformId),
     lock: K.conversationLock(conversationPlatformId),
+    queue: K.conversationQueue(conversationPlatformId),
   };
 }
 

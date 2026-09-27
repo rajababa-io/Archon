@@ -1,6 +1,6 @@
 import type { Mock } from 'bun:test';
 import { mock } from 'bun:test';
-import type { ConversationLockManager } from '@archon/core';
+import type { ConversationLockManager, TurnContext } from '@archon/core';
 import type { DashboardRunsResult } from '@archon/core/db/workflows';
 import type { WorkflowLoadResult } from '@archon/workflows/schemas/workflow';
 import type { ParseResult } from '@archon/workflows/loader';
@@ -132,9 +132,9 @@ export function makeMockLockManager(
     // Default admission follows `isDraining`, as the real manager does, so stubbing
     // drain alone cannot produce a manager that claims to be draining and admits
     // work anyway — a test built on that pair would prove nothing.
-    acquireLock: mock(async (_id: string, fn: () => Promise<void>) => {
+    acquireLock: mock(async (_id: string, fn: (turn: TurnContext) => Promise<void>) => {
       if (members.isDraining?.()) return { status: 'refused-draining' };
-      await fn();
+      await fn({ signal: new AbortController().signal });
       return { status: 'started' };
     }),
     ...members,

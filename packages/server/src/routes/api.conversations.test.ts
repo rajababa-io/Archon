@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OpenAPIHono } from '@hono/zod-openapi';
 import { removeTempTree } from '@archon/paths/test-utils';
-import type { ConversationLockManager } from '@archon/core';
+import type { ConversationLockManager, TurnContext } from '@archon/core';
 import type { WebAdapter } from '../adapters/web';
 import { validationErrorHook } from './openapi-defaults';
 import { makeMockLockManager, mockAllWorkflowModules } from '../test/workflow-mock-factories';
@@ -1158,8 +1158,8 @@ describe('PUT /api/conversations/order', () => {
 
 describe('POST /api/conversations with file attachments', () => {
   const mockLockManager = {
-    acquireLock: mock(async (_convId: string, fn: () => Promise<void>) => {
-      await fn();
+    acquireLock: mock(async (_convId: string, fn: (turn: TurnContext) => Promise<void>) => {
+      await fn({ signal: new AbortController().signal });
       return { status: 'started' as const };
     }),
     isDraining: () => false,

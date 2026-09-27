@@ -171,6 +171,37 @@ describe('stream recovery — the keys each stream keeps live', () => {
     unsubscribe();
   });
 
+  // The queue is server-held so a reload and a second tab see it; a socket gap
+  // is the same problem as a reload, so the queue must be in the recovery list.
+  test("a conversation stream's reconnect refetches the message queue", async () => {
+    const conversationId = 'test-sse-queue-gap';
+    const key = K.conversationQueue(conversationId);
+    let serverQueue = ['queued'];
+    let loads = 0;
+    const unsubscribe = subscribeKey(
+      key,
+      () => {},
+      () => {
+        loads += 1;
+        return Promise.resolve([...serverQueue]);
+      }
+    );
+    await flush();
+
+    const { stream, open } = fakeStream();
+    recoverOnReconnect(stream, conversationStreamKeys(conversationId));
+    open();
+
+    // Delivered during the gap: the event that would have said so is lost.
+    serverQueue = [];
+    open(); // reconnect
+    await flush();
+    expect(get(key)).toEqual([]);
+    expect(loads).toBe(2);
+
+    unsubscribe();
+  });
+
   test("a run stream's reconnect refetches its messages and its run detail", async () => {
     const conversationId = 'test-sse-run-conversation';
     const runId = 'test-sse-run';
