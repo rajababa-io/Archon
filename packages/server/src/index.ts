@@ -824,9 +824,11 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // continuation tick. It replays only rows the park step wrote, so it never guesses
   // about work it did not park.
   const replayParkedWork = (): Promise<void> =>
-    replayParked(() => lockManager.isDraining(), apiRoutes.dispatchParkedTurn).catch((err: unknown) => {
-      getLog().error({ err }, 'deploy_park.replay_failed');
-    });
+    replayParked(() => lockManager.isDraining(), apiRoutes.dispatchParkedTurn).catch(
+      (err: unknown) => {
+        getLog().error({ err }, 'deploy_park.replay_failed');
+      }
+    );
 
   // GitHub webhook endpoint. CI watches ride it: GitHub is the only forge a
   // watch can name, so with no GitHub adapter there is nothing to watch with.
