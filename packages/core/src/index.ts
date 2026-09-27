@@ -224,6 +224,8 @@ export {
   installCredentialHelper,
   AppNotInstalledError,
   AppPrivateKeyError,
+  probeGitHubApp,
+  type GitHubAppIdentity,
   type GitHubAppConfig,
   type IGitHubAppAuthProvider,
   type GitHubAuth,

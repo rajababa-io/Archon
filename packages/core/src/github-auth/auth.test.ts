@@ -42,7 +42,7 @@ mock.module('@octokit/auth-app', () => ({
   createAppAuth: mockCreateAppAuth,
 }));
 
-import { createGitHubAppAuthProvider } from './auth';
+import { createGitHubAppAuthProvider, probeGitHubApp } from './auth';
 import { loadAppPrivateKey } from './private-key';
 import { AppNotInstalledError, AppPrivateKeyError } from './errors';
 
@@ -500,5 +500,26 @@ describe('getOctokitForInstallation', () => {
     mockRequest.mockResolvedValueOnce({ status: 200, data: { id: 77 } });
     const second = await provider.getOctokitForInstallation('o', 'r');
     expect(second).not.toBe(first);
+  });
+});
+
+describe('probeGitHubApp', () => {
+  test('reads the App identity and its installations, and mints no token', async () => {
+    mockRequest.mockResolvedValueOnce({ status: 200, data: { slug: 'archon-bot' } });
+    mockRequest.mockResolvedValueOnce({ status: 200, data: [{ id: 1 }, { id: 2 }] });
+
+    const identity = await probeGitHubApp('12345', REAL_PEM);
+
+    expect(identity).toEqual({ slug: 'archon-bot', installationCount: 2 });
+    expect(lastOctokitInit.current).toMatchObject({
+      auth: { appId: '12345', privateKey: REAL_PEM },
+    });
+    const routes = mockRequest.mock.calls.map(call => call[0]);
+    expect(routes).toEqual(['GET /app', 'GET /app/installations']);
+  });
+
+  test('propagates a GitHub rejection with its status', async () => {
+    mockRequest.mockRejectedValueOnce(Object.assign(new Error('Bad credentials'), { status: 401 }));
+    await expect(probeGitHubApp('12345', REAL_PEM)).rejects.toMatchObject({ status: 401 });
   });
 });
