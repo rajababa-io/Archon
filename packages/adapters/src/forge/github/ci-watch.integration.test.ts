@@ -86,8 +86,8 @@ function checkRunCompleted(headSha: string): object {
 
 function makeAdapter(): InstanceType<typeof GitHubAdapter> {
   const adapter = new GitHubAdapter({ kind: 'pat', token: 'unused-test-token' }, SECRET, {
-    acquireLock: async (_id: string, handler: () => Promise<void>) => {
-      await handler();
+    acquireLock: async (_id: string, handler: (turn: { signal: AbortSignal }) => Promise<void>) => {
+      await handler({ signal: new AbortController().signal });
       return { status: 'started' as const };
     },
   });
