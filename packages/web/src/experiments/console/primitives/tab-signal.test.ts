@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChatStatus } from './chat-status';
-import { alertText, chatAlerts, chatStatuses, tabTitle } from './tab-signal';
+import { alertText, anyWorking, chatAlerts, chatStatuses, tabTitle } from './tab-signal';
 
 const m = (entries: Record<string, ChatStatus>): Map<string, ChatStatus> =>
   new Map(Object.entries(entries));
@@ -59,17 +59,22 @@ describe('chatStatuses', () => {
 });
 
 describe('tabTitle', () => {
-  test('leaves the title alone when nothing is happening', () => {
+  test('leaves the title alone when nothing wants you', () => {
     expect(tabTitle('Archon', m({ a: 'idle', b: 'done', c: 'ready' }))).toBe('Archon');
   });
-  test('a dot while any chat works', () => {
-    expect(tabTitle('Archon', m({ a: 'working', b: 'idle' }))).toBe('● Archon');
+  test('working is not in the text — the favicon carries it', () => {
+    expect(tabTitle('Archon', m({ a: 'working', b: 'idle' }))).toBe('Archon');
   });
   test('counts chats that want you — awaiting and unread', () => {
-    expect(tabTitle('Archon', m({ a: 'awaiting', b: 'unread', c: 'done' }))).toBe('(2) Archon');
+    expect(tabTitle('Archon', m({ a: 'awaiting', b: 'unread', c: 'working' }))).toBe('(2) Archon');
   });
-  test('count first, then the dot', () => {
-    expect(tabTitle('Archon', m({ a: 'awaiting', b: 'working' }))).toBe('(1) ● Archon');
+});
+
+describe('anyWorking', () => {
+  test('true only when some chat is working', () => {
+    expect(anyWorking(m({ a: 'idle', b: 'working' }))).toBe(true);
+    expect(anyWorking(m({ a: 'awaiting', b: 'unread' }))).toBe(false);
+    expect(anyWorking(new Map())).toBe(false);
   });
 });
 

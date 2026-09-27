@@ -1,13 +1,15 @@
 /**
  * Keeps the browser tab telling the truth about the chats while you are
- * somewhere else: the title always, and a notification when you opted in.
+ * somewhere else: the title and favicon always, and a notification when you
+ * opted in.
  *
  * Decisions live in `primitives/tab-signal`; this is the wiring to the document
  * and the Notification API.
  */
 import { useEffect, useRef } from 'react';
 import type { ChatStatus } from '../primitives/chat-status';
-import { alertText, chatAlerts, tabTitle } from '../primitives/tab-signal';
+import { alertText, anyWorking, chatAlerts, tabTitle } from '../primitives/tab-signal';
+import { useFaviconBadge } from './favicon-badge';
 import { notifyState } from './notify';
 
 export function useTabSignal(
@@ -29,6 +31,8 @@ export function useTabSignal(
   useEffect(() => {
     if (baseRef.current !== null) document.title = tabTitle(baseRef.current, statuses);
   }, [statuses]);
+
+  useFaviconBadge(anyWorking(statuses));
 
   const titlesRef = useRef(titles);
   titlesRef.current = titles;

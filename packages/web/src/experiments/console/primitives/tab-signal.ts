@@ -42,26 +42,28 @@ export function chatStatuses(
 }
 
 /**
- * The tab title: `(N)` for chats that want you, `●` while any chat is working.
+ * The tab title: `(N)` for chats that want you.
  *
  * N counts the rail's amber — awaiting and unread — because those are the two
  * states that ask a person to come and look. A turn that ends while you are
  * away leaves its chat unread, so the count rising is how "done" reaches a tab
  * you are not looking at. Ready and done are green: nothing to come back for.
  *
- * Both marks can show at once, count first, since a waiting chat is the one
- * that costs time if missed.
+ * Working is deliberately NOT in the text. A title is plain text, so a mark
+ * there cannot take the working blue and is drawn as large as the letters; it
+ * read as a different signal from every other working dot. It is the favicon's
+ * badge instead — see `anyWorking` and `lib/favicon-badge`.
  */
 export function tabTitle(base: string, statuses: ReadonlyMap<string, ChatStatus>): string {
   let wanting = 0;
-  let working = false;
-  for (const s of statuses.values()) {
-    if (s === 'awaiting' || s === 'unread') wanting += 1;
-    else if (s === 'working') working = true;
-  }
-  const count = wanting > 0 ? `(${String(wanting)}) ` : '';
-  const dot = working ? '● ' : '';
-  return `${count}${dot}${base}`;
+  for (const s of statuses.values()) if (s === 'awaiting' || s === 'unread') wanting += 1;
+  return wanting > 0 ? `(${String(wanting)}) ${base}` : base;
+}
+
+/** Whether any listed chat is working — what the favicon's blue dot says. */
+export function anyWorking(statuses: ReadonlyMap<string, ChatStatus>): boolean {
+  for (const s of statuses.values()) if (s === 'working') return true;
+  return false;
 }
 
 export type ChatAlertKind = 'finished' | 'asking';
