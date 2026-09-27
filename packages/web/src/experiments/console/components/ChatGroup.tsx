@@ -1,5 +1,5 @@
 import { Paperclip } from 'lucide-react';
-import { memo, type ReactElement } from 'react';
+import { memo, useState, type ReactElement } from 'react';
 import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { copyLabel, useCopy } from '../lib/clipboard';
@@ -7,7 +7,7 @@ import { useClock } from '../lib/clock';
 import { splitReply } from '../primitives/ask';
 import { AskErrorCard } from './AskErrorCard';
 import { formatBytes } from '../primitives/file';
-import type { MessageGroup } from '../primitives/message-groups';
+import { progressNoteIds, type MessageGroup } from '../primitives/message-groups';
 import type { Message } from '../primitives/message';
 
 interface ChatGroupProps {
@@ -47,6 +47,45 @@ function FileChips({ files }: { files: Message['files'] }): ReactElement {
   );
 }
 
+/**
+ * A line the agent wrote on its way to the answer, shown as one muted line.
+ *
+ * Folded rather than dropped: it is still what the agent said, so a click
+ * opens it in full. Only the first line shows while folded, because that is
+ * where the agent puts its headline, and the headline is exactly what made a
+ * note read as a second reply (#125).
+ */
+function ProgressNote({ content }: { content: string }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const firstLine = content.split('\n', 1)[0] ?? '';
+  return (
+    <div className="max-w-[74ch] min-w-0 text-[length:var(--text-small)] text-text-tertiary">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(v => !v);
+        }}
+        className="flex w-full min-w-0 items-baseline gap-[0.4rem] text-left hover:text-text-secondary"
+      >
+        <span aria-hidden className="shrink-0 font-mono">
+          {open ? '▾' : '▸'}
+        </span>
+        {open ? (
+          <span className="sr-only">Hide progress note</span>
+        ) : (
+          <span className="truncate">{firstLine}</span>
+        )}
+      </button>
+      {open ? (
+        <div className="mt-[0.25rem] border-l border-border pl-[0.75rem] text-text-secondary">
+          <Markdown>{content}</Markdown>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ErrorBlock({ message }: { message: string }): ReactElement {
   return (
     <div className="rounded-[var(--radius-card)] border border-error/40 bg-error/10 px-[0.6rem] py-[0.4rem] font-mono text-[length:var(--text-small)] text-error">
@@ -80,6 +119,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
   const { state: copyState, copy } = useCopy();
   const isUser = group.role === 'user';
   const isSystem = group.role === 'system';
+  const notes = progressNoteIds(group);
 
   const meta = (
     <time
@@ -163,7 +203,9 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
         const content = message.content.trim();
         return (
           <div key={message.id} className="flex flex-col gap-[var(--msg-gap)]">
-            {content.length > 0 ? (
+            {notes.has(message.id) ? (
+              <ProgressNote content={content} />
+            ) : content.length > 0 ? (
               <div
                 className={`max-w-[74ch] min-w-0 text-[length:var(--text-medium)] leading-[1.62] ${
                   isSystem ? 'text-text-secondary' : 'text-text-primary'

@@ -19,6 +19,7 @@
  * grouping depend on the 12/24-hour preference, which is a display choice and
  * must not reshape the conversation.
  */
+import { splitReply } from './ask';
 import type { Message, MessageRole } from './message';
 
 export interface MessageGroup {
@@ -75,4 +76,29 @@ export function groupMessages(messages: readonly Message[]): MessageGroup[] {
     });
   }
   return groups;
+}
+
+/**
+ * Ids of the messages in an agent group that are progress notes rather than
+ * the reply.
+ *
+ * The agent writes a line before its tool calls ("issue filed, now updating
+ * the rule") and then its answer after them. Both are rows in one group, and
+ * each opens with its own headline, so rendered at full size one reply reads
+ * as two (#125). Every text piece but the last is therefore a note; the last
+ * is the answer.
+ *
+ * A piece carrying an ask block — well-formed or not — is never a note: folding it would hide a
+ * question waiting for an answer. Empty rows (tool calls only) render nothing
+ * either way and do not count as the last piece.
+ */
+export function progressNoteIds(group: MessageGroup): Set<string> {
+  const notes = new Set<string>();
+  if (group.role !== 'assistant') return notes;
+  const texts = group.messages.filter(m => m.content.trim().length > 0);
+  for (const m of texts.slice(0, -1)) {
+    const asks = splitReply(m.content).some(part => part.kind !== 'markdown');
+    if (!asks) notes.add(m.id);
+  }
+  return notes;
 }

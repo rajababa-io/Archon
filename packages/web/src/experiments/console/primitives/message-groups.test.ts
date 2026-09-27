@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { groupMessages } from './message-groups';
+import { groupMessages, progressNoteIds, type MessageGroup } from './message-groups';
 import type { Message, MessageRole } from './message';
 
 let n = 0;
@@ -138,5 +138,44 @@ describe('groupMessages', () => {
     ];
     const flat = groupMessages(input).flatMap(g => g.messages);
     expect(flat.map(m => m.id)).toEqual(input.map(m => m.id));
+  });
+});
+
+describe('progressNoteIds', () => {
+  const at = '2026-09-27T01:43:54Z';
+  const text = (role: MessageRole, content: string): Message => ({ ...msg(role, at), content });
+  const groupOf = (...messages: Message[]): MessageGroup => {
+    const [g] = groupMessages(messages);
+    if (g === undefined) throw new Error('no group');
+    return g;
+  };
+
+  it('folds every text piece but the last in an agent group', () => {
+    const note = text('assistant', 'Issue filed, now updating the rule.');
+    const answer = text('assistant', 'Rule — LIVE.');
+    expect([...progressNoteIds(groupOf(note, answer))]).toEqual([note.id]);
+  });
+
+  it('leaves a single-piece reply alone', () => {
+    expect(progressNoteIds(groupOf(text('assistant', 'Done.'))).size).toBe(0);
+  });
+
+  it('does not let a trailing empty tool-call row make the answer a note', () => {
+    const note = text('assistant', 'Checking.');
+    const answer = text('assistant', 'Answer.');
+    const tools = text('assistant', '');
+    expect([...progressNoteIds(groupOf(note, answer, tools))]).toEqual([note.id]);
+  });
+
+  it('never folds a piece holding an ask block', () => {
+    const block = JSON.stringify({ questions: [{ title: 'Which?', options: [{ label: 'A' }] }] });
+    const ask = text('assistant', `Q1:\n\n\`\`\`ask\n${block}\n\`\`\``);
+    const answer = text('assistant', 'Answer.');
+    expect(progressNoteIds(groupOf(ask, answer)).size).toBe(0);
+  });
+
+  it('leaves user and system groups alone', () => {
+    expect(progressNoteIds(groupOf(text('user', 'a'), text('user', 'b'))).size).toBe(0);
+    expect(progressNoteIds(groupOf(text('system', 'a'), text('system', 'b'))).size).toBe(0);
   });
 });
