@@ -9,8 +9,13 @@ import { useEffect } from 'react';
 
 /** Canvas size. Drawn large and scaled down by the browser, so edges stay crisp. */
 const SIZE = 64;
-/** Badge height as a fraction of the icon — Gmail's tag covers about half. */
-const BADGE_H = 0.56;
+/**
+ * Badge height as a fraction of the icon. Gmail's tag covers about two-thirds,
+ * and at 16px anything smaller leaves a number too small to read.
+ */
+const BADGE_H = 0.7;
+/** Glyph size as a fraction of the tag: the number fills it, as Gmail's does. */
+const GLYPH = 0.92;
 
 /** `text` is what the badge says; empty means the plain icon. */
 export function useFaviconBadge(text: string): void {
@@ -31,8 +36,8 @@ export function useFaviconBadge(text: string): void {
       ctx.drawImage(img, 0, 0, SIZE, SIZE);
 
       const h = Math.round(SIZE * BADGE_H);
-      ctx.font = `bold ${String(Math.round(h * 0.86))}px Arial, Helvetica, sans-serif`;
-      const w = Math.max(h * 0.86, ctx.measureText(text).width + h * 0.36);
+      ctx.font = `bold ${String(Math.round(h * GLYPH))}px Arial, Helvetica, sans-serif`;
+      const w = Math.min(SIZE, Math.max(h * 0.8, ctx.measureText(text).width + h * 0.24));
       const x = SIZE - w;
       const y = SIZE - h;
 
