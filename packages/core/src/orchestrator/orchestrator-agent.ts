@@ -2473,6 +2473,10 @@ export async function handleMessage(
     // refuse AFTER the user row is written, which is exactly the orphaned-row bug
     // this ordering exists to prevent.
     const codebases = await codebaseDb.listCodebases();
+    const scopedCodebase =
+      conversation.codebase_id !== null
+        ? codebases.find(c => c.id === conversation.codebase_id)
+        : undefined;
 
     // A registered project's directory can vanish under a long-lived conversation —
     // the clone deleted, the folder moved, the volume holding it unmounted.
@@ -2507,23 +2511,50 @@ export async function handleMessage(
     // `scopedCodebase === undefined` branch below does: relocating the agent into a
     // directory the user did not scope would widen its write scope without consent.
     if (conversation.codebase_id !== null && conversation.cwd === null) {
-      const scoped = codebases.find(c => c.id === conversation.codebase_id);
-      if (scoped !== undefined && !existsSync(scoped.default_cwd)) {
+      if (scopedCodebase !== undefined && !existsSync(scopedCodebase.default_cwd)) {
         getLog().warn(
-          { conversationId, codebaseId: scoped.id, cwd: scoped.default_cwd },
+          { conversationId, codebaseId: scopedCodebase.id, cwd: scopedCodebase.default_cwd },
           'orchestrator.codebase_cwd_missing'
         );
         await platform.sendMessage(
           conversationId,
-          `This conversation's project directory no longer exists:\n\`${scoped.default_cwd}\`\n\n` +
-            `The project "${scoped.name}" is still registered, but its folder is gone — ` +
+          `This conversation's project directory no longer exists:\n\`${scopedCodebase.default_cwd}\`\n\n` +
+            `The project "${scopedCodebase.name}" is still registered, but its folder is gone — ` +
             'deleted, moved, or on a volume that is no longer mounted.\n\n' +
-            `- \`/update-project ${quoteCommandArg(scoped.name)} <new-path>\` ` +
+            `- \`/update-project ${quoteCommandArg(scopedCodebase.name)} <new-path>\` ` +
             'to point it at the new location\n' +
             '- `/setproject <name>` to switch this conversation to a different project'
         );
         return;
       }
+    }
+
+    // A provider session that started in a worktree cannot follow the chat out of
+    // it. Tearing the worktree down while the session is still active can detach
+    // the conversation, leaving a `cwd` of null that reads exactly like a chat
+    // that never had a worktree; the session's own record is what still tells
+    // them apart. Refuses rather than resuming in the project checkout, which
+    // would move the chat out of its worktree mid-session without anyone asking.
+    // `/reset` and `/setproject` end the session, so they are the ways out.
+    const activeSession = await sessionDb.getActiveSession(conversation.id);
+    const sessionWorktree = activeSession?.metadata.worktreePath;
+    if (conversation.cwd === null && sessionWorktree !== undefined) {
+      getLog().warn(
+        {
+          conversationId,
+          sessionId: activeSession?.id,
+          sessionWorktree,
+          isolationEnvId: conversation.isolation_env_id,
+        },
+        'orchestrator.session_worktree_detached'
+      );
+      await platform.sendMessage(
+        conversationId,
+        `This conversation's session was working in an isolated worktree that is no longer attached:\n\`${sessionWorktree}\`\n\n` +
+          'The session cannot continue anywhere else. Run `/reset` to start fresh in a new ' +
+          'worktree, or `/setproject <name>` to rebind this conversation to a project.'
+      );
+      return;
     }
 
     // A git-project chat gets its own worktree when its provider session starts,
@@ -2536,23 +2567,21 @@ export async function handleMessage(
     // it already has, or the live checkout pinned by `/worktree live`. Folder
     // projects cannot make worktrees. Runs before the persist below, so a refused
     // turn leaves no orphaned user row.
-    const activeSession = await sessionDb.getActiveSession(conversation.id);
     if (conversation.codebase_id !== null && conversation.cwd === null && activeSession === null) {
-      const scoped = codebases.find(c => c.id === conversation.codebase_id);
-      if (scoped !== undefined && scoped.kind !== 'folder') {
+      if (scopedCodebase !== undefined && scopedCodebase.kind !== 'folder') {
         try {
           conversation = await bindDefaultChatWorktree(
             platform,
             conversationId,
             conversation,
-            scoped,
+            scopedCodebase,
             isolationHints,
             userId
           );
         } catch (error) {
           if (!(error instanceof IsolationBlockedError)) throw error;
           getLog().warn(
-            { conversationId, codebaseId: scoped.id, reason: error.reason },
+            { conversationId, codebaseId: scopedCodebase.id, reason: error.reason },
             'orchestrator.chat_worktree_blocked'
           );
           return;
@@ -2702,10 +2731,6 @@ export async function handleMessage(
       workflowContext,
       pausedGateContext
     );
-    const scopedCodebase =
-      conversation.codebase_id !== null
-        ? codebases.find(c => c.id === conversation.codebase_id)
-        : undefined;
     const cwd = await resolveChatCwd(conversation, scopedCodebase);
 
     // 4. Update activity and get/create session
@@ -2731,6 +2756,7 @@ export async function handleMessage(
     if (!session) {
       session = await sessionDb.transitionSession(conversation.id, 'first-message', {
         ai_assistant_type: conversation.ai_assistant_type,
+        ...(conversation.isolation_env_id !== null ? { metadata: { worktreePath: cwd } } : {}),
       });
     }
 

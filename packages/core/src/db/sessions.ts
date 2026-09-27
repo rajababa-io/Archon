@@ -15,6 +15,22 @@ function getLog(): ReturnType<typeof createLogger> {
 }
 
 /**
+ * SQLite stores `metadata` as JSON text while Postgres returns the parsed JSONB
+ * object; parse at the store boundary so `Session.metadata` is an object on both.
+ * A corrupt string is logged and read as `{}` so one bad row cannot break a turn.
+ */
+function normalizeSession(row: Session): Session {
+  const raw: unknown = row.metadata;
+  if (typeof raw !== 'string') return row;
+  try {
+    return { ...row, metadata: sessionMetadataSchema.parse(JSON.parse(raw)) };
+  } catch (err) {
+    getLog().warn({ sessionId: row.id, err: err as Error }, 'db.session_metadata_parse_failed');
+    return { ...row, metadata: {} };
+  }
+}
+
+/**
  * Error thrown when a session is not found during update operations
  */
 export class SessionNotFoundError extends Error {
@@ -29,7 +45,8 @@ export async function getActiveSession(conversationId: string): Promise<Session 
     'SELECT * FROM remote_agent_sessions WHERE conversation_id = $1 AND active = true LIMIT 1',
     [conversationId]
   );
-  return result.rows[0] || null;
+  const row = result.rows[0];
+  return row ? normalizeSession(row) : null;
 }
 
 export async function createSession(data: {
@@ -55,7 +72,7 @@ export async function createSession(data: {
       data.transition_reason ?? null,
     ]
   );
-  return result.rows[0];
+  return normalizeSession(result.rows[0]);
 }
 
 export async function updateSession(id: string, sessionId: string | null): Promise<void> {
@@ -106,6 +123,7 @@ export async function transitionSession(
   data: {
     codebase_id?: string;
     ai_assistant_type: string;
+    metadata?: SessionMetadata;
   }
 ): Promise<Session> {
   const db = getDatabase();
@@ -133,8 +151,8 @@ export async function transitionSession(
     // 3. Create new session linked to previous
     const newResult = await query<Session>(
       `INSERT INTO remote_agent_sessions
-     (conversation_id, codebase_id, ai_assistant_type, assistant_session_id, parent_session_id, transition_reason)
-     VALUES ($1, $2, $3, $4, $5, $6)
+     (conversation_id, codebase_id, ai_assistant_type, assistant_session_id, parent_session_id, transition_reason, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
       [
         conversationId,
@@ -143,10 +161,11 @@ export async function transitionSession(
         null,
         current?.id ?? null,
         reason,
+        JSON.stringify(sessionMetadataSchema.parse(data.metadata ?? {})),
       ]
     );
 
-    const newSession = newResult.rows[0];
+    const newSession = normalizeSession(newResult.rows[0]);
     getLog().debug(
       { conversationId, reason, parentSessionId: current?.id, newSessionId: newSession.id },
       'db.session_transition_completed'
@@ -166,7 +185,7 @@ export async function getSessionHistory(conversationId: string): Promise<readonl
      ORDER BY started_at DESC`,
     [conversationId]
   );
-  return result.rows;
+  return result.rows.map(normalizeSession);
 }
 
 /**
@@ -184,7 +203,7 @@ export async function getSessionChain(sessionId: string): Promise<readonly Sessi
      SELECT * FROM chain ORDER BY started_at ASC`,
     [sessionId]
   );
-  return result.rows;
+  return result.rows.map(normalizeSession);
 }
 
 /**

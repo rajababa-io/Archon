@@ -2084,6 +2084,11 @@ describe('provider cwd resolution', () => {
       expect(mockValidateAndResolveIsolation).toHaveBeenCalledTimes(1);
       expect(resolverHints()).toEqual({ workflowType: 'thread', workflowId: 'conv-1' });
       expect(getSendQueryCwd()).toBe('/wt/thread-a');
+      // The session remembers its worktree, so losing the worktree later cannot
+      // quietly continue this session in the shared checkout.
+      expect(mockTransitionSession.mock.calls[0]?.[2]).toMatchObject({
+        metadata: { worktreePath: '/wt/thread-a' },
+      });
     });
 
     test('adapter-supplied hints reach the resolver unchanged', async () => {
@@ -2116,6 +2121,41 @@ describe('provider cwd resolution', () => {
       expect(getSendQueryCwd()).toBe('/repos/test-repo');
     });
 
+    test('a live session whose worktree was detached is refused, not moved to the checkout', async () => {
+      // The state a destroyed worktree leaves once the conversation is detached
+      // from it: no cwd, no env, and the session that started in it still active.
+      scopeTo(makeCodebaseForSync(), { cwd: null, isolation_env_id: null });
+      mockGetActiveSession.mockResolvedValueOnce(
+        makeSession({ metadata: { worktreePath: '/wt/thread-a' } })
+      );
+      const platform: IPlatformAdapter = {
+        ...makePlatform(),
+        getPlatformType: mock(() => 'slack' as const),
+      };
+
+      await handleMessage(platform, 'conv-1', 'keep going');
+
+      expect(mockSendQuery).not.toHaveBeenCalled();
+      expect(mockValidateAndResolveIsolation).not.toHaveBeenCalled();
+      expect(mockTransitionSession).not.toHaveBeenCalled();
+      expect(mockAddMessage).not.toHaveBeenCalledWith(
+        expect.anything(),
+        'user',
+        expect.anything(),
+        undefined,
+        undefined
+      );
+      const sent = (platform.sendMessage as ReturnType<typeof mock>).mock.calls
+        .map(c => String(c[1]))
+        .join('\n');
+      expect(sent).toContain('/wt/thread-a');
+      expect(sent).toContain('/reset');
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ sessionWorktree: '/wt/thread-a' }),
+        'orchestrator.session_worktree_detached'
+      );
+    });
+
     test('a chat pinned to the live checkout stays there', async () => {
       scopeTo(makeCodebaseForSync(), { cwd: '/repos/test-repo' });
 
@@ -2123,6 +2163,7 @@ describe('provider cwd resolution', () => {
 
       expect(mockValidateAndResolveIsolation).not.toHaveBeenCalled();
       expect(getSendQueryCwd()).toBe('/repos/test-repo');
+      expect(mockTransitionSession.mock.calls[0]?.[2]).not.toHaveProperty('metadata');
     });
 
     test('a folder project runs in place', async () => {

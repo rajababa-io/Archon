@@ -68,6 +68,24 @@ describe('sessions', () => {
       );
     });
 
+    test('parses the metadata SQLite returns as JSON text', async () => {
+      mockQuery.mockResolvedValueOnce(
+        createQueryResult([{ ...mockSession, metadata: '{"worktreePath":"/wt/a"}' }])
+      );
+
+      const result = await getActiveSession('conv-456');
+
+      expect(result?.metadata).toEqual({ worktreePath: '/wt/a' });
+    });
+
+    test('reads corrupt metadata text as empty rather than failing', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([{ ...mockSession, metadata: '{oops' }]));
+
+      const result = await getActiveSession('conv-456');
+
+      expect(result?.metadata).toEqual({});
+    });
+
     test('returns null when no active session', async () => {
       mockQuery.mockResolvedValueOnce(createQueryResult([]));
 
@@ -345,10 +363,10 @@ describe('sessions', () => {
       expect(mockQuery).toHaveBeenNthCalledWith(
         3,
         `INSERT INTO remote_agent_sessions
-     (conversation_id, codebase_id, ai_assistant_type, assistant_session_id, parent_session_id, transition_reason)
-     VALUES ($1, $2, $3, $4, $5, $6)
+     (conversation_id, codebase_id, ai_assistant_type, assistant_session_id, parent_session_id, transition_reason, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-        ['conv-456', 'codebase-789', 'claude', null, 'session-123', 'plan-to-execute']
+        ['conv-456', 'codebase-789', 'claude', null, 'session-123', 'plan-to-execute', '{}']
       );
     });
 
@@ -386,11 +404,25 @@ describe('sessions', () => {
       expect(mockQuery).toHaveBeenNthCalledWith(
         2,
         `INSERT INTO remote_agent_sessions
-     (conversation_id, codebase_id, ai_assistant_type, assistant_session_id, parent_session_id, transition_reason)
-     VALUES ($1, $2, $3, $4, $5, $6)
+     (conversation_id, codebase_id, ai_assistant_type, assistant_session_id, parent_session_id, transition_reason, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-        ['conv-456', 'codebase-789', 'claude', null, null, 'first-message']
+        ['conv-456', 'codebase-789', 'claude', null, null, 'first-message', '{}']
       );
+    });
+
+    test('records the metadata the new session starts with', async () => {
+      mockQuery
+        .mockResolvedValueOnce(createQueryResult([]))
+        .mockResolvedValueOnce(createQueryResult([mockSession]));
+
+      await transitionSession('conv-456', 'first-message', {
+        ai_assistant_type: 'claude',
+        metadata: { worktreePath: '/wt/a' },
+      });
+
+      const insertParams = mockQuery.mock.calls[1]?.[1] as unknown[];
+      expect(insertParams.at(-1)).toBe('{"worktreePath":"/wt/a"}');
     });
 
     test('rolls back transaction when createSession fails after deactivateSession', async () => {
