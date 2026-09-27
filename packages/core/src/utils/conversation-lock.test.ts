@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from 'bun:test';
 import {
   ConversationLockManager,
+  DeployParkAbort,
   DRAIN_REFUSAL_NOTICE,
   notifyDrainRefusal,
 } from './conversation-lock';
@@ -611,5 +612,141 @@ describe('ConversationLockManager', () => {
       const queued = await manager.acquireLock('conv-a', gate(log, 'anon').handler);
       expect(manager.withdraw('conv-a', queued.queuedId ?? '')).toEqual({ status: 'not-queued' });
     });
+  });
+});
+
+describe('parking for a deploy', () => {
+  const parkable = (
+    text: string
+  ): { text: string; parkable: { text: string; attachedFiles: [] } } => ({
+    text,
+    parkable: { text, attachedFiles: [] },
+  });
+
+  test('refuses outside a drain, and touches nothing', async () => {
+    const manager = new ConversationLockManager();
+    const log: string[] = [];
+    const running = gate(log, 'running');
+    const next = gate(log, 'next');
+    await manager.acquireLock('conv-a', running.handler);
+    await manager.acquireLock('conv-a', next.handler, parkable('next'));
+
+    expect(manager.takeForPark('conv-a')).toEqual({ status: 'refused', reason: 'not_draining' });
+    expect(manager.listQueued('conv-a').map(m => m.text)).toEqual(['next']);
+    running.release();
+    await drainUntilStarted(log, 2);
+    next.release();
+    await drainUntilIdle(manager);
+  });
+
+  test('takes every queued message in order, without its withdraw cleanup, so none is ever delivered', async () => {
+    const manager = new ConversationLockManager();
+    const log: string[] = [];
+    const running = gate(log, 'running');
+    const onWithdraw = mock(async () => {});
+    await manager.acquireLock('conv-a', running.handler);
+    await manager.acquireLock('conv-a', gate(log, 'first').handler, {
+      ...parkable('first'),
+      onWithdraw,
+    });
+    await manager.acquireLock('conv-a', gate(log, 'second').handler, parkable('second'));
+    manager.beginDrain(600);
+
+    const take = manager.takeForPark('conv-a');
+    expect(take.status).toBe('taken');
+    if (take.status !== 'taken') return;
+    expect(take.active).toBe(true);
+    expect(take.queued.map(turn => turn.text)).toEqual(['first', 'second']);
+    expect(onWithdraw).not.toHaveBeenCalled();
+    expect(manager.getParkedConversationIds()).toEqual(['conv-a']);
+
+    running.release();
+    await drainUntilIdle(manager);
+    // The turn ended and the queue it would have handed off to is empty.
+    expect(log).toEqual(['running']);
+  });
+
+  test('one message that cannot be saved keeps the whole conversation, in order', async () => {
+    const manager = new ConversationLockManager();
+    const log: string[] = [];
+    const running = gate(log, 'running');
+    const described = gate(log, 'described');
+    const anon = gate(log, 'anon');
+    await manager.acquireLock('conv-a', running.handler);
+    await manager.acquireLock('conv-a', described.handler, parkable('described'));
+    await manager.acquireLock('conv-a', anon.handler);
+    manager.beginDrain(600);
+
+    expect(manager.takeForPark('conv-a')).toEqual({
+      status: 'refused',
+      reason: 'unparkable_queued_turn',
+    });
+    expect(manager.getParkedConversationIds()).toEqual([]);
+
+    running.release();
+    await drainUntilStarted(log, 2);
+    described.release();
+    await drainUntilStarted(log, 3);
+    anon.release();
+    await drainUntilIdle(manager);
+    expect(log).toEqual(['running', 'described', 'anon']);
+  });
+
+  test('restore puts the messages back at the head and delivers them in order', async () => {
+    const manager = new ConversationLockManager();
+    const log: string[] = [];
+    const running = gate(log, 'running');
+    const first = gate(log, 'first');
+    const second = gate(log, 'second');
+    await manager.acquireLock('conv-a', running.handler);
+    await manager.acquireLock('conv-a', first.handler, parkable('first'));
+    await manager.acquireLock('conv-a', second.handler, parkable('second'));
+    manager.beginDrain(600);
+
+    const take = manager.takeForPark('conv-a');
+    if (take.status !== 'taken') throw new Error('expected a take');
+    // The turn ends while the take is being persisted...
+    running.release();
+    await drainUntil(() => !manager.isActive('conv-a'), 'turn ended');
+    // ...and the persist fails, so the conversation must be exactly as it was.
+    take.restore();
+    expect(manager.getParkedConversationIds()).toEqual([]);
+
+    await drainUntilStarted(log, 2);
+    first.release();
+    await drainUntilStarted(log, 3);
+    second.release();
+    await drainUntilIdle(manager);
+    expect(log).toEqual(['running', 'first', 'second']);
+  });
+
+  test("the interrupt's reason reaches the turn, so it can say it was paused for a restart", async () => {
+    const manager = new ConversationLockManager();
+    let signal: AbortSignal | undefined;
+    await manager.acquireLock('conv-a', async turn => {
+      signal = turn.signal;
+      await new Promise<void>(resolve => turn.signal.addEventListener('abort', () => resolve()));
+    });
+
+    await manager.interrupt('conv-a', new DeployParkAbort());
+    expect(signal?.reason).toBeInstanceOf(DeployParkAbort);
+  });
+
+  test('the parked set and the drain id live and die with the drain', () => {
+    const manager = new ConversationLockManager();
+    expect(manager.getDrainId()).toBeUndefined();
+    manager.beginDrain(600);
+    const drainId = manager.getDrainId();
+    expect(drainId).toBeDefined();
+    manager.takeForPark('conv-idle');
+    // Extending the drain keeps both.
+    manager.beginDrain(900);
+    expect(manager.getDrainId()).toBe(drainId);
+    expect(manager.getParkedConversationIds()).toEqual(['conv-idle']);
+
+    manager.cancelDrain();
+    expect(manager.getParkedConversationIds()).toEqual([]);
+    manager.beginDrain(600);
+    expect(manager.getDrainId()).not.toBe(drainId);
   });
 });

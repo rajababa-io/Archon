@@ -87,8 +87,10 @@ const {
   releaseWritebackClaim,
   completeWorkflowRun,
   failWorkflowRun,
+  parkWorkflowRun,
   WorkflowNotResumableError,
 } = await import('./workflows');
+const { summarizeDrain } = await import('./parked-work');
 const { approveWorkflow, rejectWorkflow } = await import('../operations/workflow-operations');
 
 // workflow_runs.conversation_id is NOT NULL with an enforced FK — seed a parent.
@@ -1580,5 +1582,73 @@ describe('terminal records retain durable run evidence', () => {
     expect(original.status).toBe('failed');
     expect(await countEvents(runId, 'workflow_failed')).toBe(1);
     expect(await countEvents(runId, 'workflow_cancelled')).toBe(1);
+  });
+});
+
+describe('parking a run for a deploy — real SQLite', () => {
+  const DRAIN = '0b7c7f43-6a4e-4c1b-9d59-3f6f2d1c8a10';
+  const parkWait = (): {
+    owner: 'node';
+    nodeId: string;
+    kind: 'park';
+    waitingSince: string;
+    resumeAt: string;
+    drainId: string;
+  } => {
+    const now = new Date().toISOString();
+    return {
+      owner: 'node',
+      nodeId: 'implement',
+      kind: 'park',
+      waitingSince: now,
+      resumeAt: now,
+      drainId: DRAIN,
+    };
+  };
+
+  test('pauses a running run on a park wait and records the marker in one write', async () => {
+    await seed('park-me', 'running', "datetime('now')");
+    const wait = parkWait();
+
+    expect(await parkWorkflowRun('park-me', wait)).toEqual({ parked: true });
+
+    const run = await getWorkflowRun('park-me');
+    expect(run?.status).toBe('paused');
+    expect(run?.metadata.wait).toEqual(wait);
+    expect((await summarizeDrain(DRAIN)).parked.runs).toBe(1);
+  });
+
+  test('a run that is no longer running is not parked and leaves no marker', async () => {
+    const drain = 'b7f0c1e2-3d4c-4b5a-8e9f-0a1b2c3d4e5f';
+    await seed('park-gated', 'paused', "datetime('now')");
+
+    expect(await parkWorkflowRun('park-gated', { ...parkWait(), drainId: drain })).toEqual({
+      parked: false,
+    });
+    expect((await summarizeDrain(drain)).parked.runs).toBe(0);
+  });
+
+  test('is due at once, resumes from its node, and the marker and wait are consumed exactly once', async () => {
+    const drain = 'c3d2e1f0-5a4b-4c3d-9e8f-7a6b5c4d3e2f';
+    await seed('park-resume', 'running', "datetime('now')");
+    const wait = { ...parkWait(), drainId: drain };
+    await parkWorkflowRun('park-resume', wait);
+
+    const due = await listDueWorkflowContinuations(new Date(Date.now() + 1000), 25);
+    expect(due.map(run => run.id)).toContain('park-resume');
+
+    const cursor = { kind: 'wait' as const, nodeId: wait.nodeId, resumeAt: wait.resumeAt };
+    const resumed = await resumeWorkflowRun('park-resume', cursor);
+    expect(resumed.status).toBe('running');
+    // Consumed here: left behind on a `wait:` node it would read as that node's own.
+    expect(resumed.metadata.wait).toBeUndefined();
+    expect(await summarizeDrain(drain)).toEqual({
+      parked: { chats: 0, queuedMessages: 0, runs: 1 },
+      resumed: { chats: 0, queuedMessages: 0, runs: 1 },
+    });
+
+    await expect(resumeWorkflowRun('park-resume', cursor)).rejects.toBeInstanceOf(
+      WorkflowNotResumableError
+    );
   });
 });

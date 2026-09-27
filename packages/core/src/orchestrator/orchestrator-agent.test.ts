@@ -640,6 +640,7 @@ import {
   parseOrchestratorCommands,
   handleMessage,
   TURN_INTERRUPTED_NOTICE,
+  TURN_PARKED_NOTICE,
   resolveChatModelRequest,
   applyChatModelPin,
   resolveNextChatModel,
@@ -647,6 +648,7 @@ import {
   continueResolvedGateRun,
 } from './orchestrator-agent';
 import { buildAiProfile } from '@archon/workflows/model-validation';
+import { DeployParkAbort } from '../utils/conversation-lock';
 import { TerminalStatusWriteError } from '@archon/workflows/terminal-status-write';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -5187,6 +5189,23 @@ describe('handleMessage — interrupted turn', () => {
     expect(platform.sendDurableNotice).toHaveBeenCalledTimes(1);
     expect(platform.sendDurableNotice).toHaveBeenCalledWith('conv-1', TURN_INTERRUPTED_NOTICE, {
       category: 'turn_interrupted',
+    });
+  });
+
+  test('a turn a deploy parked says it was paused for a restart, not stopped by the user', async () => {
+    const controller = new AbortController();
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'partial' };
+      controller.abort(new DeployParkAbort());
+      throw new Error('Query aborted');
+    });
+
+    const platform = platformWithNotices();
+    await handleMessage(platform, 'conv-1', 'do the thing', { abortSignal: controller.signal });
+
+    expect(platform.sendDurableNotice).toHaveBeenCalledTimes(1);
+    expect(platform.sendDurableNotice).toHaveBeenCalledWith('conv-1', TURN_PARKED_NOTICE, {
+      category: 'turn_parked',
     });
   });
 

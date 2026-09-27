@@ -47,6 +47,7 @@ mock.module('../services/deploy-status', () => ({ getDeployStatus: mockGetDeploy
 const mockGetDrainStatus = mock(
   (): { requestedAt: string; expiresAt: string; refusedCount: number } | undefined => undefined
 );
+const mockGetParkedConversationIds = mock((): string[] => []);
 const mockGetStats = mock(() => ({
   active: 1,
   queuedTotal: 2,
@@ -216,6 +217,7 @@ function makeApp(): OpenAPIHono {
   const mockLockManager = makeMockLockManager({
     getStats: mockGetStats,
     getDrainStatus: mockGetDrainStatus,
+    getParkedConversationIds: mockGetParkedConversationIds,
   });
   registerApiRoutes(app, mockWebAdapter, mockLockManager);
   return app;
@@ -666,6 +668,30 @@ describe('GET /api/health', () => {
       expect(body.drain?.holding.runningWorkflows).toBe(1);
       // A background run also counts as an active conversation — both must be zero.
       expect(body.drain?.holding.activeConversations).toBe(1);
+    });
+
+    // A parked chat's work is already saved for the next server; its turn may
+    // still be winding down, and the deploy must not wait on that.
+    test('a chat parked for the deploy is not counted as held', async () => {
+      mockGetDrainStatus.mockImplementation(() => DRAIN_STATUS);
+      mockGetStats.mockImplementationOnce(() => ({
+        active: 2,
+        queuedTotal: 0,
+        queuedByConversation: [],
+        maxConcurrent: 10,
+        activeConversationIds: ['conv-parked', 'conv-slack'],
+      }));
+      mockGetRunningWorkflows.mockImplementationOnce(async () => []);
+      mockGetParkedConversationIds.mockImplementationOnce(() => ['conv-parked']);
+
+      const app = makeApp();
+      const body = (await (await app.request('/api/health')).json()) as {
+        drain?: { state: string; holding: Record<string, number> };
+        concurrency: { activeConversationIds: string[] };
+      };
+      expect(body.drain?.holding.activeConversations).toBe(1);
+      // The top-level count stays the truth about what is running.
+      expect(body.concurrency.activeConversationIds).toEqual(['conv-parked', 'conv-slack']);
     });
 
     test('reports drained only once nothing at all is held', async () => {

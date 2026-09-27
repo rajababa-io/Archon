@@ -68,6 +68,19 @@ const workflowWaitAttentionFields = {
   waitingSince: z.string().datetime(),
   message: z.string().trim().min(1),
 } as const;
+/**
+ * A run a deploy stopped so the container could be replaced. Written only by the
+ * drain park step (`POST /internal/drain/park`), which also records the run in
+ * `remote_agent_parked_work` — that row, not this context, is the provenance a
+ * resuming server trusts. `nodeId` is the node that was in flight; it re-runs on
+ * resume because the swap killed it before it could record a completion.
+ */
+const workflowWaitParkFields = {
+  kind: z.literal('park'),
+  waitingSince: z.string().datetime(),
+  resumeAt: z.string().datetime(),
+  drainId: z.string().uuid(),
+} as const;
 const workflowWaitNodeOwnerFields = {
   owner: z.literal('node'),
   nodeId: z.string().min(1),
@@ -90,6 +103,7 @@ export const workflowWaitContextSchema = z.union([
   z.strictObject({ ...workflowWaitNodeOwnerFields, ...workflowWaitTimeFields }),
   z.strictObject({ ...workflowWaitNodeOwnerFields, ...workflowWaitEventFields }),
   z.strictObject({ ...workflowWaitNodeOwnerFields, ...workflowWaitAttentionFields }),
+  z.strictObject({ ...workflowWaitNodeOwnerFields, ...workflowWaitParkFields }),
   z.strictObject({ ...workflowWaitLoopOwnerFields, ...workflowWaitTimeFields }),
   z.strictObject({ ...workflowWaitLoopOwnerFields, ...workflowWaitEventFields }),
   z.strictObject({ ...workflowWaitLoopOwnerFields, ...workflowWaitAttentionFields }),

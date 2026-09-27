@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 
 import { createLogger } from '@archon/paths';
 
-import type { IPlatformAdapter } from '../types';
+import type { AttachedFile, IPlatformAdapter } from '../types';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -60,6 +60,46 @@ export interface QueueDescription {
    * will. Never runs for a delivered message.
    */
   onWithdraw?: () => Promise<void>;
+  /**
+   * Everything needed to deliver this message from a different process. Only a
+   * message that carries it can be parked by a deploy; one that does not keeps
+   * the deploy waiting for it instead.
+   */
+  parkable?: ParkableTurn;
+}
+
+/** A queued message as a deploy persists it, to be delivered by the next server. */
+export interface ParkableTurn {
+  text: string;
+  userId?: string;
+  attachedFiles: AttachedFile[];
+}
+
+/**
+ * What `takeForPark` did. `taken` carries `restore`, which puts the messages back
+ * at the head of the queue in their original order — for when they could not be
+ * persisted, so a failed park leaves the conversation exactly as it was.
+ */
+export type ParkTakeResult =
+  | {
+      status: 'taken';
+      /** A turn was running and still needs `interrupt` once the take is persisted. */
+      active: boolean;
+      /** The queued messages, oldest first. */
+      queued: ParkableTurn[];
+      restore: () => void;
+    }
+  | { status: 'refused'; reason: 'not_draining' | 'unparkable_queued_turn' };
+
+/**
+ * The abort reason a deploy's park gives `interrupt`, so the turn can tell the
+ * chat it was paused for a restart rather than stopped by the user.
+ */
+export class DeployParkAbort extends Error {
+  constructor() {
+    super('Paused for a deploy');
+    this.name = 'DeployParkAbort';
+  }
 }
 
 /**
@@ -147,6 +187,10 @@ interface DrainState {
   requestedAt: string;
   expiresAtMs: number;
   refusedCount: number;
+  /** Names what this drain parks, so everything one deploy parked shares one id. */
+  drainId: string;
+  /** Conversations whose work was parked: not counted as held while their turn winds down. */
+  parkedConversations: Set<string>;
 }
 
 function toDrainStatus(state: DrainState): DrainStatus {
@@ -327,17 +371,72 @@ export class ConversationLockManager {
    * on its own, so a provider slow to honour the abort keeps the conversation
    * busy rather than letting a second turn start on top of it.
    *
+   * @param reason - Becomes `signal.reason`, so the turn can tell why it ended.
    * @returns The turn's completion, or `undefined` when nothing was running.
    *   Queued messages are untouched; they are delivered once the turn ends.
    */
-  interrupt(conversationId: string): Promise<void> | undefined {
+  interrupt(conversationId: string, reason?: unknown): Promise<void> | undefined {
     const turn = this.activeConversations.get(conversationId);
     if (!turn) return undefined;
     if (!turn.controller.signal.aborted) {
       getLog().info({ conversationId }, 'turn_interrupt_requested');
-      turn.controller.abort();
+      turn.controller.abort(reason);
     }
     return turn.promise;
+  }
+
+  /**
+   * Take a conversation's queued messages so a deploy can persist them, and mark
+   * the conversation parked for the rest of this drain.
+   *
+   * Synchronous for the same reason as `withdraw`: it races `processQueue`, and a
+   * message must never be both parked and delivered. `onWithdraw` does NOT run —
+   * a parked message's staged files are delivered later, not discarded.
+   *
+   * All or nothing: one queued message without a `parkable` payload refuses the
+   * whole conversation, because parking the rest would deliver them out of order.
+   */
+  takeForPark(conversationId: string): ParkTakeResult {
+    const drain = this.currentDrain();
+    if (!drain) return { status: 'refused', reason: 'not_draining' };
+    const queue = this.messageQueues.get(conversationId) ?? [];
+    if (queue.some(m => m.description?.parkable === undefined)) {
+      return { status: 'refused', reason: 'unparkable_queued_turn' };
+    }
+    const taken = queue.splice(0, queue.length);
+    this.messageQueues.delete(conversationId);
+    drain.parkedConversations.add(conversationId);
+    getLog().info({ conversationId, queued: taken.length }, 'conversation_parked');
+
+    const restore = (): void => {
+      if (taken.length > 0) {
+        const current = this.messageQueues.get(conversationId) ?? [];
+        this.messageQueues.set(conversationId, [...taken, ...current]);
+      }
+      this.currentDrain()?.parkedConversations.delete(conversationId);
+      getLog().warn({ conversationId, queued: taken.length }, 'conversation_park_restored');
+      if (!this.activeConversations.has(conversationId)) {
+        this.processQueue(conversationId).catch((error: unknown) => {
+          getLog().error({ err: error, conversationId }, 'queue_processing_error');
+        });
+      }
+    };
+    return {
+      status: 'taken',
+      active: this.activeConversations.has(conversationId),
+      queued: taken.flatMap(m => (m.description?.parkable ? [m.description.parkable] : [])),
+      restore,
+    };
+  }
+
+  /** Conversations this drain parked. Empty when not draining. */
+  getParkedConversationIds(nowMs = Date.now()): string[] {
+    return [...(this.currentDrain(nowMs)?.parkedConversations ?? [])];
+  }
+
+  /** The id everything parked during this drain is recorded under. */
+  getDrainId(nowMs = Date.now()): string | undefined {
+    return this.currentDrain(nowMs)?.drainId;
   }
 
   /** The described messages waiting for this conversation, oldest first. */
@@ -441,6 +540,8 @@ export class ConversationLockManager {
       requestedAt: existing?.requestedAt ?? new Date(now).toISOString(),
       expiresAtMs: now + budgetSeconds * 1000,
       refusedCount: existing?.refusedCount ?? 0,
+      drainId: existing?.drainId ?? randomUUID(),
+      parkedConversations: existing?.parkedConversations ?? new Set<string>(),
     };
     this.drainState = state;
     getLog().warn(

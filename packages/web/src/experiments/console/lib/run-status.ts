@@ -30,6 +30,7 @@ export function runStatusLabel(run: Run, stalled = false): string {
   if (stalled && run.status === 'running') return 'Stalled';
   if (run.status !== 'paused' || run.wait == null) return statusLabel[run.status];
   if (run.wait.kind === 'attention') return 'Waiting for action';
+  if (run.wait.kind === 'park') return 'Paused for a restart';
   return run.wait.kind === 'event' ? 'Waiting for event' : 'Waiting until scheduled time';
 }
 

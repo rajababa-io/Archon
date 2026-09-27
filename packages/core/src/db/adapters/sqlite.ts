@@ -978,6 +978,27 @@ export class SqliteAdapter implements IDatabase {
       CREATE INDEX IF NOT EXISTS idx_start_binding_preparation
         ON remote_agent_start_receipt_bindings(host_id, preparation_status, created_at);
 
+      -- Work a deploy parked before replacing the container (#144). Mirrors
+      -- migrations/037_deploy_parked_work.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_parked_work (
+        id TEXT PRIMARY KEY,
+        drain_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('chat_resume', 'queued_message', 'workflow_run')),
+        conversation_id TEXT REFERENCES remote_agent_conversations(id) ON DELETE CASCADE,
+        run_id TEXT REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL DEFAULT 0,
+        content TEXT NOT NULL DEFAULT '',
+        attached_files TEXT,
+        user_id TEXT,
+        parked_at TEXT NOT NULL DEFAULT (datetime('now')),
+        resumed_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_parked_work_unresumed
+        ON remote_agent_parked_work(conversation_id, seq) WHERE resumed_at IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_parked_work_drain
+        ON remote_agent_parked_work(drain_id);
+
       -- Workflow events table
       CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),

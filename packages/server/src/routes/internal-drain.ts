@@ -8,6 +8,10 @@
  * already holds, and `/api/health` reports `drain.state: 'drained'` once it holds
  * nothing. The deploy swaps then — or, if the budget lapses first, deploys nothing.
  *
+ * When waiting would outlast the budget, the deploy parks what is still running
+ * (`POST /internal/drain/park`, see ../services/deploy-park) and waits only for what
+ * could not be parked. Cancelling drain hands parked work straight back.
+ *
  * Registered outside the OpenAPI surface and only when `ARCHON_DRAIN_TOKEN` is set,
  * so an install that has not configured a token has no drain endpoint at all.
  *
@@ -22,8 +26,10 @@ import { timingSafeEqual } from 'node:crypto';
 import type { OpenAPIHono } from '@hono/zod-openapi';
 import { z } from '@hono/zod-openapi';
 import type { ConversationLockManager } from '@archon/core';
+import { summarizeDrain } from '@archon/core/db/parked-work';
 import { createLogger } from '@archon/paths';
 import { MAX_DRAIN_BUDGET_SECONDS } from './drain-budget';
+import { NotDrainingError, parkForDeploy, type ParkLockManager } from '../services/deploy-park';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -42,7 +48,10 @@ const drainRequestSchema = z.object({
 });
 
 /** The slice of the lock manager these routes drive. */
-export type DrainTarget = Pick<ConversationLockManager, 'beginDrain' | 'cancelDrain'>;
+export type DrainTarget = Pick<ConversationLockManager, 'beginDrain' | 'cancelDrain'> &
+  ParkLockManager;
+
+const drainIdSchema = z.string().uuid();
 
 /**
  * Constant-time bearer check. Mirrors `verifyWebhookToken` in the GitLab adapter:
@@ -59,10 +68,15 @@ export function isAuthorizedDrainRequest(
   return timingSafeEqual(received, expected);
 }
 
+/**
+ * @param replayParked Resumes parked chats. Cancelling drain calls it, so a deploy
+ *   that fails before its swap hands parked work straight back to this server.
+ */
 export function registerInternalDrainRoutes(
   app: OpenAPIHono,
   lockManager: DrainTarget,
-  token: string
+  token: string,
+  replayParked: () => Promise<void>
 ): void {
   app.post('/internal/drain', async c => {
     if (!isAuthorizedDrainRequest(c.req.header('Authorization'), token)) {
@@ -87,7 +101,7 @@ export function registerInternalDrainRoutes(
     return c.json(status);
   });
 
-  app.delete('/internal/drain', c => {
+  app.delete('/internal/drain', async c => {
     if (!isAuthorizedDrainRequest(c.req.header('Authorization'), token)) {
       return c.json({ error: 'unauthorized' }, 401);
     }
@@ -95,7 +109,48 @@ export function registerInternalDrainRoutes(
     // whether its own drain request ever landed.
     lockManager.cancelDrain();
     getLog().warn('internal.drain_cancelled');
+    // Un-park before answering, so the deploy's log can say the box is back as it
+    // was. A replay failure must never fail the cancel: the box is accepting work
+    // again either way, and the next continuation tick retries the replay.
+    try {
+      await replayParked();
+    } catch (error) {
+      getLog().error({ err: error as Error }, 'internal.drain_cancel_replay_failed');
+    }
     return c.json({ draining: false });
+  });
+
+  // Park what is still running so the deploy can swap. Parked runs are already
+  // paused, and parked chats are excluded from the health `holding` counts, so
+  // after this the drain waits only for what could not be parked.
+  app.post('/internal/drain/park', async c => {
+    if (!isAuthorizedDrainRequest(c.req.header('Authorization'), token)) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    try {
+      const report = await parkForDeploy(lockManager);
+      return c.json(report);
+    } catch (error) {
+      if (error instanceof NotDrainingError) return c.json({ error: error.message }, 409);
+      getLog().error({ err: error as Error }, 'internal.drain_park_failed');
+      return c.json({ error: 'park failed' }, 500);
+    }
+  });
+
+  // What one drain parked and how much of it is back. Asked of the NEW server by
+  // the deploy, for its report.
+  app.get('/internal/drain/park/:drainId', async c => {
+    if (!isAuthorizedDrainRequest(c.req.header('Authorization'), token)) {
+      return c.json({ error: 'unauthorized' }, 401);
+    }
+    const drainId = drainIdSchema.safeParse(c.req.param('drainId'));
+    if (!drainId.success) return c.json({ error: 'drainId must be a UUID' }, 400);
+    try {
+      return c.json(await summarizeDrain(drainId.data));
+    } catch (error) {
+      getLog().error({ err: error as Error }, 'internal.drain_park_summary_failed');
+      return c.json({ error: 'could not read the park summary' }, 500);
+    }
   });
 
   getLog().info('internal_drain_endpoint_registered');

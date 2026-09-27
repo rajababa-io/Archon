@@ -18,6 +18,26 @@ mock.module('@archon/paths', () => ({
   }),
 }));
 
+class NotDrainingError extends Error {}
+const mockParkForDeploy = mock(async (): Promise<unknown> => PARK_REPORT);
+mock.module('../services/deploy-park', () => ({
+  NotDrainingError,
+  parkForDeploy: mockParkForDeploy,
+}));
+const mockSummarizeDrain = mock(async (_drainId: string): Promise<unknown> => PARK_SUMMARY);
+mock.module('@archon/core/db/parked-work', () => ({ summarizeDrain: mockSummarizeDrain }));
+
+const DRAIN_ID = '0b7c7f43-6a4e-4c1b-9d59-3f6f2d1c8a10';
+const PARK_REPORT = {
+  drainId: DRAIN_ID,
+  parked: { chats: 3, queuedMessages: 1, runs: 1 },
+  blocked: [{ kind: 'run', id: 'cli-run', reason: 'not_owned_by_this_server' }],
+};
+const PARK_SUMMARY = {
+  parked: { chats: 3, queuedMessages: 1, runs: 1 },
+  resumed: { chats: 3, queuedMessages: 1, runs: 0 },
+};
+
 import {
   isAuthorizedDrainRequest,
   MAX_DRAIN_BUDGET_SECONDS,
@@ -33,13 +53,16 @@ const DRAIN_STATUS = {
   refusedCount: 0,
 };
 
-function makeApp(): { app: OpenAPIHono; target: DrainTarget } {
+function makeApp(replayParked: () => Promise<void> = mock(async () => {})): {
+  app: OpenAPIHono;
+  target: DrainTarget;
+} {
   const app = new OpenAPIHono();
-  const target: DrainTarget = {
+  const target = {
     beginDrain: mock(() => DRAIN_STATUS),
     cancelDrain: mock(() => {}),
-  };
-  registerInternalDrainRoutes(app, target, TOKEN);
+  } as unknown as DrainTarget;
+  registerInternalDrainRoutes(app, target, TOKEN, replayParked);
   return { app, target };
 }
 
@@ -148,5 +171,109 @@ describe('DELETE /internal/drain', () => {
     const { app, target } = makeApp();
     expect((await del(app, 'Bearer wrong-token-value')).status).toBe(401);
     expect(target.cancelDrain).not.toHaveBeenCalled();
+  });
+});
+
+describe('DELETE /internal/drain hands parked work back', () => {
+  const del = async (app: OpenAPIHono): Promise<Response> =>
+    await app.request('/internal/drain', {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${TOKEN}` },
+    });
+
+  // A deploy that fails before its swap cancels drain; that cancel is the un-park.
+  test('replays parked work after cancelling, before answering', async () => {
+    const order: string[] = [];
+    const replay = mock(async () => {
+      order.push('replay');
+    });
+    const { app, target } = makeApp(replay);
+    (target.cancelDrain as ReturnType<typeof mock>).mockImplementation(() => {
+      order.push('cancel');
+    });
+
+    expect((await del(app)).status).toBe(200);
+    expect(order).toEqual(['cancel', 'replay']);
+  });
+
+  test('a replay that fails never fails the cancel', async () => {
+    const { app } = makeApp(
+      mock(async () => {
+        throw new Error('db down');
+      })
+    );
+    const response = await del(app);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ draining: false });
+  });
+});
+
+describe('POST /internal/drain/park', () => {
+  const park = async (app: OpenAPIHono, authorization = `Bearer ${TOKEN}`): Promise<Response> =>
+    await app.request('/internal/drain/park', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: authorization },
+      body: '{}',
+    });
+
+  test('answers with what was parked and what keeps the deploy waiting', async () => {
+    const { app } = makeApp();
+    const response = await park(app);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(PARK_REPORT);
+  });
+
+  test('refuses an unauthorized caller without parking anything', async () => {
+    mockParkForDeploy.mockClear();
+    const { app } = makeApp();
+    expect((await park(app, 'Bearer wrong-token-value')).status).toBe(401);
+    expect(mockParkForDeploy).not.toHaveBeenCalled();
+  });
+
+  // Parked work is replayed whenever the server is not draining, so parking
+  // without a drain would be undone at the next tick.
+  test('is a 409 when the server is not draining', async () => {
+    mockParkForDeploy.mockImplementationOnce(async () => {
+      throw new NotDrainingError('not draining');
+    });
+    const { app } = makeApp();
+    expect((await park(app)).status).toBe(409);
+  });
+
+  test('any other failure is a 500 the deploy stops on', async () => {
+    mockParkForDeploy.mockImplementationOnce(async () => {
+      throw new Error('db down');
+    });
+    const { app } = makeApp();
+    expect((await park(app)).status).toBe(500);
+  });
+});
+
+describe('GET /internal/drain/park/:drainId', () => {
+  const get = async (
+    app: OpenAPIHono,
+    drainId: string,
+    authorization = `Bearer ${TOKEN}`
+  ): Promise<Response> =>
+    await app.request(`/internal/drain/park/${drainId}`, {
+      headers: { Authorization: authorization },
+    });
+
+  test('reports what the drain parked and how much has resumed', async () => {
+    const { app } = makeApp();
+    const response = await get(app, DRAIN_ID);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(PARK_SUMMARY);
+    expect(mockSummarizeDrain).toHaveBeenLastCalledWith(DRAIN_ID);
+  });
+
+  test('refuses a drain id that is not a UUID', async () => {
+    const { app } = makeApp();
+    expect((await get(app, 'not-a-uuid')).status).toBe(400);
+  });
+
+  test('refuses an unauthorized caller', async () => {
+    const { app } = makeApp();
+    expect((await get(app, DRAIN_ID, 'Bearer wrong-token-value')).status).toBe(401);
   });
 });

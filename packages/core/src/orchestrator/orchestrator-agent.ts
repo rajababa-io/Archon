@@ -31,6 +31,7 @@ import { findSlashCommand } from '../handlers/command-registry';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
+import { DeployParkAbort } from '../utils/conversation-lock';
 import { quoteCommandArg } from '../utils/command-args';
 import { conversationCheckout } from '../utils/conversation-checkout';
 import { safeDeactivateSession } from '../state/session-transitions';
@@ -2984,7 +2985,7 @@ export async function handleMessage(
 
     // A provider may honour an abort by ending its stream rather than throwing;
     // the turn was still cut short, and the transcript must say so either way.
-    if (abortSignal?.aborted) await announceInterrupted(platform, conversationId);
+    if (abortSignal?.aborted) await announceInterrupted(platform, conversationId, abortSignal);
 
     // Direct-chat turns may have written to source/. If there is local-only state
     // (uncommitted edits, unpushed commits), surface a one-line reminder so the
@@ -3009,7 +3010,7 @@ export async function handleMessage(
     // to explain — reporting it as one would bury the marker under an error.
     if (abortSignal?.aborted) {
       getLog().info({ conversationId, err }, 'orchestrator_turn_interrupted');
-      await announceInterrupted(platform, conversationId);
+      await announceInterrupted(platform, conversationId, abortSignal);
       return;
     }
     getLog().error({ err, conversationId }, 'orchestrator_message_failed');
@@ -3653,19 +3654,27 @@ async function maybeNudgeHandoff(
 /** What the transcript records on a turn the user stopped. */
 export const TURN_INTERRUPTED_NOTICE = 'Interrupted — you stopped this turn.';
 
+/** What the transcript records on a turn a deploy paused, to be resumed after the restart. */
+export const TURN_PARKED_NOTICE =
+  'Paused for a restart — this chat will pick up where it left off when Archon is back.';
+
 /**
  * Mark the turn as stopped, below whatever it had already said. Durable where
  * the platform can manage it: the partial reply stays in the history, so the
  * marker that explains why it ends mid-thought has to stay with it. Never
  * throws — the turn is already over and there is nothing left to fail.
+ *
+ * The signal's reason says who stopped it: a deploy parking the chat, or the user.
  */
 async function announceInterrupted(
   platform: IPlatformAdapter,
-  conversationId: string
+  conversationId: string,
+  signal: AbortSignal
 ): Promise<void> {
+  const parked = signal.reason instanceof DeployParkAbort;
   try {
-    await notice(platform, conversationId, TURN_INTERRUPTED_NOTICE, {
-      category: 'turn_interrupted',
+    await notice(platform, conversationId, parked ? TURN_PARKED_NOTICE : TURN_INTERRUPTED_NOTICE, {
+      category: parked ? 'turn_parked' : 'turn_interrupted',
     });
   } catch (error) {
     getLog().warn({ err: toError(error), conversationId }, 'turn_interrupted_notice_failed');

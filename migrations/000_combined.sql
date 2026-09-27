@@ -24,6 +24,7 @@
 --   8. remote_agent_user_github_tokens
 --   9. remote_agent_user_provider_keys
 --   10. remote_agent_user_ai_prefs
+--   11. remote_agent_parked_work
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -743,6 +744,28 @@ CREATE TABLE IF NOT EXISTS remote_agent_resource_start_requests (
   FOREIGN KEY (receipt_id, binding_id) REFERENCES remote_agent_start_receipt_bindings(receipt_id, binding_id) ON DELETE SET NULL
 );
 
+-- Work a deploy parked so it could replace the container (#144). Written only by
+-- the drain park step; a resuming server replays exactly these rows and nothing
+-- else, which is what keeps it from touching an ambiguous `running` row. An older
+-- binary ignores the table, so parked work waits for a current binary — it is
+-- delayed, never corrupted. See migrations/037_deploy_parked_work.sql.
+CREATE TABLE IF NOT EXISTS remote_agent_parked_work (
+  id UUID PRIMARY KEY,
+  drain_id UUID NOT NULL,
+  kind VARCHAR(20) NOT NULL CHECK (kind IN ('chat_resume', 'queued_message', 'workflow_run')),
+  conversation_id UUID REFERENCES remote_agent_conversations(id) ON DELETE CASCADE,
+  run_id UUID REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+  seq INTEGER NOT NULL DEFAULT 0,
+  content TEXT NOT NULL DEFAULT '',
+  attached_files JSONB,
+  user_id TEXT,
+  parked_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  resumed_at TIMESTAMP WITH TIME ZONE
+);
+
+COMMENT ON TABLE remote_agent_parked_work IS
+  'Chat turns, queued messages and workflow runs a deploy stopped before replacing the container. resumed_at is set exactly once, by whichever process claims the row to resume it.';
+
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases
 -- created the narrow CHECK; re-adding the named constraint converges them. Every
@@ -896,6 +919,12 @@ COMMENT ON COLUMN remote_agent_conversations.pinned_model IS
   'Model this chat runs on, overriding every default for this conversation only. NULL means the default model.';
 COMMENT ON COLUMN remote_agent_conversations.pinned_effort IS
   'Reasoning effort rung this chat runs on, overriding the default. NULL means the default effort.';
+
+-- Parked work
+CREATE INDEX IF NOT EXISTS idx_parked_work_unresumed
+  ON remote_agent_parked_work(conversation_id, seq) WHERE resumed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_parked_work_drain
+  ON remote_agent_parked_work(drain_id);
 
 -- Sessions
 CREATE INDEX IF NOT EXISTS idx_remote_agent_sessions_conversation

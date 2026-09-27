@@ -13,6 +13,7 @@ import {
 } from './resource-slots';
 import { insertWorkflowEvent, listActiveWorkflowNodeIds } from './workflow-events';
 import { insertTerminalWorkflowEvent } from './workflow-terminal-event';
+import { insertParkedRun, markParkedRunResumed } from './parked-work';
 import { normalizeWorkflowRun } from './workflow-run-normalization';
 import type { IDatabase, SqlDialect } from './adapters/types';
 import type {
@@ -1110,6 +1111,16 @@ export async function resumeWorkflowRun(
       const clearedError = readMetadataError(prior?.metadata);
       const scheduled = prior?.status === 'failed' ? readScheduledResume(prior.metadata) : null;
       const triggeredAt = scheduled?.triggeredAt === undefined ? new Date().toISOString() : null;
+      // A park wait is consumed here, not by a node: nothing in the workflow owns
+      // it, and one left behind on a `wait:` node would read as that node's own
+      // wait and skip it.
+      const priorWait = prior?.status === 'paused' ? normalizeMetadata(prior.metadata).wait : null;
+      const consumesPark = isWorkflowWaitContext(priorWait) && priorWait.kind === 'park';
+      const metadataBase = !consumesPark
+        ? 'metadata'
+        : getDatabaseType() === 'postgresql'
+          ? "(metadata - 'wait')"
+          : "json_remove(metadata, '$.wait')";
       const metadataPatch = {
         error: null,
         continuation_retry_at: null,
@@ -1124,7 +1135,7 @@ export async function resumeWorkflowRun(
              completed_at = NULL,
              started_at = ${dialect.now()},
              last_activity_at = ${dialect.now()},
-             metadata = ${dialect.jsonMerge('metadata', 3)}
+             metadata = ${dialect.jsonMerge(metadataBase, 3)}
          WHERE id = $1
            AND ${resumableStatusClause(dialect, 2)}
            AND (
@@ -1138,6 +1149,7 @@ export async function resumeWorkflowRun(
       );
 
       const rowCount = result.rowCount;
+      if (rowCount > 0 && consumesPark) await markParkedRunResumed(query, id);
       if (rowCount > 0 && clearedError !== null) {
         // Same `{ error }` payload shape workflow_failed uses, so every consumer
         // that already reads an error off a workflow_* event keeps working.
@@ -1647,6 +1659,39 @@ export async function pauseWorkflowRunForWait(
   }
 }
 
+/**
+ * Park a running run for a deploy: pause it on a `park` wait and record the park
+ * marker, in one transaction. A CAS miss is not an error — a gate or a terminal
+ * write got there first, and that run is simply not parked.
+ *
+ * The in-flight node is not aborted. The executor stops at the next layer
+ * boundary because the status is no longer `running`; a node still streaming when
+ * the container is replaced dies with it and re-runs on resume.
+ */
+export async function parkWorkflowRun(
+  id: string,
+  waitContext: Extract<WorkflowWaitContext, { kind: 'park' }>
+): Promise<{ parked: boolean }> {
+  const parsedWaitContext = workflowWaitContextSchema.parse(waitContext);
+  try {
+    return await getDatabase().withTransaction(async query => {
+      const result = await query(
+        `UPDATE remote_agent_workflow_runs
+         SET status = 'paused', metadata = ${replaceWaitMetadata(2)}
+         WHERE id = $1 AND status = 'running'`,
+        [id, JSON.stringify(parsedWaitContext)]
+      );
+      if ((result.rowCount ?? 0) === 0) return { parked: false };
+      await insertParkedRun(query, waitContext.drainId, id);
+      return { parked: true };
+    });
+  } catch (error) {
+    const err = error as Error;
+    getLog().error({ err, workflowRunId: id }, 'db.workflow_run_park_failed');
+    throw new Error(`Failed to park workflow run: ${err.message}`);
+  }
+}
+
 /** Fail the exact attention cursor whose required notification could not be delivered. */
 export async function failPausedAttentionWait(
   id: string,
@@ -1747,7 +1792,7 @@ export async function clearWorkflowWaitContext(
   }
 }
 
-/** Return a bounded set of time/deadline waits eligible for a resume claim. */
+/** Return a bounded set of time/deadline/park waits eligible for a resume claim. */
 export async function listDueWorkflowContinuations(
   now: Date,
   limit: number
@@ -1780,7 +1825,7 @@ export async function listDueWorkflowContinuations(
     const result = await pool.query<WorkflowRun>(
       `SELECT * FROM remote_agent_workflow_runs
        WHERE (${retryAt} IS NULL OR ${retryAt} <= $1)
-         AND ((status = 'paused' AND ${waitKind} IN ('time', 'event')
+         AND ((status = 'paused' AND ${waitKind} IN ('time', 'event', 'park')
                AND (${signaledAt} IS NOT NULL OR ${resumeAt} <= $1))
           OR (status = 'failed' AND ${scheduledResumeAt} <= $1 AND ${scheduledTriggeredAt} IS NULL))
        ORDER BY COALESCE(${retryAt}, ${resumeAt}, ${scheduledResumeAt}) ASC
