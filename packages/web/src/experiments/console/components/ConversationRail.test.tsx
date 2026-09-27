@@ -76,3 +76,12 @@ describe('ConversationRail — truncation', () => {
     expect(draw({ omitted: 0 })).not.toContain('not shown');
   });
 });
+
+describe('ConversationRail — New chat', () => {
+  test('the button shows its shortcut, and no longer the old C', () => {
+    const html = draw({ activeConvId: 'one' });
+    expect(html).toContain('⌘⇧O');
+    expect(html).toContain('aria-keyshortcuts="Meta+Shift+O Control+Shift+O"');
+    expect(html).not.toContain('(C)');
+  });
+});

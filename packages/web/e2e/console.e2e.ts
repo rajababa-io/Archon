@@ -131,22 +131,21 @@ test('New chat puts the cursor in the message box', async ({ page }) => {
   await expect(composer).toHaveValue('straight in');
 });
 
-test('C starts a new chat, and does nothing while typing', async ({ page }) => {
+test('⌘⇧O starts a new chat from inside the composer, and C no longer does', async ({ page }) => {
   await openChatScreen(page);
   const composer = page.getByPlaceholder('Message the agent…');
   await expect(page.getByText(USER_TURN_TEXT)).toBeVisible();
 
-  // Typed into the box, `c` is a letter, not a shortcut.
-  await composer.fill('');
-  await composer.focus();
-  await page.keyboard.type('cc');
-  await expect(composer).toHaveValue('cc');
-  await expect(page.getByText(USER_TURN_TEXT)).toBeVisible();
-
-  // Outside the box it opens a new chat, and the cursor lands in its composer
-  // without the key itself being typed there.
+  // `c` was the old shortcut. Outside the box it is now nothing at all.
   await composer.blur();
   await page.keyboard.press('c');
+  await expect(page.getByText(USER_TURN_TEXT)).toBeVisible();
+
+  // The point of a modified key: it works while typing, where the cursor
+  // almost always is. The new chat's composer takes the focus, empty.
+  await composer.focus();
+  await page.keyboard.type('half a thought');
+  await page.keyboard.press('ControlOrMeta+Shift+O');
   await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
   await expect(composer).toBeFocused();
   await expect(composer).toHaveValue('');

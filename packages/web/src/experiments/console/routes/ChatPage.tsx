@@ -33,7 +33,8 @@ import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
-import { useKeymap, type Binding } from '../lib/keymap';
+import { modalIsOpen } from '../lib/keymap';
+import { isNewChatKey } from '../lib/new-chat-key';
 import { sentHistory } from '../lib/composer-history';
 import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
@@ -455,19 +456,20 @@ export function ChatPage(): ReactElement {
     if (newChatRequests > 0) turn.controlRef.current?.focus();
   }, [newChatRequests, turn.controlRef]);
 
-  const newChatBindings = useMemo<readonly Binding[]>(
-    () => [
-      {
-        keys: ['c'],
-        label: 'Start a new chat',
-        run: (): void => {
-          selectConversationRef.current(null);
-        },
-      },
-    ],
-    []
-  );
-  useKeymap({ bindings: newChatBindings, enabled: projectId !== undefined });
+  // ⌘⇧O starts a new chat. A window listener, not the keymap: the keymap is
+  // off while the composer has focus, which on this page is nearly always.
+  useEffect(() => {
+    if (projectId === undefined) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if (!isNewChatKey(e) || modalIsOpen()) return;
+      e.preventDefault();
+      selectConversationRef.current(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return (): void => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [projectId]);
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP

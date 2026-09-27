@@ -1,5 +1,6 @@
 // Catalog for the `?` overlay. Keep in sync with each page's useKeymap.
 import type { KeymapGroup } from '../components/KeymapHelp';
+import { NEW_CHAT_KEY_LABEL } from './new-chat-key';
 
 export const SHORTCUTS: readonly KeymapGroup[] = [
   {
@@ -32,7 +33,7 @@ export const SHORTCUTS: readonly KeymapGroup[] = [
   {
     title: 'Chat',
     entries: [
-      { keys: ['c'], label: 'Start a new chat' },
+      { keys: [NEW_CHAT_KEY_LABEL], label: 'Start a new chat' },
       { keys: ['ArrowUp'], label: 'In the composer: previous sent message' },
       { keys: ['ArrowDown'], label: 'In the composer: next sent message, then your draft' },
       { keys: ['Alt+ArrowUp'], label: 'Scroll the transcript up' },
