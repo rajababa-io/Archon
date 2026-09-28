@@ -2,6 +2,8 @@
 
 The console is Archon's only shipped Web application. Its historical directory
 name remains in place to avoid a mechanical move while the builder is changing.
+It has two shells over one data layer: the desktop console at `/console`, and
+the phone shell at `/m` (see [Mobile shell](#mobile-shell)).
 
 ## Routes
 
@@ -27,19 +29,50 @@ name remains in place to avoid a mechanical move while the builder is changing.
 
 ## Chat behavior
 
-The composer accepts up to five files of 10 MB each. A new conversation must be
-created with a text-only first message because conversation creation uses JSON;
-the UI asks the operator to attach files on the next turn.
+The composer accepts up to five files of 10 MB each, on the first message of a
+new conversation as on any other.
 
 On authenticated installations, the console requests the signed-in user's
 project conversation and sends the active identity with each turn. Solo
 installations operate without an identity.
 
+## Mobile shell
+
+`mobile/` is the phone app at `/m`, an installable PWA (progressive web app).
+It shares `skills/`, `store/`, `lib/`, `primitives/`, and the presentational
+components that work at phone width (`Markdown`, `AskCard`, `ChatStream`), and
+never imports the desktop layout. `/console` offers it once on a narrow touch
+screen and never redirects.
+
+- `/m` → the last chat open on this phone, else the chat list
+- `/m/c/:conversationId` → a chat, with the key row, ask chips and image viewer
+- `/m/p/:projectId/:tab?` → a project: Overview (deploy), Runs, Chats, Issues, Files
+- `/m/r/:runId` → run detail as a timeline, with approvals and artifacts
+- `/m/files/:projectId/*` → a read-only file
+- `/m/settings` → push on this device, the push triggers, default model, theme
+
+`mobile/pwa/` owns the installable pieces: the build emits `/m/manifest.webmanifest`
+and `/m/sw.js`, a service worker scoped to `/m/` that precaches the shell and
+shows push notifications. It never answers an API request.
+
+Offline, the shell opens from that cache. `mobile/lib/reach.ts` decides whether
+Archon can be reached from the chat list's last read, and a banner says when
+it cannot. The last 10 chats read are copied to IndexedDB
+(`mobile/lib/saved-chats.ts`) and shown, marked as saved copies, only while
+the server does not answer; sending is disabled. Copies are kept only on
+installs with web auth off. `src/components/auth/MobileGate.tsx` records that
+(it sits outside this tree because it reads the auth status through React
+Query), and it is also what lets the shell open before the auth check answers.
+
+Installing and push setup for operators:
+[Archon on Your Phone](../../../../docs-web/src/content/docs/guides/mobile-app.md).
+
 ## Browser suite
 
 `packages/web/e2e/` loads the built console in Chromium and asserts rendered
 content — the rail lists chats, a chat shows its transcript, the composer takes
-text, an ask block draws cards rather than a JSON code block. Every other check
+text, an ask block draws cards rather than a JSON code block. `mobile.e2e.ts`
+runs the phone shell under iPhone and Pixel profiles. Every other check
 in this repository is static, so all of them stay green while the bundle renders
 a blank page. CI runs it as the `console-browser` job on every pull request.
 
