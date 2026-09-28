@@ -4,6 +4,7 @@ import {
   COLUMN_EMPTY,
   ISSUE_COLUMNS,
   issuePlacement,
+  issuesByColumn,
   runningIssues,
   statusColumn,
 } from './issue-board';
@@ -99,5 +100,36 @@ describe('runningIssues', () => {
 describe('the board', () => {
   test('every column has an empty-state line, so a 0 says why', () => {
     for (const c of ISSUE_COLUMNS) expect(COLUMN_EMPTY[c.key]).toBeTruthy();
+  });
+});
+
+describe('issuesByColumn', () => {
+  test('places every issue, keeps their order, and lists every column', () => {
+    const board = issuesByColumn(
+      [
+        issue({ number: 1 }),
+        issue({ number: 2, state: 'CLOSED' }),
+        issue({ number: 3 }),
+        issue({ number: 4, openPr: true }),
+      ],
+      new Set([3])
+    );
+    expect([...board.keys()]).toEqual(ISSUE_COLUMNS.map(c => c.key));
+    const numbers = (column: Parameters<typeof board.get>[0]): number[] =>
+      (board.get(column) ?? []).map(p => p.issue.number);
+    expect(numbers('todo')).toEqual([1]);
+    expect(numbers('prog')).toEqual([3]);
+    expect(numbers('rev')).toEqual([4]);
+    expect(numbers('done')).toEqual([2]);
+    expect(numbers('blocked')).toEqual([]);
+  });
+
+  test('a type filter keeps only issues of that type', () => {
+    const board = issuesByColumn(
+      [issue({ number: 1, type: 'Bug' }), issue({ number: 2, type: 'Task' })],
+      none,
+      'Bug'
+    );
+    expect((board.get('todo') ?? []).map(p => p.issue.number)).toEqual([1]);
   });
 });

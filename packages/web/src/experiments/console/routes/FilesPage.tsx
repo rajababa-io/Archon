@@ -32,8 +32,6 @@ import {
   hasPreview,
   isHtmlPath,
   isImagePath,
-  parentPath,
-  joinPath,
   type FileEntry,
 } from '../primitives/file-entry';
 
@@ -144,20 +142,17 @@ function Preview({
     );
   }
 
-  const dir = parentPath(path) ?? '';
   // The console's own markdown stack, plus one rule it has never needed: a
-  // README's relative image is a file in the repo, which the browser cannot
-  // fetch by that path.
+  // README's relative image is a file in the repo.
   const components: Components = {
     ...MD_COMPONENTS,
-    img: ({ src, alt }) => {
-      const raw = typeof src === 'string' ? src : '';
-      const isAbsolute = /^[a-z]+:|^\/\//i.test(raw);
-      const resolved = isAbsolute
-        ? raw
-        : skill.rawFileUrl(projectId, joinPath(dir, raw.replace(/^\.\//, '')));
-      return <img src={resolved} alt={alt ?? ''} className="max-w-full" />;
-    },
+    img: ({ src, alt }) => (
+      <img
+        src={skill.repoImageUrl(projectId, path, typeof src === 'string' ? src : '')}
+        alt={alt ?? ''}
+        className="max-w-full"
+      />
+    ),
   };
 
   return (

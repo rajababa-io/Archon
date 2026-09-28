@@ -5,7 +5,7 @@ import {
   COLUMN_EMPTY,
   ISSUE_COLUMNS,
   issueAreas,
-  issuePlacement,
+  issuesByColumn,
   issueType,
   runningIssues,
   type IssueColumn,
@@ -130,18 +130,10 @@ export function IssuesPage(): ReactElement {
     [issues]
   );
 
-  const byColumn = useMemo(() => {
-    const out = new Map<IssueColumn, { issue: GithubIssue; placement: IssuePlacement }[]>(
-      ISSUE_COLUMNS.map(c => [c.key, []])
-    );
-    for (const i of issues) {
-      const t = issueType(i)?.name;
-      if (typeFilter !== null && t !== typeFilter) continue;
-      const placement = issuePlacement(i, running);
-      out.get(placement.column)?.push({ issue: i, placement });
-    }
-    return out;
-  }, [issues, running, typeFilter]);
+  const byColumn = useMemo(
+    () => issuesByColumn(issues, running, typeFilter),
+    [issues, running, typeFilter]
+  );
 
   if (error !== undefined) {
     return <EmptyState title="Could not read the issues." hint={error.message} />;

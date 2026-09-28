@@ -164,10 +164,15 @@ export async function listRunArtifacts(runId: string): Promise<ArtifactFile[]> {
   return res.files;
 }
 
+/** Where one artifact file is served: each path segment encoded, the slashes kept. */
+export function artifactUrl(runId: string, path: string): string {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  return `/api/artifacts/${encodeURIComponent(runId)}/${encodedPath}`;
+}
+
 /** Fetch a single artifact file as text (markdown or plain). */
 export async function fetchArtifact(runId: string, path: string): Promise<string> {
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(`/api/artifacts/${encodeURIComponent(runId)}/${encodedPath}`);
+  const res = await fetch(artifactUrl(runId, path));
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed to fetch artifact: ${res.status.toString()}`);
