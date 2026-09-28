@@ -963,20 +963,19 @@ describe('orchestrator-agent handleMessage', () => {
       expect(mockTouchConversation).toHaveBeenCalledWith('conv-123');
     });
 
-    // The act that turns the "Ready to close" mark off. A human writing again
-    // is evidence against the agent's claim that the work is finished, and
-    // without a clearing act the mark could only ever turn on — the failure
-    // that killed the two previous attempts at this signal (see the console's
-    // primitives/chat-status.ts). Pinned here rather than left to the rail,
-    // because nothing in the UI can withdraw it.
-    test("a human message withdraws the agent's ready claim", async () => {
+    // A human message is NOT evidence against the "Ready to close" claim. It
+    // used to clear it unconditionally, and the next message on a finished
+    // chat is nearly always a question about that work, so the mark never
+    // survived to be seen (#237). Whether a message reopens the work is the
+    // agent's reading to make, through the tool's `withdraw`.
+    test("a human message leaves the agent's ready claim alone", async () => {
       mockClient.sendQuery.mockImplementation(async function* () {
         yield { type: 'result', sessionId: 'session-id' };
       });
 
-      await handleMessage(platform, 'chat-456', 'actually, one more thing');
+      await handleMessage(platform, 'chat-456', 'deployed?');
 
-      expect(mockSetConversationReady).toHaveBeenCalledWith('conv-123', false);
+      expect(mockSetConversationReady).not.toHaveBeenCalled();
     });
   });
 

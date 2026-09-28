@@ -92,12 +92,6 @@ export interface HandleMessageContext {
    */
   readonly workflowAdoptRunId?: string;
   readonly workflowSupersedesRunId?: string;
-  /**
-   * Set when the server, not a person, wrote this turn's message — today only
-   * a CI watch firing. Such a turn does not withdraw the agent's "ready to
-   * close" claim, which only a human message is evidence against.
-   */
-  readonly machineOrigin?: 'ci-watch';
 }
 
 export type WorkflowRequest =
