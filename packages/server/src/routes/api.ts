@@ -23,7 +23,7 @@ import {
   rename,
 } from 'fs/promises';
 import { existsSync, readFileSync } from 'fs';
-import { normalize, join, basename, dirname, resolve } from 'path';
+import { normalize, join, basename, dirname, extname, resolve } from 'path';
 import { randomUUID, createHash } from 'crypto';
 import type { Context } from 'hono';
 import { cleanupUploads } from './upload-cleanup';
@@ -6925,6 +6925,33 @@ export function registerApiRoutes(
       }
     }
     const realFilePath = contained.realPath;
+
+    // A picture is sent as its bytes under the Files tab's image allow-list,
+    // so the run screen can show it; read as UTF-8 it would arrive corrupted.
+    const imageType = IMAGE_TYPES[extname(filename).slice(1).toLowerCase()];
+    if (imageType !== undefined) {
+      try {
+        const info = await stat(realFilePath);
+        if (info.size > MAX_IMAGE_BYTES) {
+          return apiError(c, 413, `Image is ${String(info.size)} bytes; the limit is 10 MB`);
+        }
+        const bytes = await readFile(realFilePath);
+        return new Response(new Uint8Array(bytes), {
+          status: 200,
+          headers: {
+            'Content-Type': imageType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+          },
+        });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          return apiError(c, 404, 'Artifact file not found');
+        }
+        getLog().error({ err, runId, filename }, 'artifacts.read_failed');
+        return apiError(c, 500, 'Failed to read artifact file');
+      }
+    }
 
     let content: string;
     try {
