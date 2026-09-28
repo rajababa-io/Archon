@@ -25,6 +25,7 @@ const baseRun: Omit<Run, 'id' | 'workflow' | 'status'> = {
   parentConversationId: null,
   conversationPlatformId: null,
   workerPlatformId: null,
+  parentPlatformId: null,
   origin: 'cli',
   outcome: null,
   startedAt: new Date(Date.now() - 4 * 60 * 1000 - 12 * 1000).toISOString(),

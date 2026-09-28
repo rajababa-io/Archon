@@ -13,6 +13,7 @@ const parallelRun: Run = {
   parentConversationId: null,
   conversationPlatformId: null,
   workerPlatformId: null,
+  parentPlatformId: null,
   workflow: 'implement',
   origin: 'cli',
   status: 'running',
