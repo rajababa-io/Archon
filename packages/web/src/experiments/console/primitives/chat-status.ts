@@ -4,7 +4,7 @@
  *   working   the server is executing a turn for it right now
  *   awaiting  it is your move — a run it started is paused on a gate, or the
  *             agent asked a question and has not been answered
- *   unread    it has moved since you last read it to the end
+ *   unread    it has moved since you last opened it
  *   done      a human said this chat's unit of work has landed
  *   ready     the AGENT says the work has landed, and no human has answered
  *   running   no turn is in flight, but a workflow run the chat started is
@@ -57,8 +57,8 @@
  *
  * `unread` is that idea built the way it had to be built. What was missing
  * both previous times was a way to turn the mark OFF — so it is a stored read
- * marker (`last_read_at`), written when a human actually reaches the bottom of
- * the stream, and unread is the COMPARISON against activity rather than a
+ * marker (`last_read_at`), written when a human opens the chat in a visible
+ * tab, and unread is the COMPARISON against activity rather than a
  * property of the last message. Reading a chat clears it; idle stays reachable.
  *
  * It shares amber with `awaiting` because both ask the same thing of someone
@@ -95,7 +95,7 @@ export interface ChatStatusSets {
    */
   done: ReadonlySet<string>;
   /**
-   * Chats that have moved since the reader last reached the bottom of them.
+   * Chats that have moved since the reader last opened them.
    *
    * Ranked BELOW working, deliberately: a chat mid-sentence is unfinished, not
    * unread, and marking it while it streams would put the whole rail amber for
@@ -289,13 +289,13 @@ export function askAwaitingIds(
 }
 
 /**
- * Chats that have moved since the reader last reached the bottom of them.
+ * Chats that have moved since the reader last opened them.
  *
  * This is the rule that failed twice as "the newest message is the agent's".
  * It failed because it could only ever turn ON: every finished chat ends with
  * the agent, so the rail went amber end to end and `idle` became unreachable.
  * The read marker is the whole difference — `lastReadAt` is written when a
- * human scrolls to the bottom, so the mark clears and the state is reachable
+ * human opens the chat, so the mark clears and the state is reachable
  * in both directions.
  *
  * Both timestamps are compared as instants rather than strings. They are ISO-8601
@@ -459,18 +459,14 @@ export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {
  * hand (done), or still moving (working, running, waiting) — and a chat that
  * is still moving will mark itself when it next says something.
  *
- * The chat you have OPEN is refused whatever its status: you are reading it,
- * and the page clears the mark again the moment you are at its bottom.
+ * The chat you have OPEN may be marked too (#228): the page holds the mark
+ * while you stay on it, so you can flag the chat in front of you to come back
+ * to.
  *
  * A chat with no activity is refused too: unread is `last_activity_at >
  * last_read_at`, so with nothing on the activity side the mark cannot show.
  */
-export function markUnreadBlocker(
-  status: ChatStatus,
-  open: boolean,
-  hasActivity: boolean
-): string | null {
-  if (open) return "You're reading it";
+export function markUnreadBlocker(status: ChatStatus, hasActivity: boolean): string | null {
   if (status !== 'idle') return MARK_UNREAD_BLOCKED[status];
   if (!hasActivity) return 'Nothing to read yet';
   return null;

@@ -235,7 +235,22 @@ export function ChatPage(): ReactElement {
     })();
   };
 
+  /**
+   * The (chat, activity) pair the page last wrote a read mark for — or, after
+   * "Mark unread" on the open chat, the pair it must NOT mark read again (#228).
+   * Owned by the mark-read effect further down; declared here so the handler
+   * below can hold the mark before its request lands.
+   */
+  const markedReadRef = useRef<string | null>(null);
+
   const markConversationUnread = (id: string): void => {
+    // Marking the chat you are on would be undone by the mark-read effect the
+    // moment the list refreshes. Claim its current pair first, so the mark
+    // holds until you open the chat again or it says something new.
+    if (id === activeConvId) {
+      const at = (conversations ?? []).find(c => c.id === id)?.lastActivityAt ?? null;
+      markedReadRef.current = `${id}|${at}`;
+    }
     void (async (): Promise<void> => {
       try {
         await skill.markConversationUnread(id);
@@ -632,10 +647,11 @@ export function ChatPage(): ReactElement {
   useArrowScroll(scrollRef, { onUserScroll: noteUserIntent });
 
   /**
-   * Clear the unread mark once the reader actually reaches the bottom.
+   * Clear the unread mark when the chat is opened (#228).
    *
-   * Opening a chat is not reading it — a long reply you land on top of is the
-   * exact case the mark exists for — so the trigger is `atBottom`, not mount.
+   * This used to wait for the reader to reach the bottom of the stream, on the
+   * theory that opening is not reading. In use it left chats amber after being
+   * clicked, which made the rail's to-do list lie; opening is the signal.
    *
    * `working` gates it because a turn still streaming has not been read yet, by
    * anyone: its last line does not exist. That also matches the rail, where
@@ -650,13 +666,17 @@ export function ChatPage(): ReactElement {
    * stops this being a write per render. `unread` is derived from a polled
    * feed, so it stays true for a beat after the POST lands; without the key
    * every one of those renders would fire another. A new reply moves the
-   * timestamp, which is exactly when a second write is wanted.
+   * timestamp, which is exactly when a second write is wanted. The same key is
+   * how "Mark unread" on the open chat holds; switching chats forgets it, so
+   * opening that chat again reads it.
    */
   const visible = usePageVisible();
-  const markedReadRef = useRef<string | null>(null);
+  useEffect(() => {
+    markedReadRef.current = null;
+  }, [activeConvId]);
   useEffect(() => {
     if (activeConvId === null || lastActivityAt === null) return;
-    if (!atBottom || working || !visible) return;
+    if (working || !visible) return;
     if (!unread.has(activeConvId)) return;
     const key = `${activeConvId}|${lastActivityAt}`;
     if (markedReadRef.current === key) return;
@@ -667,12 +687,12 @@ export function ChatPage(): ReactElement {
         invalidateConversationsRef.current();
       })
       .catch(() => {
-        // Let the next scroll to the bottom try again. Nothing is shown: an
+        // Let the next list refresh try again. Nothing is shown: an
         // unread mark that failed to clear is a stale dot, not a lost message,
         // and an error banner over a cosmetic write would be the louder bug.
         markedReadRef.current = null;
       });
-  }, [activeConvId, lastActivityAt, atBottom, working, unread, visible]);
+  }, [activeConvId, lastActivityAt, working, unread, visible]);
 
   // Held in a ref so `onAnswer` below can be referentially stable without
   // threading every dependency of onSend through a useCallback. Memoized
