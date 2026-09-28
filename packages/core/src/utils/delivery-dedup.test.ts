@@ -31,6 +31,15 @@ describe('DeliveryDeduplicator', () => {
     expect(dedup.seen(key)).toBe(true);
   });
 
+  test('a forgotten key is first-seen again', () => {
+    const dedup = new DeliveryDeduplicator();
+    const key = 'owner/repo#42';
+    expect(dedup.seen(key)).toBe(false);
+    dedup.forget(key);
+    expect(dedup.seen(key)).toBe(false);
+    expect(dedup.seen(key)).toBe(true);
+  });
+
   test('different keys do not collide', () => {
     const dedup = new DeliveryDeduplicator();
     expect(dedup.seen('comment:owner/repo#42:100:t1')).toBe(false);

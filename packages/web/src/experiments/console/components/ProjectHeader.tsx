@@ -3,6 +3,7 @@ import { useLocation, useParams } from 'react-router';
 import { ProjectViewTabs } from './ProjectViewTabs';
 import { DeployStrip } from './DeployStrip';
 import { DeployRow } from './DeployRow';
+import { DeploySetupRow } from './DeploySetupRow';
 import { ProjectStateChip } from './ProjectStateChip';
 import { useProjectLabel } from '../lib/display-name';
 import { Glyph } from '../lib/glyph';
@@ -11,7 +12,7 @@ import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import * as skill from '../skills';
 import type { Project } from '../primitives/project';
-import type { ProjectDeploy } from '../skills/deploy';
+import type { DeployAnswer } from '../skills/deploy';
 import type { RunCounts } from '../skills/runs';
 import {
   activeProjectTab,
@@ -46,12 +47,11 @@ interface FeedShape {
  * appear in both — the header carried only the name, which left the icon
  * looking like a property of the list rather than of the project.
  *
- * A project with a deploy gets one more row, between the name and the tabs
- * (see DeployRow). That breaks the fixed height above, deliberately and only
- * for those projects: the row is permanent for them, so it is the same height
- * on every screen of that project, and projects without one never draw it.
- * The one moment it can move the page is the first visit before the answer
- * lands; after that the cached answer reserves it on the first frame.
+ * Every project gets one more row, between the name and the tabs: its deploy
+ * bar (see DeployRow), or the not-set-up bar that offers to add one (see
+ * DeploySetupRow), both the same height. The one moment it can move the page
+ * is the first visit before the answer lands; after that the cached answer
+ * reserves it on the first frame.
  *
  * The name is the repo alone. `owner/repo` above a path that already spells
  * the owner out said it twice and left the distinguishing half truncated;
@@ -79,18 +79,19 @@ export function ProjectHeader(): ReactElement {
     )
   );
   const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
-  const { data: deploy, error: deployError } = useEntity<ProjectDeploy | null>(
+  const { data: deploy, error: deployError } = useEntity<DeployAnswer | null>(
     projectId === undefined ? 'noop:all-projects:deploy' : K.projectDeploy(projectId),
     () => (projectId === undefined ? Promise.resolve(null) : skill.getProjectDeploy(projectId))
   );
-  const hasDeployRow = projectId !== undefined && deploy !== undefined && deploy !== null;
-  // The install-wide strip repeats the row's Live status, so a deploy project
-  // shows only the row. Held back until the answer lands, so a deploy project
-  // does not flash the strip first; a failed read falls back to the strip.
+  // The install-wide strip is the Archon box's deploy, which the archon-host
+  // project's row already shows, so that project alone shows only the row.
+  // Held back until the answer lands, so it does not flash the strip first; a
+  // failed read falls back to the strip.
   const showStrip =
     projectId === undefined ||
     deployError !== undefined ||
-    (deploy !== undefined && deploy === null);
+    (deploy !== undefined &&
+      !(deploy?.kind === 'set-up' && deploy.deploy.method === 'archon-host'));
 
   // Renaming in the rail reaches the header through the same override store,
   // so the two can never disagree about what this project is called.
@@ -145,12 +146,15 @@ export function ProjectHeader(): ReactElement {
         ) : null}
       </div>
 
-      {hasDeployRow ? (
+      {projectId !== undefined && deploy?.kind === 'set-up' ? (
         <DeployRow
           projectId={projectId}
           projectName={label === '' ? 'Project' : label}
-          deploy={deploy}
+          deploy={deploy.deploy}
         />
+      ) : null}
+      {projectId !== undefined && deploy?.kind === 'not-set-up' ? (
+        <DeploySetupRow projectId={projectId} setup={deploy.setup} canAct={deploy.canAct} />
       ) : null}
 
       {/* One min-height governs both states, so no project scoped cannot make

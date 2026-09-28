@@ -607,6 +607,112 @@ describe('GitHubAdapter', () => {
     });
   });
 
+  describe('merged pull request signal', () => {
+    let closedSpy: ReturnType<typeof spyOn<typeof core, 'onConversationClosed'>>;
+    beforeAll(() => {
+      closedSpy = spyOn(core, 'onConversationClosed').mockImplementation(async () => {});
+    });
+    afterAll(() => {
+      closedSpy.mockRestore();
+    });
+
+    function closedPr(number: number, merged: boolean): string {
+      return JSON.stringify({
+        action: 'closed',
+        pull_request: {
+          number,
+          title: 'Ship it',
+          body: null,
+          user: { login: 'someone' },
+          state: 'closed',
+          merged,
+          merge_commit_sha: merged ? 'd'.repeat(40) : null,
+          base: { ref: 'main' },
+        },
+        repository: {
+          owner: { login: 'rajababa-io' },
+          name: 'atlas',
+          full_name: 'rajababa-io/atlas',
+          html_url: 'https://github.com/rajababa-io/atlas',
+          default_branch: 'main',
+        },
+        sender: { login: 'someone' },
+      });
+    }
+
+    function listening(): { adapter: GitHubAdapter; heard: unknown[] } {
+      const adapter = new GitHubAdapter(
+        { kind: 'pat', token: 'fake-token-for-testing' },
+        'fake-webhook-secret',
+        mockLockManager
+      );
+      // @ts-expect-error - accessing private method for testing
+      adapter.verifySignature = mock(() => true);
+      const heard: unknown[] = [];
+      adapter.onBranchMerged(async signal => {
+        heard.push(signal);
+      });
+      return { adapter, heard };
+    }
+
+    test('a merge reaches the listener as the branch and the commit it left there', async () => {
+      const { adapter, heard } = listening();
+      await adapter.handleWebhook(closedPr(12, true), 'mock-signature', 'm1', 'pull_request');
+      expect(heard).toEqual([
+        {
+          repo: { owner: 'rajababa-io', name: 'atlas' },
+          branch: 'main',
+          sha: 'd'.repeat(40),
+          pr: 12,
+        },
+      ]);
+    });
+
+    test('a redelivered merge is heard once', async () => {
+      const { adapter, heard } = listening();
+      await adapter.handleWebhook(closedPr(13, true), 'mock-signature', 'm2', 'pull_request');
+      await adapter.handleWebhook(closedPr(13, true), 'mock-signature', 'm3', 'pull_request');
+      expect(heard).toHaveLength(1);
+    });
+
+    test('a pull request closed without merging is not a merge', async () => {
+      const { adapter, heard } = listening();
+      await adapter.handleWebhook(closedPr(14, false), 'mock-signature', 'm4', 'pull_request');
+      expect(heard).toEqual([]);
+    });
+
+    test('a failing listener does not fail the delivery', async () => {
+      const adapter = new GitHubAdapter(
+        { kind: 'pat', token: 'fake-token-for-testing' },
+        'fake-webhook-secret',
+        mockLockManager
+      );
+      // @ts-expect-error - accessing private method for testing
+      adapter.verifySignature = mock(() => true);
+      adapter.onBranchMerged(() => Promise.reject(new Error('db down')));
+      await adapter.handleWebhook(closedPr(15, true), 'mock-signature', 'm5', 'pull_request');
+    });
+
+    test('a merge whose listener failed is heard again when redelivered', async () => {
+      const adapter = new GitHubAdapter(
+        { kind: 'pat', token: 'fake-token-for-testing' },
+        'fake-webhook-secret',
+        mockLockManager
+      );
+      // @ts-expect-error - accessing private method for testing
+      adapter.verifySignature = mock(() => true);
+      let calls = 0;
+      adapter.onBranchMerged(async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('checkout unreadable');
+      });
+      await adapter.handleWebhook(closedPr(16, true), 'mock-signature', 'm6', 'pull_request');
+      await adapter.handleWebhook(closedPr(16, true), 'mock-signature', 'm7', 'pull_request');
+      await adapter.handleWebhook(closedPr(16, true), 'mock-signature', 'm8', 'pull_request');
+      expect(calls).toBe(2);
+    });
+  });
+
   describe('lifecycle methods', () => {
     test('should start without errors', async () => {
       await expect(adapter.start()).resolves.toBeUndefined();

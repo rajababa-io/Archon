@@ -8,7 +8,7 @@
 --     COMMENT ON COLUMN — goes in the final "Indexes and column comments"
 --     section, below every ADD COLUMN.
 --
--- 14 Tables (+ the remote_agent_auth_* Better Auth tables, listed inline below):
+-- Tables (+ the remote_agent_auth_* Better Auth tables, listed inline below):
 --   1. remote_agent_codebases
 --   1b. remote_agent_codebase_env_vars
 --   1c. remote_agent_users
@@ -27,6 +27,7 @@
 --   11. remote_agent_parked_work
 --   12. remote_agent_project_deploy
 --   13. remote_agent_deploy_events
+--   14. remote_agent_deploy_runs
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -794,6 +795,21 @@ CREATE TABLE IF NOT EXISTS remote_agent_deploy_events (
 COMMENT ON TABLE remote_agent_deploy_events IS
   'Deploy actions a person took in the console: toggle flips, Deploy now, Cancel deploy. A deploy_requested id is the token the host checks before honouring a manual request.';
 
+-- A project deploys by running a workflow in its own repository (#226). See
+-- migrations/039_project_deploy_workflow.sql.
+ALTER TABLE remote_agent_project_deploy
+  ADD COLUMN IF NOT EXISTS workflow_name VARCHAR(255);
+
+CREATE TABLE IF NOT EXISTS remote_agent_deploy_runs (
+  run_id UUID PRIMARY KEY REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+  codebase_id UUID NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+  sha VARCHAR(64) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE remote_agent_deploy_runs IS
+  'Workflow runs that were a project''s deploy, with the commit each was asked to ship. Live is the newest one whose run completed.';
+
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases
 -- created the narrow CHECK; re-adding the named constraint converges them. Every
@@ -957,6 +973,10 @@ CREATE INDEX IF NOT EXISTS idx_parked_work_drain
 -- Deploy events
 CREATE INDEX IF NOT EXISTS idx_deploy_events_codebase
   ON remote_agent_deploy_events(codebase_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_deploy_runs_codebase
+  ON remote_agent_deploy_runs(codebase_id, created_at);
+COMMENT ON COLUMN remote_agent_project_deploy.workflow_name IS
+  'The workflow a workflow-method deploy runs, by name. NULL for archon-host, which runs none.';
 
 -- Sessions
 CREATE INDEX IF NOT EXISTS idx_remote_agent_sessions_conversation

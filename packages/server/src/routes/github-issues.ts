@@ -184,6 +184,14 @@ interface IssueSource {
   token: string;
 }
 
+/** The `owner/repo` a github.com repository URL names, or null for any other URL. */
+export function githubRepoOf(url: string): { owner: string; repo: string } | null {
+  const m = /github\.com[/:]([^/]+)\/([^/.]+)/.exec(url);
+  if (m === null) return null;
+  const [, owner, repo] = m;
+  return owner === undefined || repo === undefined ? null : { owner, repo };
+}
+
 /** Null means no such project — the one case that is a 404 rather than a reason. */
 export async function resolveIssueSource(
   projectId: string
@@ -196,9 +204,9 @@ export async function resolveIssueSource(
     // A folder-kind project is not an error; it simply has no issues.
     return { repo: null, reason: 'no-repository' };
   }
-  const m = /github\.com[/:]([^/]+)\/([^/.]+)/.exec(url);
-  if (m === null) return { repo: null, reason: 'not-github' };
-  const [, owner, repo] = m;
+  const found = githubRepoOf(url);
+  if (found === null) return { repo: null, reason: 'not-github' };
+  const { owner, repo } = found;
 
   // App mode mints a fresh installation token per repository and is asked
   // first, through the same resolver the workflow engine uses — a board that

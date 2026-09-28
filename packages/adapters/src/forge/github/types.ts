@@ -16,6 +16,9 @@ export interface WebhookEvent {
     user: { login: string };
     state: 'open' | 'closed';
     merged?: boolean;
+    /** The commit the merge produced on the base branch; set once merged. */
+    merge_commit_sha?: string | null;
+    base?: { ref: string };
     changed_files?: number;
     additions?: number;
     deletions?: number;

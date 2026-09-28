@@ -98,6 +98,7 @@ import { registerInternalDrainRoutes } from './routes/internal-drain';
 import { registerDeployPolicyRoute } from './routes/project-deploy';
 import { loadWebhookSourcePlugins } from './services/webhook-source-plugins';
 import { createServerResourceStartHost } from './services/resource-start-hosting';
+import { type DeployHost, deployMergedBranch } from './services/workflow-deploy';
 import {
   startWorkflowContinuationScheduler,
   stopWorkflowContinuationScheduler,
@@ -819,7 +820,18 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   }
 
   // Register Web UI API routes
-  const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms);
+  // Workflow deploys (#226) start through the same resource-start host, so they
+  // need one; without it the deploy bar says so instead of accepting a deploy
+  // nothing would ever run.
+  const deployHost: DeployHost | null =
+    resourceStartHost && resourceStartHostId
+      ? {
+          hostId: resourceStartHostId,
+          isDraining: () => lockManager.isDraining(),
+          requestDrain: () => resourceStartHost.requestDrain(),
+        }
+      : null;
+  const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms, deployHost);
   // A turn that starts taking mid-turn input, or a steered message it read,
   // changes what the chat's queue shows — "send now" appears, a message leaves.
   lockManager.setQueueListener(apiRoutes.emitQueueChanged);
@@ -845,6 +857,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
     forge.onCheckRunCompleted(async (repo, headSha) => {
       await settleCiWatchesForHead(repo, headSha, deps);
     });
+    forge.onBranchMerged(signal => deployMergedBranch(signal, deployHost));
     ciWatchDeps = deps;
     registerGithubWebhookRoute(app, github);
     getLog().info('github_webhook_registered');

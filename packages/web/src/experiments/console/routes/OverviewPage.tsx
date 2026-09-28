@@ -11,7 +11,7 @@ import { relativeTime } from '../lib/format';
 import { DEPLOY_LOG_LABEL } from '../lib/deploy-row';
 import { shortSha } from '../lib/deploy-strip';
 import * as skill from '../skills';
-import type { DeployLogEntry, GithubIssue, IssuesResponse, ProjectDeploy } from '../skills';
+import type { DeployAnswer, DeployLogEntry, GithubIssue, IssuesResponse } from '../skills';
 import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import { IssueTypeChip } from '../components/IssueTypeChip';
@@ -70,10 +70,10 @@ export function OverviewPage(): ReactElement {
   const chats = chatList?.chats;
   // The header reads the same key, so this costs no request; the log is asked
   // for only once it is known the project has a deploy to log.
-  const { data: deploy } = useEntity<ProjectDeploy | null>(K.projectDeploy(projectId), () =>
+  const { data: deploy } = useEntity<DeployAnswer | null>(K.projectDeploy(projectId), () =>
     skill.getProjectDeploy(projectId)
   );
-  const hasDeploy = deploy !== undefined && deploy !== null;
+  const hasDeploy = deploy?.kind === 'set-up';
   const { data: deployLog } = useEntity<DeployLogEntry[]>(
     hasDeploy ? K.projectDeployLog(projectId) : 'noop:no-deploy-log',
     () => (hasDeploy ? skill.getProjectDeployLog(projectId) : Promise.resolve([]))
@@ -201,8 +201,8 @@ export function OverviewPage(): ReactElement {
           )}
         </Section>
 
-        {/* The deploy's own history — who pressed what, and what the host did
-            about it. Only for a project that deploys. */}
+        {/* The deploy's own history — who pressed what, and how each deploy
+            ended. Only for a project that deploys. */}
         {hasDeploy ? (
           <Section label="Deploys">
             {deployLog === undefined ? (

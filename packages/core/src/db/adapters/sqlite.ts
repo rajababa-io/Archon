@@ -529,6 +529,20 @@ export class SqliteAdapter implements IDatabase {
       allApplied = false;
     }
 
+    // Project deploy columns. `workflow_name` arrived with workflow deploys (#226),
+    // after the table shipped in #211.
+    try {
+      const deployCols = this.prepareAll<{ name: string }>(
+        "PRAGMA table_info('remote_agent_project_deploy')"
+      );
+      if (!deployCols.some(c => c.name === 'workflow_name')) {
+        this.db.run('ALTER TABLE remote_agent_project_deploy ADD COLUMN workflow_name TEXT');
+      }
+    } catch (e: unknown) {
+      getLog().warn({ err: e as Error }, 'db.sqlite_migration_project_deploy_columns_failed');
+      allApplied = false;
+    }
+
     // Sessions columns
     try {
       const sessCols = this.prepareAll<{ name: string }>(
@@ -1007,7 +1021,8 @@ export class SqliteAdapter implements IDatabase {
         branch TEXT NOT NULL,
         deploy_on_merge INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_by TEXT
+        updated_by TEXT,
+        workflow_name TEXT
       );
 
       CREATE TABLE IF NOT EXISTS remote_agent_deploy_events (
@@ -1021,6 +1036,18 @@ export class SqliteAdapter implements IDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_deploy_events_codebase
         ON remote_agent_deploy_events(codebase_id, created_at);
+
+      -- The workflow runs that were a project's deploy (#226). Mirrors
+      -- migrations/039_project_deploy_workflow.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_deploy_runs (
+        run_id TEXT PRIMARY KEY REFERENCES remote_agent_workflow_runs(id) ON DELETE CASCADE,
+        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        sha TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_deploy_runs_codebase
+        ON remote_agent_deploy_runs(codebase_id, created_at);
 
       -- Workflow events table
       CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (

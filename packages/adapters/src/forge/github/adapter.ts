@@ -9,6 +9,7 @@ import { readdir, access } from 'fs/promises';
 import { join } from 'path';
 import type { IPlatformAdapter, MessageMetadata, GitHubAuth } from '@archon/core';
 import type { IsolationHints } from '@archon/isolation';
+import type { BranchMerged } from '@archon/core/services/branch-merged';
 import {
   ConversationNotFoundError,
   handleMessage,
@@ -143,6 +144,9 @@ type ListWorkflowRunsArgs = NonNullable<
 /** Called with the head commit of every completed `check_run` delivery. */
 export type CheckRunCompletedListener = (repo: string, headSha: string) => Promise<void>;
 
+/** Called once for each pull request this adapter sees merged. */
+export type BranchMergedListener = (signal: BranchMerged) => Promise<void>;
+
 /** GitHub's page ceiling for check listings. */
 const CHECKS_PAGE_SIZE = 100;
 
@@ -218,6 +222,9 @@ export class GitHubAdapter implements IPlatformAdapter {
    */
   private readonly checkRunDeliveryDedup = new DeliveryDeduplicator();
   private checkRunCompletedListener: CheckRunCompletedListener | null = null;
+  private branchMergedListener: BranchMergedListener | null = null;
+  /** GitHub redelivers; a merge must reach the listener once, not once per delivery. */
+  private readonly mergeDedup = new DeliveryDeduplicator();
   private readonly retryDelayFn: (attempt: number) => number;
   /**
    * Resolve the originating user's personal GitHub token (App mode only).
@@ -1107,6 +1114,47 @@ ${userComment}`;
   }
 
   /**
+   * Hear every pull request that merged, as the branch it merged into and the
+   * commit that merge left there. Only merges into repositories whose webhook
+   * points at this install arrive.
+   */
+  onBranchMerged(listener: BranchMergedListener): void {
+    this.branchMergedListener = listener;
+  }
+
+  /**
+   * A failure in the listener is logged here and never fails the delivery. It
+   * releases the merge's dedup key: the key is claimed before the listener runs
+   * so a near-simultaneous dual delivery collapses into one call, but a failed
+   * call must leave a redelivery free to try again.
+   */
+  private async announceMerge(
+    owner: string,
+    repo: string,
+    pullRequest: WebhookEvent['pull_request']
+  ): Promise<void> {
+    const listener = this.branchMergedListener;
+    if (listener === null || pullRequest === undefined) return;
+    const branch = pullRequest.base?.ref;
+    const sha = pullRequest.merge_commit_sha;
+    if (branch === undefined || typeof sha !== 'string' || sha === '') {
+      getLog().warn({ owner, repo, number: pullRequest.number }, 'github.merge_without_commit');
+      return;
+    }
+    const dedupKey = `${owner}/${repo}#${String(pullRequest.number)}`;
+    if (this.mergeDedup.seen(dedupKey)) return;
+    try {
+      await listener({ repo: { owner, name: repo }, branch, sha, pr: pullRequest.number });
+    } catch (error) {
+      this.mergeDedup.forget(dedupKey);
+      getLog().error(
+        { err: error as Error, owner, repo, number: pullRequest.number },
+        'github.branch_merged_listener_failed'
+      );
+    }
+  }
+
+  /**
    * Every check on one commit, reduced to finished-or-not.
    *
    * The Checks API is the complete reading and is tried first. When the
@@ -1370,6 +1418,7 @@ ${userComment}`;
       const mergeLabel = isMerged ? 'merge' : 'close';
       getLog().info({ event: mergeLabel, owner, repo, number }, 'github.close_event_received');
       await this.cleanupWorktree(owner, repo, number, isMerged ?? false);
+      if (isMerged === true) await this.announceMerge(owner, repo, pullRequest);
       return; // Don't process as a message
     }
 

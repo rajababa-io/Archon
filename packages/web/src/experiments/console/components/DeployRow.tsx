@@ -1,9 +1,11 @@
 /**
- * A project's deploy controls, in a thin row under its name (#211).
+ * A project's deploy controls, in a thin row under its name (#211, #226).
  *
- * Rendered only for a project the server says has a deploy, so every other
- * project spends no height on it. For a deploy project the row is permanent:
- * Live is always in the same place, whether a deploy is running or not.
+ * Rendered for a project the server says has a deploy; a project without one
+ * draws DeploySetupRow in the same place and at the same height. The row is
+ * permanent: Live is always in the same place, whether a deploy is running or
+ * not. The Archon host deploy and a workflow deploy draw the same row; only
+ * the words for a running deploy, and the Deploy now confirm, differ.
  *
  * Every action goes to the server and the row then re-reads it; nothing here
  * decides what the deploy state is. The one local state that runs ahead of
@@ -33,6 +35,7 @@ import {
   PERSON_ONLY_TITLE,
   deployConfirm,
   deployRowView,
+  liveMissingLabel,
   turnedOnNotice,
   waitingFooter,
   type DeployConfirm,
@@ -49,9 +52,9 @@ const BUTTON =
   'shrink-0 rounded-md px-2.75 py-0.75 text-small font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
 // Outlines are rings, not borders: the console scope repaints every border
 // colour (see theme.css), and a ring is a box-shadow it does not touch.
-const PRIMARY = `${BUTTON} bg-accent/15 text-text-primary ring-1 ring-inset ring-accent hover:bg-accent/25`;
+export const PRIMARY = `${BUTTON} bg-accent/15 text-text-primary ring-1 ring-inset ring-accent hover:bg-accent/25`;
 const STOP = `${BUTTON} bg-transparent text-error ring-1 ring-inset ring-error/45 hover:bg-error/10 hover:ring-error`;
-const GHOST = `${BUTTON} bg-transparent font-medium text-text-secondary ring-1 ring-inset ring-border-bright hover:text-text-primary`;
+export const GHOST = `${BUTTON} bg-transparent font-medium text-text-secondary ring-1 ring-inset ring-border-bright hover:text-text-primary`;
 
 function actionError(err: unknown): string {
   return err instanceof HttpError && err.serverError !== undefined
@@ -72,7 +75,10 @@ interface DeployRowProps {
 export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): ReactElement {
   const key = K.projectDeploy(projectId);
   const { drain, deploy: healthDeploy } = useLiveChats();
-  const counting = deploy.status.phase === 'draining' && drain?.parkAt !== undefined;
+  const counting =
+    deploy.method === 'archon-host' &&
+    deploy.status.phase === 'draining' &&
+    drain?.parkAt !== undefined;
   // One second while the park countdown runs; otherwise only "deployed 2h ago" moves.
   const now = useNow(counting ? 1_000 : 30_000);
   const view = deployRowView(deploy, drain, now);
@@ -167,7 +173,8 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
 
   const startDeploy = (): void => {
     setPopoverOpen(false);
-    const ask = deployConfirm(projectName, deploy.running);
+    // Only the host deploy pauses running work, which is all the confirm is about.
+    const ask = deploy.method === 'archon-host' ? deployConfirm(projectName, deploy.running) : null;
     if (ask === null) ship();
     else setConfirm(ask);
   };
@@ -189,7 +196,7 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
           <span aria-hidden className="size-2 rounded-full bg-success" />
           <span className="text-text-primary">Live</span>
           <span className="font-mono text-small text-text-tertiary">
-            {view.live.sha ?? 'unknown'}
+            {view.live.sha ?? liveMissingLabel(deploy)}
             {view.live.ago !== null ? ` · ${view.live.ago}` : ''}
           </span>
         </span>
@@ -282,7 +289,11 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
 
             <span className="ml-auto flex shrink-0 items-center gap-2.5">
               {error !== null ? <span className="text-small text-error">{error}</span> : null}
-              {view.right.kind === 'waiting' ? (
+              {view.blocked !== null ? (
+                <button type="button" className={PRIMARY} disabled title={view.blocked}>
+                  Deploy now
+                </button>
+              ) : view.right.kind === 'waiting' ? (
                 <button
                   type="button"
                   className={PRIMARY}
@@ -312,8 +323,8 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
           <button
             type="button"
             className="font-medium text-text-primary underline underline-offset-2 hover:text-accent-bright disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={disabled || deploy.waiting === null}
-            title={actTitle}
+            disabled={disabled || deploy.waiting === null || view.blocked !== null}
+            title={view.blocked ?? actTitle}
             onClick={startDeploy}
           >
             Deploy now?
@@ -326,8 +337,8 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
           anchor={pillRef.current}
           liveSha={deploy.live.sha}
           waiting={deploy.waiting}
-          disabled={disabled}
-          actTitle={actTitle}
+          disabled={disabled || view.blocked !== null}
+          actTitle={view.blocked ?? actTitle}
           onDeploy={startDeploy}
           onClose={() => {
             setPopoverOpen(false);

@@ -1,8 +1,10 @@
 /**
- * The per-project deploy routes (#211). The contract that matters most is the
- * refusal: flipping Deploy on Merge, Deploy now and Cancel deploy are a
- * person's, and an agent — which can call the server directly, with any header
- * it likes — must be refused before anything changes.
+ * The per-project deploy routes (#211, #226). The contract that matters most is
+ * the refusal: setting up deploys, flipping Deploy on Merge, Deploy now and
+ * Cancel deploy are a person's, and an agent — which can call the server
+ * directly, with any header it likes — must be refused before anything changes.
+ * The second is that each project's method decides which deploy acts: a
+ * workflow project's buttons never reach the Archon host deploy.
  *
  * The Access check is the real one; only the key endpoint is faked, by serving
  * the test's own "team" key where Cloudflare's would be.
@@ -46,9 +48,43 @@ const mockSetDeployOnMerge = mock(async (_id: string, on: boolean, _actor: strin
   before: !on,
   after: { ...SETTING, deployOnMerge: on },
 }));
+const mockSetUp = mock(
+  async (codebaseId: string, branch: string, workflowName: string, actor: string) =>
+    ({
+      codebaseId,
+      method: 'workflow',
+      branch,
+      workflowName,
+      deployOnMerge: false,
+      updatedBy: actor,
+    }) as unknown
+);
 mock.module('@archon/core/db/project-deploy', () => ({
   getProjectDeploy: mockGetProjectDeploy,
   setDeployOnMerge: mockSetDeployOnMerge,
+  setUpWorkflowDeploy: mockSetUp,
+}));
+
+const WORKFLOW_SETTING = { ...SETTING, method: 'workflow', branch: 'main', workflowName: 'deploy' };
+const mockDeployWorkflowNow = mock(
+  async (..._args: unknown[]): Promise<unknown> => ({ ok: true, runId: 'run-1' })
+);
+const mockCancelWorkflowDeploy = mock(
+  async (..._args: unknown[]): Promise<unknown> => ({ ok: true, runId: 'run-1' })
+);
+const mockWorkflowLog = mock(async (_id: string): Promise<unknown[]> => []);
+const mockListWorkflows = mock(async (_c: unknown): Promise<string[]> => ['build', 'deploy']);
+mock.module('../services/workflow-deploy', () => ({
+  deployWorkflowNow: mockDeployWorkflowNow,
+  cancelWorkflowDeploy: mockCancelWorkflowDeploy,
+  getWorkflowDeployLog: mockWorkflowLog,
+  getWorkflowDeployView: mock(async () => ({ method: 'workflow', deployOnMerge: false })),
+  listDeployableWorkflows: mockListWorkflows,
+  readDeploySetup: mock(async () => ({
+    branch: 'main',
+    workflows: ['build', 'deploy'],
+    workflow: 'deploy',
+  })),
 }));
 
 const mockDeployNow = mock(
@@ -140,11 +176,14 @@ beforeEach(() => {
   mockSetDeployOnMerge.mockClear();
   mockDeployNow.mockClear();
   mockCancelDeploy.mockClear();
+  mockSetUp.mockClear();
+  mockDeployWorkflowNow.mockClear();
+  mockCancelWorkflowDeploy.mockClear();
 });
 
 function app(): OpenAPIHono {
   const a = new OpenAPIHono();
-  registerProjectDeployRoutes(a, async () => ({ chats: 2, workflows: 1 }));
+  registerProjectDeployRoutes(a, async () => ({ chats: 2, workflows: 1 }), null);
   registerDeployPolicyRoute(a, 'drain-token');
   return a;
 }
@@ -153,7 +192,12 @@ const url = `/api/projects/${PROJECT}/deploy`;
 const TIP = 'c'.repeat(40);
 
 type Call = [method: string, body?: unknown];
-const ACTIONS: Call[] = [['PATCH', { deployOnMerge: true }], ['POST', { sha: TIP }], ['DELETE']];
+const ACTIONS: Call[] = [
+  ['PATCH', { deployOnMerge: true }],
+  ['POST', { sha: TIP }],
+  ['DELETE'],
+  ['PUT', { branch: 'main', workflowName: 'deploy' }],
+];
 
 async function call([method, body]: Call, headers: Record<string, string>): Promise<Response> {
   return app().request(url, {
@@ -167,9 +211,12 @@ function nothingChanged(): void {
   expect(mockSetDeployOnMerge).not.toHaveBeenCalled();
   expect(mockDeployNow).not.toHaveBeenCalled();
   expect(mockCancelDeploy).not.toHaveBeenCalled();
+  expect(mockSetUp).not.toHaveBeenCalled();
+  expect(mockDeployWorkflowNow).not.toHaveBeenCalled();
+  expect(mockCancelWorkflowDeploy).not.toHaveBeenCalled();
 }
 
-describe('an agent cannot flip the toggle, Deploy now, or Cancel deploy', () => {
+describe('an agent cannot set up deploys, flip the toggle, Deploy now, or Cancel deploy', () => {
   for (const action of ACTIONS) {
     test(`${action[0]} with no Access pass is refused`, async () => {
       const res = await call(action, { 'X-Archon-User': 'ameet' });
@@ -216,10 +263,14 @@ describe('a person with a verified pass', () => {
 });
 
 describe('reading the row', () => {
-  test('a project with no deploy answers null, so the console draws no row', async () => {
+  test('a project with no deploy answers null, with what Set up deploys starts filled with', async () => {
     mockGetProjectDeploy.mockImplementationOnce(async () => null);
     const res = await app().request(url);
-    expect(await res.json()).toEqual({ deploy: null });
+    expect(await res.json()).toEqual({
+      deploy: null,
+      setup: { branch: 'main', workflows: ['build', 'deploy'], workflow: 'deploy' },
+      canAct: false,
+    });
   });
 
   test('says whether this browser could act, without refusing the read', async () => {
@@ -249,5 +300,88 @@ describe('the host policy route', () => {
       sha: TIP,
       request: undefined,
     });
+  });
+});
+
+describe('Set up deploys', () => {
+  async function setUp(body: unknown): Promise<Response> {
+    return call(['PUT', body], { 'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey) });
+  }
+
+  test('creates the workflow deploy as the person who asked', async () => {
+    const res = await setUp({ branch: ' main ', workflowName: 'deploy' });
+    expect(res.status).toBe(201);
+    expect(mockSetUp).toHaveBeenCalledTimes(1);
+    expect(mockSetUp).toHaveBeenCalledWith(PROJECT, 'main', 'deploy', 'you@example.com');
+    const body = (await res.json()) as { deploy: { deployOnMerge: boolean } };
+    expect(body.deploy.deployOnMerge).toBe(false);
+  });
+
+  test('refuses a workflow the project does not have', async () => {
+    const res = await setUp({ branch: 'main', workflowName: 'ship' });
+    expect(res.status).toBe(400);
+    expect(mockSetUp).not.toHaveBeenCalled();
+  });
+
+  test('refuses a missing branch', async () => {
+    const res = await setUp({ branch: '', workflowName: 'deploy' });
+    expect(res.status).toBe(400);
+    expect(mockSetUp).not.toHaveBeenCalled();
+  });
+
+  test('refuses a project that already has a deploy', async () => {
+    mockSetUp.mockImplementationOnce(async () => null);
+    const res = await setUp({ branch: 'main', workflowName: 'deploy' });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('a workflow project acts on its own workflow, never the Archon host deploy', () => {
+  beforeEach(() => {
+    mockGetProjectDeploy.mockImplementation(async () => WORKFLOW_SETTING);
+  });
+  afterAll(() => {
+    mockGetProjectDeploy.mockImplementation(async () => SETTING);
+  });
+
+  test('Deploy now starts the workflow for this project', async () => {
+    const res = await call(ACTIONS[1]!, {
+      'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey),
+    });
+    expect(res.status).toBe(202);
+    expect(mockDeployNow).not.toHaveBeenCalled();
+    const [codebase, setting, sha, email] = mockDeployWorkflowNow.mock.calls[0] ?? [];
+    expect(codebase).toEqual(CODEBASE);
+    expect(setting).toEqual(WORKFLOW_SETTING);
+    expect(sha).toBe(TIP);
+    expect(email).toBe('you@example.com');
+  });
+
+  test("Deploy now's refusal reaches the person", async () => {
+    mockDeployWorkflowNow.mockImplementationOnce(async () => ({
+      ok: false,
+      status: 409,
+      error: 'This project has no workflow named "deploy".',
+    }));
+    const res = await call(ACTIONS[1]!, {
+      'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey),
+    });
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toContain('no workflow');
+  });
+
+  test('Cancel deploy cancels this project run', async () => {
+    const res = await call(ACTIONS[2]!, {
+      'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey),
+    });
+    expect(res.status).toBe(200);
+    expect(mockCancelDeploy).not.toHaveBeenCalled();
+    expect(mockCancelWorkflowDeploy).toHaveBeenCalledWith(PROJECT, 'you@example.com');
+  });
+
+  test("the log is the project's own runs, not the host's deploy-history", async () => {
+    const res = await app().request(`${url}/log`);
+    expect(res.status).toBe(200);
+    expect(mockWorkflowLog).toHaveBeenCalledWith(PROJECT);
   });
 });

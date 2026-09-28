@@ -63,6 +63,11 @@ export class DeliveryDeduplicator {
     return false;
   }
 
+  /** Release a key whose work failed, so a redelivery of the same event is not dropped. */
+  forget(key: string): void {
+    this.entries.delete(key);
+  }
+
   /** Number of currently tracked keys (includes not-yet-pruned expired entries) */
   get size(): number {
     return this.entries.size;
