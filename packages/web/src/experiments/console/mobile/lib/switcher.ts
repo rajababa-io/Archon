@@ -76,3 +76,15 @@ export function switcherGroups(
     return lead || projectLabel(a.projectId).localeCompare(projectLabel(b.projectId));
   });
 }
+
+/** One project's open chats, in the switcher's order. */
+export function projectChatRows(
+  chats: readonly FoundChat[],
+  statuses: ReadonlyMap<string, ChatStatus>,
+  projectId: string
+): SwitcherRow[] {
+  return chats
+    .filter(c => c.projectId === projectId && !c.chat.completed)
+    .map(({ chat }) => ({ chat, status: statuses.get(chat.id) ?? 'idle' }))
+    .sort(byUrgency);
+}

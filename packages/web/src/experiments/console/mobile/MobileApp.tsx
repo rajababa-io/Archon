@@ -4,7 +4,11 @@ import { dashboardStreamKeys, useDashboardSSE } from '../lib/sse';
 import { invalidate } from '../store/cache';
 import { K } from '../store/keys';
 import { ChatScreen } from './routes/ChatScreen';
+import { FileScreen } from './routes/FileScreen';
 import { HomeScreen } from './routes/HomeScreen';
+import { ProjectScreen } from './routes/ProjectScreen';
+import { RunScreen } from './routes/RunScreen';
+import { SettingsScreen } from './routes/SettingsScreen';
 import { useForegroundEpoch } from './lib/foreground';
 import { useMobileHead } from './lib/head';
 import { registerShellWorker } from './lib/service-worker';
@@ -45,6 +49,10 @@ export function MobileApp(): ReactElement {
       <Routes>
         <Route index element={<HomeScreen />} />
         <Route path="c/:conversationId" element={<ChatScreen />} />
+        <Route path="p/:projectId/:tab?" element={<ProjectScreen />} />
+        <Route path="r/:runId" element={<RunScreen />} />
+        <Route path="files/:projectId/*" element={<FileScreen />} />
+        <Route path="settings" element={<SettingsScreen />} />
         <Route path="*" element={<Navigate to="/m" replace />} />
       </Routes>
     </div>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { switcherGroups } from './switcher';
+import { projectChatRows, switcherGroups } from './switcher';
 import type { ChatStatus } from '../../primitives/chat-status';
 import type { FoundChat } from '../../skills/conversations';
 
@@ -87,5 +87,23 @@ describe('switcherGroups', () => {
       found('also-closed', 'b', '2026-09-02T00:00:00Z', true),
     ];
     expect(ids(switcherGroups(chats, new Map(), label))).toEqual([['a', ['open']]]);
+  });
+});
+
+describe('projectChatRows', () => {
+  test("one project's open chats, the one that needs you first", () => {
+    const chats = [
+      found('old', 'a', '2026-09-28T09:00:00Z'),
+      found('new', 'a', '2026-09-28T11:00:00Z'),
+      found('asks', 'a', '2026-09-28T08:00:00Z'),
+      found('closed', 'a', '2026-09-28T12:00:00Z', true),
+      found('elsewhere', 'b', '2026-09-28T12:00:00Z'),
+    ];
+    const statuses = new Map<string, ChatStatus>([['asks', 'awaiting']]);
+    expect(projectChatRows(chats, statuses, 'a').map(r => [r.chat.id, r.status])).toEqual([
+      ['asks', 'awaiting'],
+      ['new', 'idle'],
+      ['old', 'idle'],
+    ]);
   });
 });

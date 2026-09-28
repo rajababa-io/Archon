@@ -76,9 +76,22 @@
   align-items: center;
 }
 
-/* Approve and Reject on a run card, for the same reason. */
+/* Approve and Reject on a run card, for the same reason — and on a phone
+   the comment takes its own line, with the decisions sharing the next one. */
 .mobile-approval button {
   min-height: 44px;
+}
+.mobile-approval [data-approval-actions] {
+  flex-wrap: wrap;
+}
+.mobile-approval [data-approval-actions] > input {
+  flex-basis: 100%;
+  min-height: 44px;
+  font-size: 16px;
+}
+.mobile-approval [data-approval-actions] > button {
+  flex: 1 1 0;
+  justify-content: center;
 }
 
 /* A queued message's Send now, Edit and Remove, for the same reason. */

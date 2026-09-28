@@ -1,8 +1,9 @@
 import { useEffect, useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router';
-import { STATUS_LABEL } from '../../primitives/chat-status';
-import { relativeTime } from '../../lib/format';
+import { ChevronRight, Settings } from 'lucide-react';
+import { projectPath, SETTINGS_PATH } from '../lib/paths';
 import { switcherGroups } from '../lib/switcher';
+import { ChatRow } from './ChatRow';
 import type { MobileChats } from '../lib/use-mobile-chats';
 
 interface ChatSwitcherProps {
@@ -13,7 +14,10 @@ interface ChatSwitcherProps {
   onPick?: () => void;
 }
 
-/** Every open chat, grouped by project, the ones that need you first. */
+/**
+ * Every open chat, grouped by project, the ones that need you first. A
+ * project's heading opens that project.
+ */
 export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
   const { chats: all, error, statuses, projectLabel } = chats;
   const groups = useMemo(
@@ -31,33 +35,25 @@ export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): Re
     <nav aria-label="Chats" className="flex flex-col gap-4">
       {groups.map(group => (
         <section key={group.projectId} aria-label={projectLabel(group.projectId)}>
-          <h2 className="px-4 pb-1 text-mini font-medium text-text-tertiary uppercase">
-            {projectLabel(group.projectId)}
+          <h2>
+            <Link
+              to={projectPath(group.projectId)}
+              onClick={onPick}
+              className="flex min-h-11 items-center gap-1 px-4 text-mini font-medium text-text-tertiary uppercase"
+            >
+              {projectLabel(group.projectId)}
+              <ChevronRight aria-hidden className="h-3 w-3" />
+            </Link>
           </h2>
           <ul>
             {group.rows.map(({ chat, status }) => (
               <li key={chat.id}>
-                <Link
-                  to={`/m/c/${encodeURIComponent(chat.id)}`}
-                  onClick={onPick}
-                  aria-current={chat.id === activeId ? 'page' : undefined}
-                  className="mobile-row flex items-center gap-3 px-4 aria-[current=page]:bg-surface-hover"
-                >
-                  <span aria-hidden className={`chat-status is-${status} shrink-0`}>
-                    <i />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-body text-text-primary">
-                      {chat.title ?? 'Untitled chat'}
-                    </span>
-                    <span className="block text-small text-text-tertiary">
-                      {STATUS_LABEL[status]}
-                      {chat.lastActivityAt !== null
-                        ? ` · ${relativeTime(chat.lastActivityAt)}`
-                        : ''}
-                    </span>
-                  </span>
-                </Link>
+                <ChatRow
+                  chat={chat}
+                  status={status}
+                  current={chat.id === activeId}
+                  onPick={onPick}
+                />
               </li>
             ))}
           </ul>
@@ -95,7 +91,15 @@ export function SwitcherSheet({ open, onClose, ...list }: SwitcherSheetProps): R
         className="mobile-sheet flex w-[88%] max-w-[420px] flex-col border-r border-border bg-surface shadow-xl"
       >
         <header className="mobile-safe-top flex items-center justify-between px-4 pb-2">
-          <span className="text-large font-medium text-text-primary">Chats</span>
+          <span className="flex-1 text-large font-medium text-text-primary">Chats</span>
+          <Link
+            to={SETTINGS_PATH}
+            onClick={onClose}
+            aria-label="Settings"
+            className="mobile-tap flex items-center justify-center text-text-secondary"
+          >
+            <Settings aria-hidden className="h-5 w-5" />
+          </Link>
           <button
             type="button"
             onClick={onClose}

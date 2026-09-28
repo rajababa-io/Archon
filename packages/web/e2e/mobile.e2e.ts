@@ -8,17 +8,28 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
 import { startStubServer, type StubServer } from './stub-server';
 import {
+  ARTIFACT_TEXT,
   ASK_OPTION_LABEL,
   ASK_QUESTION,
   ASK_SECOND_OPTION_LABEL,
   ASSISTANT_PROSE,
   CHAT_ID,
+  CLOSED_ISSUE_TITLE,
+  DEPLOY_TIP,
+  GATE_MESSAGE,
   IMAGES,
   CHAT_TITLE,
   OTHER_CHAT_ID,
   OTHER_CHAT_TEXT,
   OTHER_CHAT_TITLE,
+  OPEN_ISSUE_TITLE,
+  PROJECT_ID,
   PROJECT_SHORT_NAME,
+  README_HEADING,
+  RUN_ARTIFACT,
+  RUN_FIRST_STEP,
+  RUN_ID,
+  RUN_WORKFLOW,
   USER_TURN_TEXT,
 } from './fixtures';
 
@@ -53,6 +64,8 @@ async function open(page: Page, path: string): Promise<void> {
 }
 
 const chatPath = (id: string): string => `/m/c/${encodeURIComponent(id)}`;
+const projectPath = `/m/p/${PROJECT_ID}`;
+const runPath = `/m/r/${RUN_ID}`;
 
 /**
  * Drag one finger across an element, as a phone reports it: a touchstart, a
@@ -333,7 +346,8 @@ test('the switcher lists chats by status and opens the one tapped', async ({ pag
   // Unread before idle, though the idle chat is the newer: by status, not by
   // recency. Reading the order is the assertion — both titles alone would
   // pass against a list in any order.
-  const rows = sheet.getByRole('link');
+  // The chat rows only: the sheet also links to Settings and to each project.
+  const rows = sheet.getByRole('list').getByRole('link');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText(OTHER_CHAT_TITLE);
   await expect(rows.nth(0)).toContainText('Unread');
@@ -345,6 +359,99 @@ test('the switcher lists chats by status and opens the one tapped', async ({ pag
   await expect(page).toHaveURL(new RegExp(`${chatPath(OTHER_CHAT_ID)}$`));
   await expect(page.getByText(OTHER_CHAT_TEXT)).toBeVisible();
   await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
+});
+
+test("a chat's project opens from its header, and every tab shows its part", async ({ page }) => {
+  server.showPausedRun();
+  await open(page, chatPath(CHAT_ID));
+  await page.getByRole('link', { name: `${PROJECT_SHORT_NAME} ▸` }).tap();
+  await expect(page).toHaveURL(new RegExp(`${projectPath}$`));
+
+  // Overview: the deploy, and the run stopped on you.
+  await expect(page.getByRole('heading', { name: PROJECT_SHORT_NAME })).toBeVisible();
+  await expect(page.getByTestId('mobile-deploy')).toContainText('1 merged PR waiting');
+  const needsYou = page.getByRole('region', { name: 'Needs you' });
+  await expect(needsYou.getByRole('link', { name: new RegExp(RUN_WORKFLOW) })).toBeVisible();
+
+  const tabs = page.getByRole('navigation', { name: 'Project' });
+  await tabs.getByRole('link', { name: 'Runs' }).tap();
+  await expect(page).toHaveURL(new RegExp(`${projectPath}/runs$`));
+  await expect(page.getByText('Runs start from a chat.')).toBeVisible();
+  await expect(page.getByRole('link', { name: new RegExp(RUN_WORKFLOW) })).toContainText(
+    'Waiting for approval'
+  );
+
+  await tabs.getByRole('link', { name: 'Chats' }).tap();
+  const chats = page.getByRole('list', { name: 'Chats in this project' });
+  await expect(chats.getByRole('link')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'New chat' })).toBeVisible();
+
+  // Issues, one column at a time: the open one under Todo, the closed one under Done.
+  await tabs.getByRole('link', { name: 'Issues' }).tap();
+  await expect(page.getByText(OPEN_ISSUE_TITLE)).toBeVisible();
+  await expect(page.getByText(CLOSED_ISSUE_TITLE)).toHaveCount(0);
+  await page.getByRole('button', { name: /^Done/ }).tap();
+  await expect(page.getByText(CLOSED_ISSUE_TITLE)).toBeVisible();
+  await expect(page.getByText(OPEN_ISSUE_TITLE)).toHaveCount(0);
+
+  // Files: the README opens rendered, and Back returns to its folder.
+  await tabs.getByRole('link', { name: 'Files' }).tap();
+  await page.getByRole('link', { name: /README\.md/ }).tap();
+  await expect(page.getByRole('heading', { name: README_HEADING, level: 1 })).toBeVisible();
+  await page.getByRole('link', { name: 'Back to the folder' }).tap();
+  await expect(page.getByRole('list', { name: 'Files' }).getByText('src')).toBeVisible();
+
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - window.innerWidth
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
+test('a run reads as a timeline, and its gate is approved from the phone', async ({ page }) => {
+  server.showPausedRun();
+  await open(page, runPath);
+
+  await expect(page.getByRole('heading', { name: RUN_WORKFLOW })).toBeVisible();
+  // The finished step with its duration, then the gate it is waiting on.
+  const steps = page.getByRole('region', { name: 'Steps' }).getByRole('listitem');
+  await expect(steps).toHaveCount(2);
+  await expect(steps.nth(0)).toContainText(RUN_FIRST_STEP);
+  await expect(steps.nth(0)).toContainText('01:35');
+
+  // The run's file opens in place.
+  const artifacts = page.getByRole('region', { name: 'Artifacts' });
+  await artifacts.getByRole('button', { name: new RegExp(RUN_ARTIFACT) }).tap();
+  await expect(artifacts.getByText(ARTIFACT_TEXT.split('\n').at(-1) ?? '')).toBeVisible();
+
+  const approval = page.getByRole('region', { name: 'Approval' });
+  await expect(approval.getByText(GATE_MESSAGE)).toBeVisible();
+  const approve = approval.getByRole('button', { name: 'Continue' });
+  const reject = approval.getByRole('button', { name: 'Reject' });
+  // Finger-sized, and sharing the width between them.
+  const [a, r] = [await approve.boundingBox(), await reject.boundingBox()];
+  expect(a?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect(r?.height ?? 0).toBeGreaterThanOrEqual(44);
+  expect((a?.width ?? 0) + (r?.width ?? 0)).toBeGreaterThan((page.viewportSize()?.width ?? 0) / 2);
+
+  await approve.tap();
+  await expect.poll(() => [...server.controls]).toEqual([`respond ${RUN_ID} approve`]);
+  await expect(approval).toHaveCount(0);
+  await expect(page.getByRole('banner')).toContainText('Completed');
+});
+
+test('Deploy asks first, then asks the server to deploy the waiting commit', async ({ page }) => {
+  await open(page, projectPath);
+  const deploy = page.getByTestId('mobile-deploy');
+  await deploy.getByRole('button', { name: 'Deploy' }).tap();
+
+  // Nothing is sent until the confirm is answered.
+  const confirm = deploy.getByRole('group', { name: `Deploy ${DEPLOY_TIP.slice(0, 8)} now?` });
+  await expect(confirm).toContainText('parked and resume after');
+  expect(server.controls).toEqual([]);
+
+  await confirm.getByRole('button', { name: 'Deploy now' }).tap();
+  await expect.poll(() => [...server.controls]).toEqual([`deploy ${DEPLOY_TIP}`]);
+  await expect(confirm).toHaveCount(0);
 });
 
 test('the shell is installable, and scoped to /m', async ({ page }) => {

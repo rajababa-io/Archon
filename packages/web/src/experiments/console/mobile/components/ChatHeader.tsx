@@ -1,12 +1,16 @@
 import type { ReactElement } from 'react';
+import { Link } from 'react-router';
 import { MessagesSquare } from 'lucide-react';
 import { STATUS_COLOR, STATUS_LABEL, type ChatStatus } from '../../primitives/chat-status';
 import { badgeText } from '../../primitives/tab-signal';
+import { projectPath } from '../lib/paths';
 
 interface ChatHeaderProps {
   /** Chats that want you, across every project. */
   needsYou: number;
   onOpenSwitcher: () => void;
+  /** The chat's project, which its name links to; null until the chat list has loaded. */
+  projectId: string | null;
   project: string | null;
   title: string | null;
   status: ChatStatus | null;
@@ -15,6 +19,7 @@ interface ChatHeaderProps {
 export function ChatHeader({
   needsYou,
   onOpenSwitcher,
+  projectId,
   project,
   title,
   status,
@@ -41,8 +46,13 @@ export function ChatHeader({
         ) : null}
       </button>
       <div className="min-w-0 flex-1">
-        {project !== null ? (
-          <p className="truncate text-mini text-text-tertiary">{project} ▸</p>
+        {projectId !== null && project !== null ? (
+          <Link
+            to={projectPath(projectId)}
+            className="block truncate text-mini text-text-tertiary underline-offset-2 active:underline"
+          >
+            {project} ▸
+          </Link>
         ) : null}
         <h1 className="truncate text-body font-medium text-text-primary">
           {title ?? 'Untitled chat'}

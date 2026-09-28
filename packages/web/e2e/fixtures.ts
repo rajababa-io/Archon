@@ -15,6 +15,10 @@ import type { components } from '@/lib/api.generated';
 import type { toProject } from '@/experiments/console/primitives/project';
 import type { toConversationSummary } from '@/experiments/console/primitives/conversation';
 import type { toMessage } from '@/experiments/console/primitives/message';
+import type { toRun } from '@/experiments/console/primitives/run';
+import type { toRunEvent } from '@/experiments/console/primitives/event';
+import type { IssuesResponse } from '@/experiments/console/skills/issues';
+import type { HostDeploy } from '@/experiments/console/skills/deploy';
 
 /** The wire rows, named by the normalizer that consumes each one. */
 export type RawCodebase = Parameters<typeof toProject>[0];
@@ -214,3 +218,151 @@ export const CHANGE_DIFF: components['schemas']['ConversationChangeDiffResponse'
   binary: false,
   truncated: false,
 };
+
+export type RawRun = Parameters<typeof toRun>[0];
+export type RawRunEvent = Parameters<typeof toRunEvent>[0];
+
+/** A run stopped on an approval gate, launched from no chat, so no chat's status moves. */
+export const RUN_ID = 'run-e2e-0001';
+export const RUN_WORKFLOW = 'deliver-e2e';
+export const GATE_MESSAGE = 'Ship the rail width change?';
+/** The step before the gate, which the timeline draws with its duration. */
+export const RUN_FIRST_STEP = 'plan';
+/** A line only that step's output holds, so opening the step proves it shows the step. */
+export const RUN_STEP_OUTPUT = 'Plan written: three widths, one default.';
+export const RUN_ARTIFACT = 'report.md';
+
+/** The run as the runs feed and the run detail send it, paused on its gate or resolved. */
+export function runRow(state: 'paused' | 'completed'): RawRun {
+  return {
+    id: RUN_ID,
+    workflow_name: RUN_WORKFLOW,
+    codebase_id: PROJECT_ID,
+    codebase_name: PROJECT_NAME,
+    conversation_id: null,
+    parent_conversation_id: null,
+    parent_platform_id: null,
+    status: state,
+    started_at: '2026-09-26T10:40:00.000Z',
+    completed_at: state === 'completed' ? '2026-09-26T10:50:00.000Z' : null,
+    user_message: 'Change the rail width',
+    platform_type: 'cli',
+    metadata:
+      state === 'paused'
+        ? {
+            approval: {
+              nodeId: 'gate',
+              message: GATE_MESSAGE,
+              decisions: [{ id: 'approve' }, { id: 'reject' }],
+            },
+          }
+        : {},
+  };
+}
+
+export const RUN_EVENTS: RawRunEvent[] = [
+  {
+    id: 'ev-1',
+    workflow_run_id: RUN_ID,
+    event_type: 'node_started',
+    step_index: 0,
+    step_name: RUN_FIRST_STEP,
+    data: { name: RUN_FIRST_STEP },
+    created_at: '2026-09-26T10:40:01.000Z',
+  },
+  {
+    id: 'ev-2',
+    workflow_run_id: RUN_ID,
+    event_type: 'node_completed',
+    step_index: 0,
+    step_name: RUN_FIRST_STEP,
+    data: { name: RUN_FIRST_STEP, duration_ms: 95_000, node_output: RUN_STEP_OUTPUT },
+    created_at: '2026-09-26T10:41:36.000Z',
+  },
+  {
+    id: 'ev-3',
+    workflow_run_id: RUN_ID,
+    event_type: 'node_started',
+    step_index: 1,
+    step_name: 'gate',
+    data: { name: 'gate' },
+    created_at: '2026-09-26T10:41:37.000Z',
+  },
+];
+
+export const ARTIFACTS: components['schemas']['ListArtifactsResponse'] = {
+  files: [{ path: RUN_ARTIFACT, size: 42, modifiedAt: '2026-09-26T10:41:36.000Z' }],
+};
+export const ARTIFACT_TEXT = '# Report\n\nThe rail keeps its last width.';
+
+/** The project checkout the Files tab lists: one folder, one README. */
+export const README_HEADING = 'Console e2e fixture';
+export const README_TEXT = `# ${README_HEADING}\n\nA project the browser suite reads.`;
+export const ROOT_LISTING = {
+  path: '',
+  entries: [
+    { name: 'README.md', kind: 'file', size: README_TEXT.length },
+    { name: 'src', kind: 'dir', size: null },
+  ],
+};
+
+/** Issues across two board columns, so the column filter has something to change. */
+export const OPEN_ISSUE_TITLE = 'Rail width forgets the last drag';
+export const CLOSED_ISSUE_TITLE = 'Rail flickers on load';
+export const ISSUES: IssuesResponse = {
+  repo: PROJECT_NAME,
+  reason: null,
+  issues: [
+    {
+      number: 7,
+      title: OPEN_ISSUE_TITLE,
+      state: 'OPEN',
+      stateReason: null,
+      url: 'https://github.com/rajababa-io/console-e2e/issues/7',
+      updatedAt: '2026-09-26T09:00:00.000Z',
+      type: 'Bug',
+      labels: [],
+      assignees: [],
+      openPr: false,
+    },
+    {
+      number: 5,
+      title: CLOSED_ISSUE_TITLE,
+      state: 'CLOSED',
+      stateReason: 'COMPLETED',
+      url: 'https://github.com/rajababa-io/console-e2e/issues/5',
+      updatedAt: '2026-09-25T09:00:00.000Z',
+      type: 'Bug',
+      labels: [],
+      assignees: [],
+      openPr: false,
+    },
+  ],
+};
+
+/** The merged commit waiting to go live. */
+export const DEPLOY_TIP = '86b91ff0aa11bb22cc33dd44ee55ff6677889900';
+
+/** This install deploying itself, idle, with one merged PR waiting behind Deploy now. */
+export const projectDeploy = {
+  method: 'archon-host',
+  deployOnMerge: false,
+  branch: 'deploy',
+  live: { sha: 'a6dd05e0c1f2a3b4c5d6e7f8091a2b3c4d5e6f70', deployedAt: '2026-09-26T07:00:00.000Z' },
+  waiting: {
+    tipSha: DEPLOY_TIP,
+    prs: [
+      {
+        number: 12,
+        title: 'Rail width',
+        url: 'https://github.com/rajababa-io/console-e2e/pull/12',
+      },
+    ],
+    more: false,
+  },
+  waitingReason: null,
+  cancellable: false,
+  canAct: true,
+  status: { phase: 'idle' },
+  running: { chats: 0, workflows: 0 },
+} satisfies HostDeploy;

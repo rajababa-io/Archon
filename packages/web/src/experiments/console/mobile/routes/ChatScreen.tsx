@@ -75,6 +75,7 @@ export function ChatScreen(): ReactElement {
           <ChatHeader
             needsYou={chats.needsYou}
             onOpenSwitcher={openSwitcher}
+            projectId={null}
             project={null}
             title="Chat not found"
             status={null}
@@ -406,6 +407,7 @@ function ChatView({
       <ChatHeader
         needsYou={chats.needsYou}
         onOpenSwitcher={onOpenSwitcher}
+        projectId={projectId}
         project={project}
         title={summary?.title ?? null}
         status={summary === undefined ? null : status}
