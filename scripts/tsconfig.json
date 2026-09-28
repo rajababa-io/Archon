@@ -6,6 +6,9 @@
     "declarationMap": false,
     "sourceMap": false,
     "types": ["bun-types"],
+    // Tests here import workflow-pack modules, which import each other with the
+    // `.ts` extension the packaged scripts run with.
+    "allowImportingTsExtensions": true,
     // Cross-package tests import web modules that touch browser globals through
     // transitive imports, so this project needs DOM in `lib`.
     "lib": ["ES2022", "DOM"],
