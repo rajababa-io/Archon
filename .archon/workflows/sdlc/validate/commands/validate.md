@@ -14,7 +14,7 @@ The discovered gate:
 
 $INPUTS.discovery
 
-The gate's record — its argv, exit code, whether it hit the deadline, duration, the last lines of output, and any untracked `.archon/` paths moved aside while it ran:
+The gate's record — its argv, exit code, whether it hit the deadline, duration, the last lines of output, any untracked `.archon/` paths moved aside while it ran, and an `error` saying why the gate could not start or the checkout could not be put back (empty when neither happened):
 
 $INPUTS.gate
 
@@ -32,11 +32,11 @@ Do not modify source files, fix failures, commit, push, or touch pull requests. 
 
 ## Report
 
-Write `$ARTIFACTS_DIR/validation.md`: the gate's argv, exit code, duration, whether it hit the deadline, any quarantined paths, each check's outcome as the log shows it, any applicable check that never ran, and for failures the decisive output tail — enough for a fixer to act without re-running everything. Concise and factual. No one is watching the run — this file and your declared fields are the only record the checks ever ran.
+Write `$ARTIFACTS_DIR/validation.md`: the gate's argv, exit code, duration, whether it hit the deadline, any quarantined paths, any recorded error verbatim, each check's outcome as the log shows it, any applicable check that never ran, and for failures the decisive output tail — enough for a fixer to act without re-running everything. Concise and factual. No one is watching the run — this file and your declared fields are the only record the checks ever ran.
 
 ## Declare the verdict
 
-- `green` — true only when every applicable check ran and passed: the gate exited 0 without hitting its deadline. A later node refuses a green verdict over a gate record that did not pass.
+- `green` — true only when every applicable check ran and passed: the gate exited 0 without hitting its deadline, and the record carries no error. A later node refuses a green verdict over a gate record that did not pass.
 - `red_cause` — why the verdict is not green. When a check that ran failed: `introduced`, the change under validation caused it; `inherited`, the same check was already failing at the base this branch came from; `environment`, the machine caused it, not any code — a database or port a parallel process holds, a missing credential, a network fault. `incomplete` when no check that ran failed but not every applicable check ran — the gate hit its deadline or was killed partway, or it could not run at all. An unfinished gate is no evidence about the change, and delivery stops there until the run is resumed. A check that ran and failed takes its own cause even when others never ran. Always declared: use the empty string `""` only when `green` is true.
 - `summary` — a few sentences: what ran, what passed, and for a red verdict the failing checks by name. For `incomplete`, what stopped validation and which checks ran and passed.
 
@@ -44,9 +44,11 @@ Classifying red never makes it green — `green` stays false either way. But `in
 
 Reading the record:
 
-- Exit code 0, not timed out — `green: true`.
+- Exit code 0, not timed out, no error — `green: true`.
 - Non-zero exit code — the failing check, named from the log, takes its own cause.
 - Timed out, or killed with no exit code, and the log shows no failed check — `incomplete`; the summary says the gate did not finish and which checks completed first.
+- Not run although discovery declared it runnable — the record's `error` says why (a command that does not exist, a quarantine a previous gate left behind) — `green: false`, `red_cause: incomplete`, with that error in `summary`.
+- Ran, but the record carries an error — the checkout was not put back as it was found. Classify the gate's own outcome as above, except that it cannot be `green`: when no check failed it is `incomplete`. Quote the error in `summary`; the operator must restore those files before the run resumes.
 - Not run because discovery found the gate `unrunnable` — `green: false`, `red_cause: incomplete`, with discovery's reason in `summary`.
 - Not run because discovery found `none_defined` — `green: true` with the note "no checks defined by this project".
 

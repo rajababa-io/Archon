@@ -66,6 +66,7 @@ deliver__validate__gate:
   log: "validate-gate/gate.log"
   tail: ""
   quarantined: []
+  error: ""
 deliver__validate__validate:
   green: false
   red_cause: introduced

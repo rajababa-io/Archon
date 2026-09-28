@@ -36,11 +36,16 @@ export interface GateRecord {
   exit_code: number | null;
   timed_out: boolean;
   duration_ms: number;
-  /** The log's path relative to the artifacts directory; empty when the gate did not run. */
+  /** The log's path relative to the artifacts directory; empty when no log was opened. */
   log: string;
   tail: string;
-  /** Untracked `.archon/` paths moved aside for the gate's duration and restored after it. */
+  /** Untracked `.archon/` paths moved aside for the gate's duration. */
   quarantined: string[];
+  /**
+   * Why the gate could not start, or why the checkout was not left as it was found;
+   * empty when neither happened. A gate record never passes with an error.
+   */
+  error: string;
 }
 
 export function parseGateDiscovery(value: unknown): GateDiscovery {
@@ -105,13 +110,16 @@ function quarantine(root: string, paths: string[]): string {
       moved.push(path);
     }
   } catch (error) {
-    restore(root, store, moved);
-    throw error;
+    // A failed rollback must not replace the failure that caused it.
+    const unrestored = restore(root, store, moved);
+    if (unrestored === undefined) throw error;
+    throw new Error(`${message(error)} ${unrestored}`, { cause: error });
   }
   return store;
 }
 
-function restore(root: string, store: string, paths: string[]): void {
+/** Moves every path back; a description of what could not be, or undefined when all were. */
+function restore(root: string, store: string, paths: string[]): string | undefined {
   const unrestored: string[] = [];
   for (const path of paths) {
     const original = join(root, path);
@@ -128,11 +136,14 @@ function restore(root: string, store: string, paths: string[]): void {
     }
   }
   if (unrestored.length > 0) {
-    throw new Error(
-      `Could not restore quarantined files from ${store}: ${unrestored.join(', ')}. Move them back by hand.`
-    );
+    return `Could not restore quarantined files from ${store}: ${unrestored.join(', ')}. Move them back by hand.`;
   }
   rmSync(store, { recursive: true, force: true });
+  return undefined;
+}
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /** The first free log name, so a resumed run keeps every attempt's evidence. */
@@ -185,6 +196,9 @@ function execute(
  * Run the discovered gate as a subprocess of this script, never inside an agent's
  * shell, with a deadline this script enforces. Output goes to a log under
  * `validate-gate/` in the artifacts directory, and the record is written beside it.
+ *
+ * Always resolves a record: a gate that cannot start, or a checkout that cannot be
+ * put back, is reported in `error` for the verdict to classify, never thrown past it.
  */
 export async function runGate(
   cwd: string,
@@ -192,40 +206,58 @@ export async function runGate(
   discovery: GateDiscovery,
   deadlineMs: number
 ): Promise<GateRecord> {
-  if (discovery.gate !== 'run') {
-    return {
-      ran: false,
-      argv: [],
-      exit_code: null,
-      timed_out: false,
-      duration_ms: 0,
-      log: '',
-      tail: '',
-      quarantined: [],
-    };
-  }
-  const root = git(cwd, ['rev-parse', '--show-toplevel']).trim();
-  const paths = untrackedArchonPaths(root);
-  const store = quarantine(root, paths);
-  const log = openLog(join(artifactsDir, 'validate-gate'));
-  const started = Date.now();
-  let outcome: { exit_code: number | null; timed_out: boolean };
-  try {
-    outcome = await execute(discovery.argv, cwd, log.fd, deadlineMs);
-  } finally {
-    closeSync(log.fd);
-    if (paths.length > 0) restore(root, store, paths);
-  }
-  const output = readFileSync(log.path, 'utf8');
   const record: GateRecord = {
-    ran: true,
+    ran: false,
     argv: discovery.argv,
-    ...outcome,
-    duration_ms: Date.now() - started,
-    log: relative(artifactsDir, log.path).split('\\').join('/'),
-    tail: output.slice(-TAIL_CHARS),
-    quarantined: paths,
+    exit_code: null,
+    timed_out: false,
+    duration_ms: 0,
+    log: '',
+    tail: '',
+    quarantined: [],
+    error: '',
   };
-  writeFileSync(log.path.replace(/\.log$/, '.json'), JSON.stringify(record, null, 2));
-  return record;
+  if (discovery.gate !== 'run') return record;
+  let root: string;
+  let store: string;
+  let paths: string[];
+  try {
+    root = git(cwd, ['rev-parse', '--show-toplevel']).trim();
+    paths = untrackedArchonPaths(root);
+    store = quarantine(root, paths);
+  } catch (error) {
+    return { ...record, error: message(error) };
+  }
+  record.quarantined = paths;
+  const errors: string[] = [];
+  let logPath: string | undefined;
+  try {
+    const log = openLog(join(artifactsDir, 'validate-gate'));
+    logPath = log.path;
+    record.log = relative(artifactsDir, log.path).split('\\').join('/');
+    const started = Date.now();
+    try {
+      Object.assign(record, await execute(discovery.argv, cwd, log.fd, deadlineMs));
+      record.ran = true;
+    } finally {
+      closeSync(log.fd);
+      record.duration_ms = Date.now() - started;
+    }
+    record.tail = readFileSync(log.path, 'utf8').slice(-TAIL_CHARS);
+  } catch (error) {
+    errors.push(message(error));
+  }
+  if (paths.length > 0) {
+    const unrestored = restore(root, store, paths);
+    if (unrestored !== undefined) errors.push(unrestored);
+  }
+  if (logPath !== undefined) {
+    const written = { ...record, error: errors.join('\n') };
+    try {
+      writeFileSync(logPath.replace(/\.log$/, '.json'), JSON.stringify(written, null, 2));
+    } catch (error) {
+      errors.push(message(error));
+    }
+  }
+  return { ...record, error: errors.join('\n') };
 }

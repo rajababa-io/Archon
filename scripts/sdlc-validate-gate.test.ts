@@ -89,16 +89,41 @@ describe('validate gate', () => {
     mkdirSync(quarantine);
     writeFileSync(join(cwd, '.archon', 'injected.md'), 'scaffolding');
     const marker = join(artifacts, 'spawned');
-    await expect(
-      runGate(
-        cwd,
-        artifacts,
-        run(bun, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, '')`),
-        5000
-      )
-    ).rejects.toThrow('did not restore');
+    const record = await runGate(
+      cwd,
+      artifacts,
+      run(bun, '-e', `require('node:fs').writeFileSync(${JSON.stringify(marker)}, '')`),
+      5000
+    );
+    expect(record).toMatchObject({ ran: false, exit_code: null, quarantined: [] });
+    expect(record.error).toContain('did not restore');
     expect(existsSync(marker)).toBe(false);
     expect(existsSync(join(cwd, '.archon', 'injected.md'))).toBe(true);
+  });
+
+  it('records a gate that cannot start instead of throwing', async () => {
+    const { cwd, artifacts, quarantine } = fixture();
+    writeFileSync(join(cwd, '.archon', 'injected.md'), 'scaffolding');
+    const record = await runGate(cwd, artifacts, run('/no/such/archon-gate'), GATE_DEADLINE_MS);
+    expect(record).toMatchObject({ ran: false, exit_code: null, timed_out: false });
+    expect(record.error).toContain('/no/such/archon-gate');
+    expect(readFileSync(join(cwd, '.archon', 'injected.md'), 'utf8')).toBe('scaffolding');
+    expect(existsSync(quarantine)).toBe(false);
+    expect(JSON.parse(readFileSync(join(artifacts, 'validate-gate', 'gate.json'), 'utf8'))).toEqual(
+      record
+    );
+  });
+
+  it('records a path it could not restore alongside the outcome', async () => {
+    const { cwd, artifacts, quarantine } = fixture();
+    const injected = join(cwd, '.archon', 'injected.md');
+    writeFileSync(injected, 'scaffolding');
+    const recreate = `require('node:fs').writeFileSync(${JSON.stringify(injected)}, 'gate')`;
+    const record = await runGate(cwd, artifacts, run(bun, '-e', recreate), GATE_DEADLINE_MS);
+    expect(record).toMatchObject({ ran: true, exit_code: 0, quarantined: ['.archon/injected.md'] });
+    expect(record.error).toContain('Could not restore quarantined files');
+    expect(readFileSync(injected, 'utf8')).toBe('gate');
+    expect(readFileSync(join(quarantine, '.archon', 'injected.md'), 'utf8')).toBe('scaffolding');
   });
 
   it('records the exit code and output, keeping every attempt', async () => {
@@ -109,7 +134,12 @@ describe('validate gate', () => {
       `console.log('to stdout'); console.error('to stderr'); process.exitCode = 3`
     );
     const first = await runGate(cwd, artifacts, gate, GATE_DEADLINE_MS);
-    expect(first).toMatchObject({ exit_code: 3, timed_out: false, log: 'validate-gate/gate.log' });
+    expect(first).toMatchObject({
+      exit_code: 3,
+      timed_out: false,
+      log: 'validate-gate/gate.log',
+      error: '',
+    });
     expect(first.tail).toContain('to stdout');
     expect(first.tail).toContain('to stderr');
     expect(JSON.parse(readFileSync(join(artifacts, 'validate-gate', 'gate.json'), 'utf8'))).toEqual(

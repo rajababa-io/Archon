@@ -53,6 +53,7 @@ validate__gate:
   log: "validate-gate/gate.log"
   tail: ""
   quarantined: []
+  error: ""
 validate__validate:
   green: true
   red_cause: ""

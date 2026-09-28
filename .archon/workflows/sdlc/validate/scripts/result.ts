@@ -14,10 +14,10 @@ if (comparison !== null) {
   if ((validation as { green?: unknown }).green === true) {
     const discovery = parseGateDiscovery(JSON.parse(text(process.env.INPUTS_DISCOVERY)) as unknown);
     const gate = JSON.parse(text(process.env.INPUTS_GATE)) as GateRecord;
-    const passed = gate.ran && gate.exit_code === 0 && !gate.timed_out;
+    const passed = gate.ran && gate.exit_code === 0 && !gate.timed_out && gate.error === '';
     if (!passed && !(discovery.gate === 'none_defined' && !gate.ran)) {
       throw new Error(
-        `Validation declared green but the recorded gate did not pass: discovery ${discovery.gate}, ran ${gate.ran}, exit code ${gate.exit_code}, timed out ${gate.timed_out}.`
+        `Validation declared green but the recorded gate did not pass: discovery ${discovery.gate}, ran ${gate.ran}, exit code ${gate.exit_code}, timed out ${gate.timed_out}, error ${JSON.stringify(gate.error)}.`
       );
     }
   }

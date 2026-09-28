@@ -13,7 +13,9 @@ The gate runs against the tracked tree: every untracked, non-ignored path under
 `.archon/` (run scaffolding) is moved into `<git-dir>/archon-validate-quarantine`
 for its duration and restored afterwards. If that directory still exists, a previous
 gate was killed before it could restore; the next gate refuses to start until its
-contents are moved back.
+contents are moved back. The gate node reports that refusal, a command that cannot
+start, and a restore that fails in its record's `error` field rather than failing
+itself, so the run still reaches a verdict.
 
 When the gate cannot run, or exceeds its deadline or is killed, and no check that
 ran failed, ordinary validation declares `green: false` with `red_cause: incomplete`.
