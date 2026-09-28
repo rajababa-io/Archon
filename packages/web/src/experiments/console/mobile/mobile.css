@@ -1,0 +1,82 @@
+/*
+ * The mobile shell's own layout rules. Everything visual comes from the
+ * console theme (`.console-root` tokens) and Tailwind; this file holds only
+ * what Tailwind cannot say: sizing to the visual viewport, the safe areas, and
+ * touch-target minimums applied to shared components drawn for a mouse.
+ */
+
+/*
+ * Pinned to what is visible — see lib/viewport.ts for where the variables
+ * come from. Fixed, so the document itself never scrolls and there is nothing
+ * for iOS to scroll out from under the header when the keyboard opens.
+ */
+.mobile-root {
+  position: fixed;
+  inset-inline: 0;
+  top: 0;
+  height: var(--vv-height, 100dvh);
+  transform: translateY(var(--vv-top, 0px));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+.mobile-root > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Under the notch and status bar: the head sets viewport-fit=cover. */
+.mobile-safe-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
+}
+
+/*
+ * Above the home indicator while the keyboard is closed, and flush on the
+ * keyboard while it is open. iOS keeps reporting the bottom inset with the
+ * keyboard up, which would float the composer a bar's height above it.
+ */
+.mobile-composer {
+  padding-bottom: max(0.5rem, calc(env(safe-area-inset-bottom) - var(--kb-inset, 0px)));
+}
+
+.mobile-sheet {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* 44px: the smallest target Apple and Google both say a finger can hit. */
+.mobile-tap,
+.mobile-row {
+  min-height: 44px;
+}
+.mobile-tap {
+  min-width: 44px;
+}
+.mobile-row {
+  padding-block: 0.375rem;
+}
+
+.mobile-note {
+  padding: 0.5rem 1rem;
+  font-size: var(--text-small);
+  color: var(--text-tertiary);
+}
+
+/* Ask cards, drawn for a pointer, restyled for a finger: every option row and
+   every action is a full-size target. The page dots stay small — Prev and
+   Next beside them do the same job at full size. */
+.mobile-root [data-ask-card] button[aria-pressed],
+.mobile-root [data-ask-card] header button:not([aria-current]),
+.mobile-root [data-ask-card] footer button {
+  min-height: 44px;
+}
+.mobile-root [data-ask-card] button[aria-pressed] {
+  align-items: center;
+}
+
+/* Approve and Reject on a run card, for the same reason. */
+.mobile-approval button {
+  min-height: 44px;
+}

@@ -45,6 +45,7 @@ const CONTENT_TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.webmanifest': 'application/manifest+json',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon',
@@ -153,8 +154,13 @@ function handleApi(
 
   if (method === 'GET' && path === '/api/conversations') {
     const scope = url.searchParams.get('state') ?? 'open';
+    // Unfiltered by project, every row says which project it belongs to: the
+    // mobile switcher and the palette read that list, across projects.
+    const rows = url.searchParams.has('codebaseId')
+      ? CHATS
+      : CHATS.map(chat => ({ ...chat, codebase_id: PROJECT_ID }));
     sendJson(res, {
-      conversations: scope === 'done' ? [] : CHATS,
+      conversations: scope === 'done' ? [] : rows,
       counts: CONVERSATION_COUNTS,
     });
     return;
@@ -242,8 +248,16 @@ function handleApi(
     return;
   }
 
+  // No runs anywhere. Counts included, as the real route always sends them:
+  // without them the console's normalizer throws and every runs list on the
+  // page renders its load error instead of nothing.
   if (method === 'GET' && path === '/api/dashboard/runs') {
-    sendJson(res, { runs: [] });
+    const empty: components['schemas']['DashboardRunsResponse'] = {
+      runs: [],
+      total: 0,
+      counts: { all: 0, running: 0, completed: 0, failed: 0, cancelled: 0, pending: 0, paused: 0 },
+    };
+    sendJson(res, empty);
     return;
   }
 

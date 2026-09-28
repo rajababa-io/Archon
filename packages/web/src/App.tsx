@@ -6,6 +6,7 @@ import { queryClient } from '@/lib/query-client';
 import { LegacyRedirect } from '@/routes/LegacyRedirect';
 import { LoginPage } from '@/routes/LoginPage';
 import { ConsoleApp } from '@/experiments/console/ConsoleApp';
+import { MobileApp } from '@/experiments/console/mobile/MobileApp';
 import { SessionGate } from '@/components/auth/SessionGate';
 
 interface ErrorBoundaryState {
@@ -77,6 +78,15 @@ export function App(): React.ReactElement {
               element={
                 <SessionGate>
                   <ConsoleApp />
+                </SessionGate>
+              }
+            />
+            {/* The phone shell. Behind the same gate as the console, for the same reason. */}
+            <Route
+              path="/m/*"
+              element={
+                <SessionGate>
+                  <MobileApp />
                 </SessionGate>
               }
             />

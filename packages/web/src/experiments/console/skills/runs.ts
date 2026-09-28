@@ -70,6 +70,18 @@ export async function listRuns(
   };
 }
 
+/**
+ * The runs a chat launched, newest first. Every reader of `K.chatRuns` goes
+ * through this, so the key always holds the same page: two limits under one
+ * key would mean whichever request landed first decided what both showed.
+ * Deep history belongs on the runs view, not the chat.
+ */
+export async function listChatRuns(
+  conversationDbId: string
+): Promise<{ runs: Run[]; counts: RunCounts; total: number }> {
+  return listRuns({ parentConversationId: conversationDbId, limit: 25 });
+}
+
 export async function listGlobalCounts(): Promise<RunCounts> {
   // Counts without any codebase filter — used by top chrome pill.
   const res = await requestJson<DashboardRunsResponse>('/api/dashboard/runs?limit=1');

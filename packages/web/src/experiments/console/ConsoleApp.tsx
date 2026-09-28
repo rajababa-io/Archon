@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState, type ReactElement } from 
 import { Navigate, Routes, Route, useLocation, useNavigate } from 'react-router';
 import { ProjectRail } from './components/ProjectRail';
 import { DeployOverlay } from './components/DeployOverlay';
+import { MobileViewBanner } from './components/MobileViewBanner';
 import { AddProjectDialog } from './components/AddProjectDialog';
 import { ProjectPalette } from './components/ProjectPalette';
 import { KeymapHelp } from './components/KeymapHelp';
@@ -115,6 +116,7 @@ export function ConsoleApp(): ReactElement {
         </button>
         <span className="font-medium">Archon</span>
       </header>
+      <MobileViewBanner />
       <div className="rail-shell flex min-h-0 flex-1">
         {railOpen ? (
           <button

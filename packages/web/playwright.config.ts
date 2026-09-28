@@ -28,6 +28,9 @@ const chromiumArgs = (process.env.ARCHON_E2E_CHROMIUM_ARGS ?? '')
   .split(' ')
   .filter(arg => arg.length > 0);
 
+/** The mobile shell's suite, which runs under the phone profiles only. */
+const MOBILE_SUITE = '**/mobile.e2e.ts';
+
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
@@ -52,7 +55,27 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      testIgnore: MOBILE_SUITE,
       use: { ...devices['Desktop Chrome'], launchOptions: { args: chromiumArgs } },
+    },
+    // The mobile shell, at a phone's size, pixel density, user agent and touch
+    // input. Both run in Chromium: CI installs Chromium alone, and what these
+    // assert is the layout and the flows, not an engine's quirks. What only a
+    // real iPhone can show — the keyboard, Safari's viewport — is on the
+    // real-device checklist instead.
+    {
+      name: 'iphone',
+      testMatch: MOBILE_SUITE,
+      use: {
+        ...devices['iPhone 15'],
+        browserName: 'chromium',
+        launchOptions: { args: chromiumArgs },
+      },
+    },
+    {
+      name: 'pixel',
+      testMatch: MOBILE_SUITE,
+      use: { ...devices['Pixel 7'], launchOptions: { args: chromiumArgs } },
     },
   ],
 });

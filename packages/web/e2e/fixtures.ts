@@ -55,7 +55,8 @@ function chatRow(
   platformId: string,
   dbId: string,
   title: string,
-  lastActivityAt: string
+  lastActivityAt: string,
+  lastReadAt: string = lastActivityAt
 ): RawConversation {
   return {
     id: dbId,
@@ -68,18 +69,21 @@ function chatRow(
     completed_at: null,
     sort_order: null,
     ask_candidate: null,
-    last_read_at: lastActivityAt,
+    last_read_at: lastReadAt,
     ready_at: null,
   };
 }
 
 export const CHATS: RawConversation[] = [
   chatRow(CHAT_ID, CHAT_DB_ID, CHAT_TITLE, '2026-09-26T11:00:00.000Z'),
+  // Unread — it moved after it was last read — so the two chats differ in
+  // status, and an order by status differs from an order by recency.
   chatRow(
     OTHER_CHAT_ID,
     '00000000-0000-4000-8000-000000000002',
     OTHER_CHAT_TITLE,
-    '2026-09-26T10:30:00.000Z'
+    '2026-09-26T10:30:00.000Z',
+    '2026-09-26T10:00:00.000Z'
   ),
 ];
 
