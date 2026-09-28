@@ -105,9 +105,6 @@ const RAIL_WIDTH: PaneBounds = {
   initial: 280,
 };
 
-const RAIL_NAV_LINK_CLASS =
-  'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary';
-
 /** A row in the rail's bottom nav menu (Workflows / Settings). */
 function RailNavLink({
   to,
@@ -126,14 +123,11 @@ function RailNavLink({
   const { pathname } = useLocation();
   const active = activeFor.some(p => pathname === p || pathname.startsWith(`${p}/`));
   return (
-    <Link
-      to={to}
-      title={title}
-      aria-current={active ? 'page' : undefined}
-      className={`${RAIL_NAV_LINK_CLASS}${active ? ' bg-surface-hover text-text-primary' : ''}`}
-    >
-      <Icon aria-hidden className="h-3.5 w-3.5 shrink-0" />
-      <span className="truncate">{label}</span>
+    <Link to={to} title={title} aria-current={active ? 'page' : undefined} className="rail-row">
+      <span aria-hidden className="rail-ico" style={{ color: 'var(--text-secondary)' }}>
+        <Icon />
+      </span>
+      <span className="rail-hide rail-text">{label}</span>
     </Link>
   );
 }
@@ -162,7 +156,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
    * Collapsed to the icon column, and whether a peek is currently open.
    *
    * `showWide` is the one thing the inline width style keys off: while
-   * collapsed-and-not-peeking the CSS owns the width (63px !important), and
+   * collapsed-and-not-peeking the CSS owns the width (`--rail-collapsed-w`), and
    * an inline width would fight it. While peeking, the inline width is what
    * the panel animates TO.
    */
@@ -365,7 +359,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
         }${peeking ? ' is-peeking' : ''}`}
       >
         {/* Header: brand + label + count + filter */}
-        <div className="px-2.75 pb-1.5 pt-2.5">
+        <div className="px-2.5 pb-1.5 pt-2.5">
           {/* The head is a ROW, on the same icon column as everything below it.
             Collapsed, the toggle is the only thing left and it has not moved —
             which is what makes the panel read as sliding rather than jumping.
@@ -432,7 +426,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
         {/* Grouped project list */}
         <div
           ref={scrollerRef}
-          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-1.75 pt-1"
+          className="rail-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2.5 pb-1.75 pt-1"
           onDragOver={e => {
             if (dragId === null) return;
             e.preventDefault();
@@ -565,18 +559,23 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
         </div>
 
         {/* Add project */}
-        <div className="border-t border-border p-3">
+        {/* Same section padding and gutter as a row, less the 1px border, so the
+            "+" sits on the icon column and stays centred when collapsed. */}
+        <div className="border-t border-border px-2.5 py-2.5">
           <button
             type="button"
             onClick={onAddProject}
             title="Add project"
             aria-label="Add project"
-            className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-left text-body font-medium text-text-secondary transition-colors hover:border-accent-bright/50 hover:bg-surface-hover hover:text-text-primary"
+            className="flex w-full items-center gap-2 rounded-lg border border-border bg-surface py-1.5 pl-[16px] pr-[6px] text-left text-body font-medium text-text-secondary transition-colors hover:border-accent-bright/50 hover:bg-surface-hover hover:text-text-primary"
           >
-            <span aria-hidden="true" className="text-large leading-none text-accent-bright">
+            <span
+              aria-hidden="true"
+              className="rail-ico text-large leading-none text-accent-bright"
+            >
               +
             </span>
-            <span className="rail-hide">Add project</span>
+            <span className="rail-hide truncate">Add project</span>
           </button>
         </div>
 
@@ -606,7 +605,7 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
           aria-label="Resize sidebar"
           title="Drag to resize"
           onPointerDown={startResize}
-          className="group absolute -right-1 top-0 z-10 flex h-full w-[9px] cursor-col-resize items-center justify-center"
+          className="rail-resize group absolute -right-1 top-0 z-10 flex h-full w-[9px] cursor-col-resize items-center justify-center"
         >
           <span
             aria-hidden
