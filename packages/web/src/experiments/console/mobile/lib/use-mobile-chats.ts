@@ -36,6 +36,13 @@ import { useSavedChats } from './saved-chats';
  */
 const LIST_POLL_MS = 8000;
 
+/**
+ * How long the chat list may go unanswered before Archon counts as out of
+ * reach. A dead tailnet link usually hangs rather than refusing, and an
+ * unbounded read would leave the shell showing neither chats nor the banner.
+ */
+const REACH_TIMEOUT_MS = 10_000;
+
 export interface MobileChats {
   /**
    * The server's list — or, while Archon cannot be reached and the list was
@@ -55,7 +62,9 @@ export interface MobileChats {
 }
 
 export function useMobileChats(): MobileChats {
-  const { data: all, error } = useEntity(K.allConversations, skill.listAllConversations);
+  const { data: all, error } = useEntity(K.allConversations, () =>
+    skill.listAllConversations({ signal: AbortSignal.timeout(REACH_TIMEOUT_MS) })
+  );
   const { data: projects } = useEntity<Project[]>(K.projects, skill.listProjects);
   const { data: runFeed } = useEntity<{ runs: Run[] }>(K.runs(ALL_SCOPE), () =>
     skill.listRuns({ limit: skill.RUN_LIMIT })

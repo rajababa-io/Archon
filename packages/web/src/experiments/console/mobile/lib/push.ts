@@ -5,7 +5,10 @@
  * Turning push on asks for permission, subscribes with the server's VAPID
  * key, and hands the subscription over. Turning it off does both halves in
  * the other order, so the server never pushes to an endpoint the browser has
- * already dropped.
+ * already dropped. When the second half fails the first is undone, and every
+ * read of "is push on here" hands the browser's subscription to the server
+ * again, so the two cannot stay apart and Settings never says "On" about a
+ * device the server has no way to reach.
  */
 import * as skill from '../../skills';
 import { SHELL_SCOPE } from '../pwa/paths';
@@ -79,10 +82,22 @@ async function shellRegistration(): Promise<ServiceWorkerRegistration> {
   return registration;
 }
 
-/** This device's subscription, or null when push is off here. */
-export async function currentSubscription(): Promise<PushSubscription | null> {
+async function currentSubscription(): Promise<PushSubscription | null> {
   const registration = await navigator.serviceWorker.getRegistration(SHELL_SCOPE);
   return registration === undefined ? null : registration.pushManager.getSubscription();
+}
+
+/**
+ * Whether push is on for this device. A subscription the browser holds is
+ * registered with the server again (it stores by endpoint, so this is
+ * idempotent); a server that cannot take it makes this reject rather than
+ * answer "on".
+ */
+export async function pushIsOn(): Promise<boolean> {
+  const subscription = await currentSubscription();
+  if (subscription === null) return false;
+  await skill.savePushSubscription(subscription.toJSON());
+  return true;
 }
 
 /**
@@ -110,14 +125,30 @@ export async function enablePush(publicKey: string): Promise<void> {
     userVisibleOnly: true,
     applicationServerKey: key,
   });
-  await skill.savePushSubscription(subscription.toJSON());
+  try {
+    await skill.savePushSubscription(subscription.toJSON());
+  } catch (e) {
+    await subscription.unsubscribe();
+    throw e;
+  }
 }
 
 export async function disablePush(): Promise<void> {
   const subscription = await currentSubscription();
   if (subscription === null) return;
   await skill.deletePushSubscription(subscription.endpoint);
-  await subscription.unsubscribe();
+  const restore = (): Promise<void> => skill.savePushSubscription(subscription.toJSON());
+  let dropped: boolean;
+  try {
+    dropped = await subscription.unsubscribe();
+  } catch (e) {
+    await restore();
+    throw e;
+  }
+  if (!dropped) {
+    await restore();
+    throw new Error('This browser would not turn push off. Try again.');
+  }
 }
 
 /**

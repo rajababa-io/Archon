@@ -57,7 +57,8 @@ shows push notifications. It never answers an API request.
 
 Offline, the shell opens from that cache. `mobile/lib/reach.ts` decides whether
 Archon can be reached from the chat list's last read, and a banner says when
-it cannot. The last 10 chats read are copied to IndexedDB
+it cannot. That read gives up after 10 seconds, because a dead tailnet link
+hangs rather than refusing. The last 10 chats read are copied to IndexedDB
 (`mobile/lib/saved-chats.ts`) and shown, marked as saved copies, only while
 the server does not answer; sending is disabled. Copies are kept only on
 installs with web auth off. `src/components/auth/MobileGate.tsx` records that

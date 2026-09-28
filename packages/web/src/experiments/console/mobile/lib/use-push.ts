@@ -5,10 +5,10 @@ import { errorDetail } from '../../lib/http';
 import { set, useEntity } from '../../store/cache';
 import { K } from '../../store/keys';
 import {
-  currentSubscription,
   disablePush,
   enablePush,
   pushAvailability,
+  pushIsOn,
   readPushEnvironment,
   type PushAvailability,
 } from './push';
@@ -66,9 +66,9 @@ export function usePushDevice(): PushDeviceView {
       return;
     }
     let live = true;
-    currentSubscription()
-      .then(sub => {
-        if (live) setSubscribed(sub !== null);
+    pushIsOn()
+      .then(on => {
+        if (live) setSubscribed(on);
       })
       .catch((e: unknown) => {
         if (live) setFailure(errorDetail(e));

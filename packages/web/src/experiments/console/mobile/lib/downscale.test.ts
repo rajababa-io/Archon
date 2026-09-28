@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-import { MAX_EDGE_PX, fitWithin, isRedrawable, jpegName } from './downscale';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { MAX_EDGE_PX, downscaleImage, fitWithin, isRedrawable, jpegName } from './downscale';
 
 describe('fitWithin', () => {
   test('leaves an image that already fits alone', () => {
@@ -43,5 +43,28 @@ describe('jpegName', () => {
   test('adds one to a name without', () => {
     expect(jpegName('image')).toBe('image.jpg');
     expect(jpegName('.hidden')).toBe('.hidden.jpg');
+  });
+});
+
+describe('downscaleImage', () => {
+  const saved = { createImageBitmap: globalThis.createImageBitmap, document: globalThis.document };
+  afterEach(() => {
+    globalThis.createImageBitmap = saved.createImageBitmap;
+    globalThis.document = saved.document;
+  });
+
+  test('a canvas that fails mid-redraw hands back the original instead of rejecting', async () => {
+    let closed = false;
+    const bitmap = { width: 4032, height: 3024, close: () => (closed = true) };
+    globalThis.createImageBitmap = (() =>
+      Promise.resolve(bitmap)) as unknown as typeof createImageBitmap;
+    globalThis.document = {
+      createElement: () => {
+        throw new Error('out of memory');
+      },
+    } as unknown as Document;
+    const photo = new File([new Uint8Array(8)], 'IMG_0042.png', { type: 'image/png' });
+    expect(await downscaleImage(photo)).toBe(photo);
+    expect(closed).toBe(true);
   });
 });

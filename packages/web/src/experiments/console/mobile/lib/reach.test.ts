@@ -12,6 +12,7 @@ describe('reachOf', () => {
 
   test('a read that never got an answer means Archon is out of reach', () => {
     expect(reachOf(true, new TypeError('Failed to fetch'))).toBe('unreachable');
+    expect(reachOf(true, new DOMException('timed out', 'TimeoutError'))).toBe('unreachable');
   });
 
   test('a proxy answering for Archon means Archon is out of reach', () => {

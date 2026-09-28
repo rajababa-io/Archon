@@ -90,26 +90,39 @@ self.addEventListener('push', event => {
     options.tag = payload.tag;
     options.renotify = true;
   }
-  event.waitUntil(self.registration.showNotification(title, options));
+  // A rejected notification (an icon that fails to load, an option this
+  // browser refuses) would otherwise drop the push: retry with the text alone.
+  event.waitUntil(
+    self.registration
+      .showNotification(title, options)
+      .catch(() =>
+        self.registration.showNotification(title, { body: options.body, data: options.data })
+      )
+  );
 });
 
 /*
  * A tap: bring an open shell window forward and route it to the notification's
  * page, or open the page when no shell window is open. Only a path inside the
  * shell is followed.
+ *
+ * The shell's home renders at bare `/m`, which the `/m/` scope does not
+ * prefix, so a window there is matched by name rather than by prefix.
  */
+const inShell = pathname => pathname === SHELL_URL.slice(0, -1) || pathname.startsWith(SHELL_URL);
+
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const wanted = event.notification.data && event.notification.data.path;
-  const path = typeof wanted === 'string' && wanted.startsWith(SHELL_URL) ? wanted : SHELL_URL;
+  const path = typeof wanted === 'string' && inShell(wanted) ? wanted : SHELL_URL;
+  const open = () => self.clients.openWindow(path);
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windows => {
-      const shell = windows.find(w => new URL(w.url).pathname.startsWith(SHELL_URL));
-      if (shell) {
-        shell.postMessage({ type: OPEN_PATH_MESSAGE, path });
-        return shell.focus();
-      }
-      return self.clients.openWindow(path);
+      const shell = windows.find(w => inShell(new URL(w.url).pathname));
+      if (!shell) return open();
+      shell.postMessage({ type: OPEN_PATH_MESSAGE, path });
+      // The window can close between the match and the focus.
+      return shell.focus().catch(open);
     })
   );
 });

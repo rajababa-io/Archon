@@ -316,23 +316,45 @@ test('while the agent works, Send queues and its menu steers or interrupts', asy
   // A running turn will answer before the question does.
   await expect(page.getByRole('region', { name: 'Answer the question' })).toHaveCount(0);
 
+  // The plain button queues: nothing is echoed into the transcript as sent,
+  // which is what the idle path would draw the moment it posted. The post is
+  // held so that echo would still be on screen when looked for.
+  let release = (): void => undefined;
+  const held = new Promise<void>(resolve => {
+    release = resolve;
+  });
+  let posted = false;
+  const sendUrl = (url: URL): boolean => url.pathname === `/api/conversations/${CHAT_ID}/message`;
+  await page.route(sendUrl, async route => {
+    posted = true;
+    await held;
+    await route.continue();
+  });
+  await composer.fill('Queue this one.');
+  await page.getByRole('button', { name: 'Queue', exact: true }).tap();
+  await expect.poll(() => posted).toBe(true);
+  await expect(page.getByText('Queue this one.')).toHaveCount(0);
+  release();
+  await expect(queued.filter({ hasText: 'Queue this one.' })).toContainText('Queued');
+  await page.unroute(sendUrl);
+
   await composer.fill('Steer this in.');
   await more.tap();
   await menu.getByRole('button', { name: /Steer now/ }).tap();
-  await expect.poll(() => [...server.controls]).toEqual(['steer queued-1']);
+  await expect.poll(() => [...server.controls]).toEqual(['steer queued-2']);
   await expect(queued.filter({ hasText: 'Steer this in.' })).toContainText('Sent into this turn');
 
   await composer.fill('Stop, and do this instead.');
   await more.tap();
   await menu.getByRole('button', { name: /Interrupt & send/ }).tap();
-  await expect.poll(() => [...server.controls]).toEqual(['steer queued-1', `interrupt ${CHAT_ID}`]);
+  await expect.poll(() => [...server.controls]).toEqual(['steer queued-2', `interrupt ${CHAT_ID}`]);
   const waiting = queued.filter({ hasText: 'Stop, and do this instead.' });
   await expect(waiting).toContainText('Queued');
 
   // Still waiting, so it can be taken back.
   await waiting.getByRole('button', { name: 'Remove' }).tap();
   await expect(waiting).toHaveCount(0);
-  await expect(queued).toHaveCount(1);
+  await expect(queued).toHaveCount(2);
 });
 
 test('the switcher lists chats by status and opens the one tapped', async ({ page }) => {
@@ -512,6 +534,32 @@ test('coming back from the background reopens the streams and rereads the chat',
   await expect.poll(() => count(messages)).toBeGreaterThan(before[2] ?? 0);
 });
 
+test('opening an unread chat marks it read without scrolling, but not while hidden', async ({
+  page,
+}) => {
+  const read = `/api/conversations/${OTHER_CHAT_ID}/read`;
+  const posted: string[] = [];
+  page.on('request', request => {
+    if (request.method() === 'POST') posted.push(new URL(request.url()).pathname);
+  });
+  // Opened in a tab that is not on screen: nobody has read it yet.
+  await page.addInitScript(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+  });
+  await open(page, chatPath(OTHER_CHAT_ID));
+  await expect(page.getByText(OTHER_CHAT_TEXT)).toBeVisible();
+  // The switcher's badge counts it, so the unread status has been read.
+  await expect(page.getByRole('button', { name: /^Open chat list/ })).toBeVisible();
+  expect(posted).not.toContain(read);
+
+  // On screen: opening is reading, whatever the scroll position.
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await expect.poll(() => posted.filter(p => p === read).length).toBe(1);
+});
+
 test("a chat's bell follows it, and the chat on screen is reported as seen", async ({ page }) => {
   await open(page, chatPath(CHAT_ID));
   // The open chat is reported, so the server does not push about it.
@@ -625,6 +673,20 @@ test('a chat read once is still readable when Archon cannot be reached', async (
   await page.getByRole('button', { name: 'Try again' }).tap();
   await expect(banner).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+});
+
+test('a chat list that never answers is reported as out of reach, not left loading', async ({
+  page,
+}) => {
+  // A dead tailnet link hangs rather than refusing: the request is never answered.
+  await page.route(
+    url => url.pathname === '/api/conversations',
+    () => undefined
+  );
+  await open(page, '/m');
+  await expect(page.getByRole('status').filter({ hasText: /Can.t reach Archon/ })).toBeVisible({
+    timeout: 20_000,
+  });
 });
 
 test('with no network at all, the shell says so and sending is off', async ({ page, context }) => {

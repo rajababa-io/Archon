@@ -103,7 +103,7 @@ Notifications cover runs executed by the server, which includes every run starte
 
 ## Offline
 
-The app opens without a connection. When Archon cannot be reached, a banner says so: **You are offline** when the phone has no network, or **Can't reach Archon** when the phone is online but the server does not answer (a Tailscale or VPN connection is down, or the server is). The last 10 chats you opened can still be read, marked as a saved copy. Sending is off until Archon answers again. What you type is kept as a draft, and the app reconnects by itself.
+The app opens without a connection. When Archon cannot be reached, a banner says so: **You are offline** when the phone has no network, or **Can't reach Archon** when the phone is online but the server does not answer within 10 seconds (a Tailscale or VPN connection is down, or the server is). The last 10 chats you opened can still be read, marked as a saved copy. Sending is off until Archon answers again. What you type is kept as a draft, and the app reconnects by itself.
 
 Saved copies are kept only on installs with web authentication off. With web authentication on, the app keeps no copies on the phone, so it needs the server to open.
 

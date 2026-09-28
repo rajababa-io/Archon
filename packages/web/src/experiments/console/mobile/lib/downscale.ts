@@ -51,9 +51,11 @@ async function encode(canvas: HTMLCanvasElement): Promise<Blob | null> {
  * MAX_EDGE_PX on its long edge and re-encoded as JPEG, or the original when
  * that would not make it smaller.
  *
- * A file the browser cannot decode (HEIC outside Safari, a corrupt picture) is
- * returned unchanged, deliberately: the attachment tray shows it with its real
- * size, and the server stays the authority that accepts or refuses it.
+ * A file the browser cannot decode (HEIC outside Safari, a corrupt picture) or
+ * cannot redraw (a canvas refused under memory pressure) is returned
+ * unchanged, deliberately: the attachment tray shows it with its real size,
+ * and the server stays the authority that accepts or refuses it. This never
+ * rejects, so the composer's "Shrinking…" count always comes back down.
  */
 export async function downscaleImage(file: File): Promise<File> {
   if (!isRedrawable(file)) return file;
@@ -82,6 +84,8 @@ export async function downscaleImage(file: File): Promise<File> {
       type: 'image/jpeg',
       lastModified: file.lastModified,
     });
+  } catch {
+    return file;
   } finally {
     bitmap.close();
   }

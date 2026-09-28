@@ -1,5 +1,12 @@
-import { describe, expect, test } from 'bun:test';
-import { applicationServerKey, isIosDevice, pushAvailability } from './push';
+import { afterEach, describe, expect, test } from 'bun:test';
+import {
+  applicationServerKey,
+  disablePush,
+  enablePush,
+  isIosDevice,
+  pushAvailability,
+  pushIsOn,
+} from './push';
 
 const IPHONE =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1';
@@ -46,5 +53,90 @@ describe('applicationServerKey', () => {
     const base64url = Buffer.from(bytes).toString('base64url');
     expect(base64url).not.toContain('=');
     expect([...applicationServerKey(base64url)]).toEqual([...bytes]);
+  });
+});
+
+describe('the browser and the server agree on whether push is on', () => {
+  const saved = {
+    fetch: globalThis.fetch,
+    navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator'),
+    Notification: Object.getOwnPropertyDescriptor(globalThis, 'Notification'),
+  };
+  afterEach(() => {
+    globalThis.fetch = saved.fetch;
+    for (const key of ['navigator', 'Notification'] as const) {
+      const d = saved[key];
+      if (d === undefined) Reflect.deleteProperty(globalThis, key);
+      else Object.defineProperty(globalThis, key, d);
+    }
+  });
+
+  const KEY = 'BPk';
+  const calls: string[] = [];
+
+  /** A device whose browser holds `held` (or nothing), talking to a server that answers `status`. */
+  function device(opts: { held: boolean; status: number; unsubscribes?: boolean }): {
+    subscribed: () => boolean;
+  } {
+    calls.length = 0;
+    let subscribed = opts.held;
+    const subscription = {
+      endpoint: 'https://push.example/1',
+      options: { applicationServerKey: applicationServerKey(KEY).buffer },
+      toJSON: () => ({ endpoint: 'https://push.example/1', keys: { p256dh: 'k', auth: 'a' } }),
+      unsubscribe: (): Promise<boolean> => {
+        if (opts.unsubscribes === false) return Promise.resolve(false);
+        subscribed = false;
+        return Promise.resolve(true);
+      },
+    };
+    const registration = {
+      pushManager: {
+        getSubscription: () => Promise.resolve(subscribed ? subscription : null),
+        subscribe: () => ((subscribed = true), Promise.resolve(subscription)),
+      },
+    };
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { serviceWorker: { getRegistration: () => Promise.resolve(registration) } },
+    });
+    Object.defineProperty(globalThis, 'Notification', {
+      configurable: true,
+      value: { requestPermission: () => Promise.resolve('granted') },
+    });
+    globalThis.fetch = ((url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      return Promise.resolve(
+        new Response(opts.status === 200 ? '{"success":true}' : '{"error":"down"}', {
+          status: opts.status,
+          headers: { 'content-type': 'application/json' },
+        })
+      );
+    }) as typeof fetch;
+    return { subscribed: () => subscribed };
+  }
+
+  test('a server that refuses the subscription leaves the browser unsubscribed', async () => {
+    const d = device({ held: false, status: 503 });
+    await expect(enablePush(KEY)).rejects.toThrow();
+    expect(d.subscribed()).toBe(false);
+  });
+
+  test('a browser that will not unsubscribe is handed back to the server', async () => {
+    const d = device({ held: true, status: 200, unsubscribes: false });
+    await expect(disablePush()).rejects.toThrow('would not turn push off');
+    expect(d.subscribed()).toBe(true);
+    expect(calls).toEqual(['DELETE /api/push/subscribe', 'POST /api/push/subscribe']);
+  });
+
+  test('reading "on" registers the subscription again, and a refusal is not "on"', async () => {
+    device({ held: true, status: 200 });
+    expect(await pushIsOn()).toBe(true);
+    expect(calls).toEqual(['POST /api/push/subscribe']);
+    device({ held: true, status: 503 });
+    await expect(pushIsOn()).rejects.toThrow();
+    device({ held: false, status: 200 });
+    expect(await pushIsOn()).toBe(false);
+    expect(calls).toEqual([]);
   });
 });
