@@ -91,7 +91,7 @@ export interface Waiting {
 }
 
 /** How far back to look for the live commit. Past this, the list says "more". */
-const HISTORY_PAGE = 50;
+export const HISTORY_PAGE = 50;
 
 const WAITING_QUERY = `
   query($owner:String!,$repo:String!,$ref:String!,$first:Int!){

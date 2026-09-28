@@ -1,6 +1,6 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { DeploySetupRow } from './DeploySetupRow';
+import { DeploySetupRow, saveDeploySetup } from './DeploySetupRow';
 
 const SETUP = { branch: 'main', workflows: ['deploy'], workflow: 'deploy' };
 
@@ -31,5 +31,55 @@ describe('DeploySetupRow', () => {
       <DeploySetupRow projectId="p1" setup={SETUP} canAct={false} />
     );
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*title="Only a person/u);
+  });
+});
+
+describe('saveDeploySetup', () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  interface Call {
+    url: string;
+    method: string | undefined;
+    body: string | null;
+  }
+
+  function answer(status: number, body: unknown): Call[] {
+    const calls: Call[] = [];
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({
+        url: input instanceof Request ? input.url : input.toString(),
+        method: init?.method,
+        body: typeof init?.body === 'string' ? init.body : null,
+      });
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      );
+    }) as typeof fetch;
+    return calls;
+  }
+
+  test("PUTs the project's deploy once, with the branch trimmed", async () => {
+    const calls = answer(200, { ok: true });
+    expect(await saveDeploySetup('p1', '  main ', 'deploy')).toBeNull();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain('/api/projects/p1/deploy');
+    expect(calls[0].method).toBe('PUT');
+    expect(JSON.parse(calls[0].body ?? 'null')).toEqual({
+      branch: 'main',
+      workflowName: 'deploy',
+    });
+  });
+
+  test("a refusal comes back as the server's own words", async () => {
+    answer(403, { error: 'Only a person signed in through Cloudflare Access can do this.' });
+    expect(await saveDeploySetup('p1', 'main', 'deploy')).toBe(
+      'Only a person signed in through Cloudflare Access can do this.'
+    );
   });
 });

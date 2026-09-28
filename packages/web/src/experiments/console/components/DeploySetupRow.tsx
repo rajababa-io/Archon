@@ -65,6 +65,23 @@ export function DeploySetupRow({ projectId, setup, canAct }: DeploySetupRowProps
   );
 }
 
+/** Give the project its deploy. Resolves to why the server refused, or null once it exists. */
+export async function saveDeploySetup(
+  projectId: string,
+  branch: string,
+  workflow: string
+): Promise<string | null> {
+  try {
+    await skill.setUpDeploy(projectId, branch.trim(), workflow);
+  } catch (err) {
+    return err instanceof HttpError && err.serverError !== undefined
+      ? err.serverError
+      : errorDetail(err);
+  }
+  invalidate(K.projectDeploy(projectId));
+  return null;
+}
+
 function SetupPicker({
   projectId,
   setup,
@@ -92,22 +109,11 @@ function SetupPicker({
   const save = (): void => {
     setBusy(true);
     setError(null);
-    skill
-      .setUpDeploy(projectId, branch.trim(), workflow)
-      .then(() => {
-        invalidate(K.projectDeploy(projectId));
-        onClose();
-      })
-      .catch((err: unknown) => {
-        setError(
-          err instanceof HttpError && err.serverError !== undefined
-            ? err.serverError
-            : errorDetail(err)
-        );
-      })
-      .finally(() => {
-        setBusy(false);
-      });
+    void saveDeploySetup(projectId, branch, workflow).then(failure => {
+      setBusy(false);
+      if (failure === null) onClose();
+      else setError(failure);
+    });
   };
 
   const ready = branch.trim() !== '' && workflow !== '';

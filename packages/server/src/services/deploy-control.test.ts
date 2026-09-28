@@ -24,6 +24,7 @@ import {
   decidePolicy,
   deployedAt,
   deployNow,
+  HISTORY_PAGE,
   isCancellable,
   waitingFromHistory,
 } from './deploy-control';
@@ -116,6 +117,25 @@ describe('waitingFromHistory', () => {
       LIVE
     );
     expect(waiting?.more).toBe(true);
+  });
+
+  test('with nothing deployed yet, a history shorter than a page is all there is', () => {
+    const waiting = waitingFromHistory(
+      history([
+        { oid: TIP, pr: { number: 2, title: 'b' } },
+        { oid: MID, pr: { number: 1, title: 'a' } },
+      ]),
+      null
+    );
+    expect(waiting?.prs.map(pr => pr.number)).toEqual([2, 1]);
+    expect(waiting?.more).toBe(false);
+  });
+
+  test('with nothing deployed yet, a full page says there is more', () => {
+    const nodes = Array.from({ length: HISTORY_PAGE }, (_, i) => ({
+      oid: i.toString(16).padStart(40, '0'),
+    }));
+    expect(waitingFromHistory(history(nodes), null)?.more).toBe(true);
   });
 
   test('a branch GitHub does not know is no answer, not an empty one', () => {
