@@ -68,6 +68,8 @@ export const K = {
   // was already read. Both parts are encoded — a path may contain `:`.
   files: (projectId: string, path: string): string =>
     `files:${encodeURIComponent(projectId)}:${encodeURIComponent(path)}`,
+  /** Every file in the project's checkout, for a search box. */
+  projectPaths: (projectId: string): string => `paths:${encodeURIComponent(projectId)}`,
   fileContent: (projectId: string, path: string): string =>
     `file:${encodeURIComponent(projectId)}:${encodeURIComponent(path)}`,
   // Installation-wide settings surfaces (static keys — one row each).

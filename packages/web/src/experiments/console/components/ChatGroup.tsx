@@ -152,7 +152,11 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
       <div className="flex flex-col items-end gap-[var(--msg-gap)]">
         <header className="flex items-baseline justify-end">{meta}</header>
         {group.messages.map(message => (
-          <div key={message.id} className="flex w-full flex-col items-end gap-[var(--msg-gap)]">
+          <div
+            key={message.id}
+            data-message-id={message.id}
+            className="flex w-full flex-col items-end gap-[var(--msg-gap)]"
+          >
             <div
               // `whitespace-pre-wrap`: the bubble renders raw text, so without
               // it every newline, blank line and indent in a pasted block
@@ -226,7 +230,11 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
       {group.messages.map(message => {
         const content = message.content.trim();
         return (
-          <div key={message.id} className="flex flex-col gap-[var(--msg-gap)]">
+          <div
+            key={message.id}
+            data-message-id={message.id}
+            className="flex flex-col gap-[var(--msg-gap)]"
+          >
             {message.thinking !== null ? <ThinkingBlock text={message.thinking} /> : null}
             {notes.has(message.id) ? (
               <ProgressNote content={content} />

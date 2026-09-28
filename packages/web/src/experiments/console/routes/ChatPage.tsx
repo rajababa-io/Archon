@@ -36,7 +36,7 @@ import { modalIsOpen } from '../lib/keymap';
 import { isNewChatKey } from '../lib/new-chat-key';
 import { sentHistory } from '../lib/composer-history';
 import { askAwaitsAnswer } from '../lib/ask-keys';
-import { loadDraftText } from '../lib/draft-store';
+import { chatDraftKey, loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
 import { reduceLive, type LiveSegment, type LiveEvent } from '../primitives/live-text';
@@ -342,10 +342,7 @@ export function ChatPage(): ReactElement {
   // Keyed by conversation — a pending chat has no id yet, so it gets its own
   // slot. Held in the composer this followed the user between chats.
   const [drafts, setDrafts] = useState<Record<string, ChatDraft>>({});
-  // Keyed by project as well as conversation: ChatPage stays mounted across a
-  // project switch, so a bare '__new__' slot was shared by every project and
-  // text typed in one project's new chat surfaced in another's.
-  const draftKey = `${projectId ?? '_'}:${activeConvId ?? '__new__'}`;
+  const draftKey = chatDraftKey(projectId ?? null, activeConvId ?? null);
   const draft = drafts[draftKey] ?? { text: loadDraftText(draftKey), files: [] };
   const setDraft = (next: ChatDraft): void => {
     setDrafts(prev => ({ ...prev, [draftKey]: next }));

@@ -6,6 +6,14 @@ import type { ComposerControl } from '../components/ChatComposer';
 
 const NO_QUEUE: readonly skill.QueuedMessage[] = [];
 
+/** What to tell you when a steer did not land in the running turn; null when it did. */
+function steerNotice(status: skill.SteerResult['status']): string | null {
+  if (status === 'not-accepting')
+    return 'The turn ended before it could take that — it goes next instead.';
+  if (status === 'has-files') return 'A message with attachments waits for its own turn.';
+  return null;
+}
+
 export interface TurnControls {
   /** Messages waiting behind the running turn, oldest first — the server's list. */
   queued: readonly skill.QueuedMessage[];
@@ -23,6 +31,10 @@ export interface TurnControls {
   stop: () => void;
   /** Send while the agent works: the server queues it. */
   queueSend: (text: string, files?: File[]) => void;
+  /** Send while the agent works, straight into the running turn. */
+  steerSend: (text: string) => void;
+  /** Send while the agent works, then stop the turn so this goes next. */
+  interruptSend: (text: string, files?: File[]) => void;
   edit: (message: skill.QueuedMessage) => void;
   remove: (message: skill.QueuedMessage) => void;
   /** "Send now": hand a queued message to the running turn. */
@@ -116,6 +128,65 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
     [conversationId]
   );
 
+  /**
+   * Send, then act on the message the server queued. When the server did not
+   * queue it — the turn ended first, so this message started the next one —
+   * there is nothing left to act on, and `then` is not called.
+   */
+  const sendThen = useCallback(
+    (
+      text: string,
+      files: File[] | undefined,
+      then: (queuedId: string) => void | Promise<void>
+    ): void => {
+      if (conversationId === null) return;
+      setNotice(null);
+      void skill
+        .sendMessage(conversationId, text, files)
+        .then(
+          async dispatch => {
+            if (dispatch.queuedId !== undefined) await then(dispatch.queuedId);
+          },
+          (e: unknown) => {
+            controlRef.current?.restore(text);
+            setNotice(`Not sent: ${e instanceof Error ? e.message : 'send failed'}`);
+          }
+        )
+        .finally(() => {
+          invalidate(K.conversationQueue(conversationId));
+        });
+    },
+    [conversationId]
+  );
+
+  const steerSend = useCallback(
+    (text: string): void => {
+      if (conversationId === null) return;
+      sendThen(text, undefined, async queuedId => {
+        try {
+          const notice = steerNotice(
+            (await skill.steerQueuedMessage(conversationId, queuedId)).status
+          );
+          if (notice !== null) setNotice(notice);
+        } catch (e: unknown) {
+          setNotice(
+            `Queued, but not sent into this turn: ${e instanceof Error ? e.message : 'unknown error'}`
+          );
+        }
+      });
+    },
+    [conversationId, sendThen]
+  );
+
+  // Queued first, then stopped: the server keeps the queue across a stop and
+  // delivers it once the turn ends, so the message cannot be lost in between.
+  const interruptSend = useCallback(
+    (text: string, files?: File[]): void => {
+      sendThen(text, files, stop);
+    },
+    [sendThen, stop]
+  );
+
   const withdraw = useCallback(
     (message: skill.QueuedMessage, then: (withdrawn: skill.QueuedMessage) => void): void => {
       if (conversationId === null) return;
@@ -172,10 +243,8 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
       void skill
         .steerQueuedMessage(conversationId, message.id)
         .then(result => {
-          if (result.status === 'not-accepting')
-            setNotice('The turn ended before it could take that — it goes next instead.');
-          else if (result.status === 'has-files')
-            setNotice('A message with attachments waits for its own turn.');
+          const notice = steerNotice(result.status);
+          if (notice !== null) setNotice(notice);
         })
         .catch((e: unknown) => {
           setNotice(`Could not send it now: ${e instanceof Error ? e.message : 'unknown error'}`);
@@ -208,6 +277,8 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
     controlRef,
     stop,
     queueSend,
+    steerSend,
+    interruptSend,
     edit,
     remove,
     steer,

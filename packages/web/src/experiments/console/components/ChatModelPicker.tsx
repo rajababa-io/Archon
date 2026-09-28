@@ -1,10 +1,7 @@
-import { useRef, useState, type ReactElement } from 'react';
-import * as skill from '../skills';
-import type { ChatModel, SetChatModelBody } from '../skills';
-import { set, useEntity } from '../store/cache';
-import { K } from '../store/keys';
-import { errorDetail } from '../lib/http';
-import { effortChoices, modelChoices, pickerLabel, type LastTurn } from '../lib/chat-model';
+import { useState, type ReactElement } from 'react';
+import type { SetChatModelBody } from '../skills';
+import { pickerLabel, type LastTurn } from '../lib/chat-model';
+import { useChatModelPin } from '../hooks/useChatModelPin';
 import { MenuCheckItem, RowMenu } from './RowMenu';
 
 const SECTION_CLASS =
@@ -31,42 +28,25 @@ export function ChatModelPicker({
   /** What the last turn ran on, as the status line reports it. */
   last: LastTurn;
 }): ReactElement {
-  const { data: chat } = useEntity(K.chatModel(conversationId), () =>
-    skill.getChatModel(conversationId)
-  );
-  const { data: providers } = useEntity(K.providers, skill.listProviders);
+  const {
+    chat,
+    models,
+    efforts,
+    pinnedModel,
+    pinnedEffort,
+    providerName,
+    saving,
+    error,
+    clearError,
+    save: savePin,
+  } = useChatModelPin(conversationId);
+  const pin = chat?.pin ?? null;
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const inFlight = useRef(false);
-
-  const models = modelChoices(chat, providers);
-  const efforts = effortChoices(chat, providers);
-  const pin = chat?.pin ?? null;
-  const pinnedModel = pin?.model ?? null;
-  const pinnedEffort = pin?.effort ?? null;
-  const providerName = providers?.find(p => p.id === chat?.provider)?.displayName;
 
   const save = async (body: Omit<SetChatModelBody, 'provider'>): Promise<void> => {
-    if (chat === undefined || inFlight.current) return;
-    inFlight.current = true;
-    setSaving(true);
-    setError(null);
-    try {
-      const next: ChatModel = await skill.setChatModel(conversationId, {
-        provider: chat.provider,
-        ...body,
-      });
-      set(K.chatModel(conversationId), next);
-      setCustom('');
-    } catch (e: unknown) {
-      setError(errorDetail(e));
-    } finally {
-      inFlight.current = false;
-      setSaving(false);
-    }
+    if (await savePin(body)) setCustom('');
   };
 
   const title =
@@ -86,7 +66,7 @@ export function ChatModelPicker({
           e.stopPropagation();
         }}
         onClick={() => {
-          setError(null);
+          clearError();
           setOpen(v => !v);
         }}
         title={title}

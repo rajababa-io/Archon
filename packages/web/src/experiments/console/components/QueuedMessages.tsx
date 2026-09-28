@@ -37,6 +37,7 @@ export function QueuedMessages({
   if (messages.length === 0) return null;
   return (
     <ol
+      data-queued-messages
       aria-label="Queued messages"
       className="mt-[var(--msg-gap)] flex flex-col items-end gap-[var(--msg-gap)]"
     >

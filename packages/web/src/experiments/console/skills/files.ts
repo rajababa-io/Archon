@@ -1,3 +1,4 @@
+import type { components } from '@/lib/api.generated';
 import { requestJson } from '../lib/http';
 import { toFileEntry, type FileEntry } from '../primitives/file-entry';
 
@@ -36,6 +37,16 @@ export async function listFiles(projectId: string, path: string): Promise<FileEn
     `/api/codebases/${encodeURIComponent(projectId)}/files?path=${encodeURIComponent(path)}`
   );
   return res.entries.map(entry => toFileEntry(entry, res.path));
+}
+
+export type ProjectPaths = components['schemas']['CodebasePathsResponse'];
+
+/**
+ * Every file in the project's git checkout that .gitignore does not name,
+ * relative to the project root. A 409 means the project is not a checkout.
+ */
+export async function listProjectPaths(projectId: string): Promise<ProjectPaths> {
+  return requestJson<ProjectPaths>(`/api/codebases/${encodeURIComponent(projectId)}/paths`);
 }
 
 /** One text file. The server refuses binaries and anything over its size ceiling. */
