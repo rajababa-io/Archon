@@ -521,12 +521,13 @@ export function ChatComposer({
               >
                 <Square aria-hidden className="h-3 w-3 fill-current" />
                 {stopping ? 'Stopping…' : 'Stop'}
-                {/* Same treatment as Send's ↵. Hidden on narrow screens, which
-                    are the ones without an Escape key. */}
+                {/* Boxed like the key hints under the composer, in the
+                    button's red. Hidden on narrow screens, which are the ones
+                    without an Escape key. */}
                 {stopping ? null : (
                   <span
                     aria-hidden
-                    className="hidden font-mono text-[length:var(--text-micro)] font-normal opacity-70 sm:inline"
+                    className="hidden items-center rounded border border-error/50 px-[0.3125rem] py-[0.0625rem] font-mono text-[length:var(--text-micro)] font-normal sm:inline-flex"
                   >
                     esc
                   </span>
@@ -578,17 +579,6 @@ export function ChatComposer({
               ⇧↵
             </span>{' '}
             newline
-            {working ? (
-              <>
-                <span
-                  className="ml-2 inline-flex items-center rounded border px-[0.3125rem] py-[0.0625rem] font-mono text-[length:var(--text-micro)] text-text-secondary"
-                  style={{ borderColor: 'var(--border-bright)' }}
-                >
-                  esc
-                </span>{' '}
-                stop
-              </>
-            ) : null}
           </span>
         </div>
       </div>
