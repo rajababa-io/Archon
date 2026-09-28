@@ -15,7 +15,6 @@ import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
 import { useConversationSSE, type NextMessageSuggestion } from '../lib/sse';
 import { useLiveChats } from '../lib/live-chats';
-import { usePageVisible } from '../lib/use-page-visible';
 import { useTabSignal } from '../lib/use-tab-signal';
 import { chatStatuses } from '../primitives/tab-signal';
 import { useEntity, invalidate } from '../store/cache';
@@ -30,6 +29,7 @@ import {
 import type { Run } from '../primitives/run';
 import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
+import { useReadMarker } from '../hooks/useReadMarker';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
 import { modalIsOpen } from '../lib/keymap';
@@ -39,12 +39,8 @@ import { askAwaitsAnswer } from '../lib/ask-keys';
 import { loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
-import {
-  reduceLive,
-  pendingSegments,
-  type LiveSegment,
-  type LiveEvent,
-} from '../primitives/live-text';
+import { reduceLive, type LiveSegment, type LiveEvent } from '../primitives/live-text';
+import { renderedMessages, type PendingUser } from '../primitives/rendered-messages';
 import { resolveConversationDbId } from '../primitives/conversation';
 import { isChecklistCall, turnChecklist, type ChecklistCall } from '../primitives/checklist';
 
@@ -235,21 +231,15 @@ export function ChatPage(): ReactElement {
     })();
   };
 
-  /**
-   * The (chat, activity) pair the page last wrote a read mark for — or, after
-   * "Mark unread" on the open chat, the pair it must NOT mark read again (#228).
-   * Owned by the mark-read effect further down; declared here so the handler
-   * below can hold the mark before its request lands.
-   */
-  const markedReadRef = useRef<string | null>(null);
-
   const markConversationUnread = (id: string): void => {
     // Marking the chat you are on would be undone by the mark-read effect the
     // moment the list refreshes. Claim its current pair first, so the mark
     // holds until you open the chat again or it says something new.
     if (id === activeConvId) {
-      const at = (conversations ?? []).find(c => c.id === id)?.lastActivityAt ?? null;
-      markedReadRef.current = `${id}|${at}`;
+      readMarker.holdUnread(
+        id,
+        (conversations ?? []).find(c => c.id === id)?.lastActivityAt ?? null
+      );
     }
     void (async (): Promise<void> => {
       try {
@@ -334,10 +324,7 @@ export function ChatPage(): ReactElement {
   // invisible for the whole create-and-upload round trip — the composer clears,
   // nothing takes its place, and a slow upload reads as a failed send. The echo
   // carries the attachments too, so the file chips appear with the text.
-  const [pendingUser, setPendingUser] = useState<{
-    content: string;
-    files: Message['files'];
-  } | null>(null);
+  const [pendingUser, setPendingUser] = useState<PendingUser | null>(null);
   /**
    * The user-row IDs the conversation held when the echo was raised.
    *
@@ -646,53 +633,15 @@ export function ChatPage(): ReactElement {
   // so without this the arrows land in an empty textarea and do nothing.
   useArrowScroll(scrollRef, { onUserScroll: noteUserIntent });
 
-  /**
-   * Clear the unread mark when the chat is opened (#228).
-   *
-   * This used to wait for the reader to reach the bottom of the stream, on the
-   * theory that opening is not reading. In use it left chats amber after being
-   * clicked, which made the rail's to-do list lie; opening is the signal.
-   *
-   * `working` gates it because a turn still streaming has not been read yet, by
-   * anyone: its last line does not exist. That also matches the rail, where
-   * working outranks unread.
-   *
-   * `visible` gates it too: a hidden tab has not been read, even with the
-   * chat open at its bottom. Marking it anyway would clear the unread mark the
-   * tab badge counts, so a turn that ends while you are away would leave no
-   * trace for you to come back to. Returning to the tab re-runs this.
-   *
-   * The ref keys on the ACTIVITY TIMESTAMP, not just the chat, and is what
-   * stops this being a write per render. `unread` is derived from a polled
-   * feed, so it stays true for a beat after the POST lands; without the key
-   * every one of those renders would fire another. A new reply moves the
-   * timestamp, which is exactly when a second write is wanted. The same key is
-   * how "Mark unread" on the open chat holds; switching chats forgets it, so
-   * opening that chat again reads it.
-   */
-  const visible = usePageVisible();
-  useEffect(() => {
-    markedReadRef.current = null;
-  }, [activeConvId]);
-  useEffect(() => {
-    if (activeConvId === null || lastActivityAt === null) return;
-    if (working || !visible) return;
-    if (!unread.has(activeConvId)) return;
-    const key = `${activeConvId}|${lastActivityAt}`;
-    if (markedReadRef.current === key) return;
-    markedReadRef.current = key;
-    void skill
-      .markConversationRead(activeConvId)
-      .then(() => {
-        invalidateConversationsRef.current();
-      })
-      .catch(() => {
-        // Let the next list refresh try again. Nothing is shown: an
-        // unread mark that failed to clear is a stale dot, not a lost message,
-        // and an error banner over a cosmetic write would be the louder bug.
-        markedReadRef.current = null;
-      });
-  }, [activeConvId, lastActivityAt, working, unread, visible]);
+  const readMarker = useReadMarker({
+    conversationId: activeConvId,
+    lastActivityAt,
+    working,
+    unread,
+    onMarked: () => {
+      invalidateConversationsRef.current();
+    },
+  });
 
   // Held in a ref so `onAnswer` below can be referentially stable without
   // threading every dependency of onSend through a useCallback. Memoized
@@ -769,66 +718,16 @@ export function ChatPage(): ReactElement {
   // leave stale/empty data with no signal. Send errors take precedence.
   const loadError = messagesError ?? conversationsError;
 
-  // Current activity for the working indicator: the latest tool the agent
-  // invoked in the in-flight turn (walk back to the last user message).
-  // What actually renders: the persisted rows, followed by the streamed text
-  // the database has not caught up with. Each preview disappears the moment its
-  // real row lands, because `pendingSegments` slices by how many rows this turn
-  // already has — no content comparison, and nothing to de-duplicate.
-  const renderedMessages = useMemo<Message[]>(() => {
-    const now = new Date().toISOString();
-    // The user's echo sits after the stored rows and before any streamed reply,
-    // which is the order it happened in.
-    const withEcho =
-      pendingUser === null
-        ? messageList
-        : [
-            ...messageList,
-            {
-              id: 'pending-user',
-              role: 'user' as const,
-              content: pendingUser.content,
-              timestamp: now,
-              toolCalls: [],
-              files: pendingUser.files,
-              midTurn: false,
-              error: null,
-              category: null,
-              dispatch: null,
-              workflowResult: null,
-              usage: null,
-              thinking: null,
-            },
-          ];
-    // Deliberately measured against `messageList`, not `withEcho`: the slice is
-    // by how many *stored* rows this turn has, and the echo is not one.
-    const pending = pendingSegments(liveSegments, messageList);
-    if (pending.length === 0) return withEcho;
-    return [
-      ...withEcho,
-      ...pending.map(
-        (seg, i): Message => ({
-          id: `live-${String(i)}`,
-          role: 'assistant',
-          content: seg.content,
-          timestamp: now,
-          toolCalls: [],
-          files: [],
-          midTurn: false,
-          error: null,
-          category: seg.category,
-          dispatch: null,
-          workflowResult: null,
-          usage: null,
-          thinking: seg.thinking ?? null,
-        })
-      ),
-    ];
-  }, [messageList, liveSegments, pendingUser]);
+  // What actually renders: the persisted rows, the user's echo, then the
+  // streamed text the database has not caught up with.
+  const rendered = useMemo<Message[]>(
+    () => renderedMessages(messageList, pendingUser, liveSegments, new Date().toISOString()),
+    [messageList, liveSegments, pendingUser]
+  );
 
   // Cheap enough to derive per render; the composer re-renders with the page anyway.
-  const sent = sentHistory(renderedMessages);
-  const askWaiting = !working && askAwaitsAnswer(renderedMessages);
+  const sent = sentHistory(rendered);
+  const askWaiting = !working && askAwaitsAnswer(rendered);
 
   /** Up in an empty message box: the newest answerable card takes the keyboard. */
   const reachAsk = (): void => {
@@ -870,8 +769,8 @@ export function ChatPage(): ReactElement {
   // turn boundary — the checklist of the turn before disappears on send, not
   // on the refetch after it.
   const checklist = useMemo(
-    () => turnChecklist(renderedMessages, liveChecklist),
-    [renderedMessages, liveChecklist]
+    () => turnChecklist(rendered, liveChecklist),
+    [rendered, liveChecklist]
   );
 
   return (
@@ -909,7 +808,7 @@ export function ChatPage(): ReactElement {
           >
             {/* Match the composer's centered 940px column (design: .stream-inner) */}
             <div ref={contentRef} className="mx-auto max-w-[940px]">
-              {renderedMessages.length === 0 && !working ? (
+              {rendered.length === 0 && !working ? (
                 <EmptyState
                   title={activeConvId === null ? 'New chat.' : 'No messages yet.'}
                   hint="Ask the agent about this project, or tell it what to run."
@@ -922,10 +821,7 @@ export function ChatPage(): ReactElement {
                     leaveAsk,
                   }}
                 >
-                  <ChatStream
-                    messages={renderedMessages}
-                    onAnswer={working ? undefined : answerAsk}
-                  />
+                  <ChatStream messages={rendered} onAnswer={working ? undefined : answerAsk} />
                   {/* Rendered in every state, including idle. A strip that only
                       appears while working cannot be trusted to be absent for
                       the right reason — and an empty screen is exactly what a
@@ -955,8 +851,8 @@ export function ChatPage(): ReactElement {
                       trailing={
                         <StatusDetails
                           conversationId={activeConvId}
-                          messages={renderedMessages}
-                          turnKey={`${String(working)}:${renderedMessages.at(-1)?.id ?? ''}`}
+                          messages={rendered}
+                          turnKey={`${String(working)}:${rendered.at(-1)?.id ?? ''}`}
                         />
                       }
                     />
