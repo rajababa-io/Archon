@@ -38,8 +38,9 @@
  * own work, and afterwards nothing could tell the two apart.
  *
  * It is a STORED mark, set by an explicit act and cleared by two (a human
- * marking the chat done, or sending another message), for exactly the reason
- * the next paragraph gives.
+ * marking the chat done, or the agent withdrawing it when a message reopens the
+ * work), for exactly the reason the next paragraph gives. A human message alone
+ * does not clear it: most are questions about the finished work (#237).
  *
  * WHAT "FINISHED" HAS TO MEAN, because the loose reading is the obvious one and
  * it is wrong. For a chat whose output is code, finished is LANDED: merged, and
@@ -230,7 +231,7 @@ export function chatStatusSets(
  * Chats the agent has declared finished, as the set `chatStatus` reads.
  *
  * Nothing is derived here, deliberately. The server clears the flag when a
- * human marks the chat done or sends another message, so both directions are
+ * human marks the chat done or the agent withdraws its claim, so both directions are
  * already decided by the time the rail sees a row — which is what stops this
  * becoming the "newest message is the agent's" rule that failed twice.
  */

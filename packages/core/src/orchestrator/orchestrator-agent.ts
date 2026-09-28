@@ -2356,7 +2356,6 @@ export async function handleMessage(
     userId,
     abortSignal,
     midTurnInput,
-    machineOrigin,
   } = context ?? {};
   // Anchor "is this a slash command" at the true start of the message —
   // leading whitespace (e.g. from a platform that doesn't pre-trim after
@@ -2750,23 +2749,6 @@ export async function handleMessage(
 
     // 4. Update activity and get/create session
     await db.touchConversation(conversation.id);
-    // A message from the human withdraws the agent's "this work is finished"
-    // claim, because it is evidence against it. This is one of the two acts
-    // that can turn the mark off (the other is marking the chat done), and
-    // having them is the entire reason the mark is safe to turn on: the derived
-    // version of this signal — "the newest message is the agent's" — was built
-    // and removed twice for being unable to turn off, which lit the whole rail
-    // and made `idle` unreachable. See the console's `chat-status.ts`.
-    //
-    // Unconditional rather than read-then-write: clearing an already-clear flag
-    // is the common case and costs one UPDATE, where checking first costs a
-    // SELECT and can still race the turn it is trying to describe.
-    //
-    // A machine-originated turn is not a human saying anything, so it leaves
-    // the claim alone: CI finishing is not evidence the work is unfinished.
-    if (machineOrigin === undefined) {
-      await db.setConversationReady(conversation.id, false);
-    }
     let session = activeSession;
     if (!session) {
       session = await sessionDb.transitionSession(conversation.id, 'first-message', {

@@ -8098,12 +8098,9 @@ describe('mark_ready_to_close', () => {
     await handleMessage(makePlatform(), 'conv-1', 'is it done?');
 
     expect(results).toHaveLength(1);
-    // The human message at the top of the turn clears the mark; the agent's
-    // call sets it. Both land on the conversation's DB id, not its platform id.
-    expect(mockSetConversationReady.mock.calls).toEqual([
-      ['conv-1-db', false],
-      ['conv-1-db', true],
-    ]);
+    // Only the agent's call writes the mark — the human message does not clear
+    // it first (#237). It lands on the conversation's DB id, not its platform id.
+    expect(mockSetConversationReady.mock.calls).toEqual([['conv-1-db', true]]);
   });
 
   test('withdraw is the only way the agent can take it back', async () => {
@@ -8112,7 +8109,7 @@ describe('mark_ready_to_close', () => {
 
     await handleMessage(makePlatform(), 'conv-1', 'actually?');
 
-    expect(mockSetConversationReady.mock.calls.at(-1)).toEqual(['conv-1-db', false]);
+    expect(mockSetConversationReady.mock.calls).toEqual([['conv-1-db', false]]);
   });
 
   test('no tool in the turn can mark the chat done', async () => {
@@ -8131,17 +8128,6 @@ describe('mark_ready_to_close', () => {
     expect(names).toContain('mark_ready_to_close');
     expect(names).not.toContain('mark_done');
     expect(names).not.toContain('close_chat');
-  });
-
-  test('a CI-watch turn leaves the claim alone — CI finishing is not a human speaking', async () => {
-    mockSendQuery.mockImplementationOnce(async function* () {
-      yield { type: 'assistant', content: 'CI passed' };
-      yield { type: 'result', sessionId: 'session-1' };
-    });
-
-    await handleMessage(makePlatform(), 'conv-1', 'CI finished', { machineOrigin: 'ci-watch' });
-
-    expect(mockSetConversationReady).not.toHaveBeenCalled();
   });
 
   test('watch_ci is offered on the web, whose dispatch is what delivers it', async () => {

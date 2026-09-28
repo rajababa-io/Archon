@@ -491,8 +491,9 @@ export async function setConversationCompleted(id: string, completed: boolean): 
  * agent's" — was built and removed twice because it could only ever turn ON, so
  * the mark was always lit and `idle` became unreachable (see the console's
  * `chat-status.ts`). Every caller that can turn this off is what makes it safe
- * to turn on: the PATCH route when a human marks the chat done, and
- * `handleMessage` when a human says something more.
+ * to turn on: the PATCH route when a human marks the chat done, and the agent's
+ * `mark_ready_to_close` withdrawal when a human's message reopens the work.
+ * A human message alone does not clear it (#237) — see `ready-to-close-tool.ts`.
  *
  * `updated_at` IS bumped, unlike `markConversationRead` below. Reading a chat
  * observes it; claiming its work is finished changes what the row asserts.

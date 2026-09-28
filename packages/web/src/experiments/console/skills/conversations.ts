@@ -209,8 +209,9 @@ export async function setConversationCompleted(
  * state between "nothing is running" and "this is finished".
  *
  * There is no matching call to turn it off, on purpose. The server clears it
- * when a human marks the chat done or sends another message, so the only thing
- * that withdraws a claim is evidence against it. The derived version of this
+ * when a human marks the chat done, and the agent withdraws it when a message
+ * reopens the work, so the only thing that withdraws a claim is evidence
+ * against it. The derived version of this
  * signal — "the newest message is the agent's" — was built and removed twice
  * for being unable to turn off at all; see `primitives/chat-status.ts`. Passing
  * `false` is still accepted, for an agent that decides mid-turn it was wrong.

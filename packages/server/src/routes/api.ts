@@ -3306,9 +3306,7 @@ export function registerApiRoutes(
     // The web adapter persists the reply through this mapping, and after a
     // restart nothing else has written it for a chat nobody has opened.
     webAdapter.setConversationDbId(conv.platform_conversation_id, conv.id);
-    const result = await dispatchToOrchestrator(conv.platform_conversation_id, message, {
-      machineOrigin: 'ci-watch',
-    });
+    const result = await dispatchToOrchestrator(conv.platform_conversation_id, message);
     return result.accepted ? 'delivered' : 'refused';
   }
 

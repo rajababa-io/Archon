@@ -102,9 +102,10 @@ export const conversationRowSchema = z.object({
    * backfill. The OFF state and the never-recorded state mean the same thing
    * here, which is what makes a bare ADD COLUMN sufficient.
    *
-   * Cleared by two acts, both a human's: marking the chat done (the judgement
-   * arrived, so the claim is spent) and sending another message (the work is not
-   * finished after all). Nothing the server observes on its own clears it —
+   * Cleared by two acts: a human marking the chat done (the judgement arrived,
+   * so the claim is spent) and the agent withdrawing it when a human's message
+   * reopens the work. A message alone does not clear it — most are questions
+   * about the finished work (#237). Nothing the server observes on its own clears it —
    * deliberately, because "the agent spoke last" is the derived version of this
    * signal and it failed twice for being unable to turn off. See `last_read_at`
    * above and the console's `chat-status.ts`.

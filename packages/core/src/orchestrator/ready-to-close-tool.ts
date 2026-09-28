@@ -27,8 +27,8 @@ const INPUT_SCHEMA = defineNativeToolInputSchema({
  *
  * This is the caller the `ready` state was missing. Everything else was
  * already built — the status and its ranking, the label, the rail colour, the
- * `ready_at` column, the PATCH route, and both acts that CLEAR the mark (a
- * human marking the chat done, and a human writing again). Nothing set it, so
+ * `ready_at` column, the PATCH route, and the act that CLEARS the mark (a
+ * human marking the chat done). Nothing set it, so
  * every finished chat landed on `idle`, which is the exact thing `ready` was
  * added to stop saying. See the console's `primitives/chat-status.ts`.
  *
@@ -46,14 +46,23 @@ const INPUT_SCHEMA = defineNativeToolInputSchema({
  *
  * Nothing here can verify that, and pretending otherwise would be theatre — a
  * required "evidence" field written to a column that does not exist buys
- * nothing. What makes the mark safe to turn on is that it turns OFF: the next
- * human message withdraws it, unconditionally, in `handleMessage`.
+ * nothing. What makes the mark safe to turn on is that it turns OFF: a human
+ * closing the chat spends it, and this tool's `withdraw` takes it back.
+ *
+ * WHO DECIDES A MESSAGE REOPENS THE WORK is the agent, not the server. The
+ * server once cleared the mark on every human message, as evidence against the
+ * claim. It almost never was: the next message on a finished chat is nearly
+ * always a question ABOUT the finished work ("deployed?", the answer to a
+ * "close this chat?" card), and no agent set the mark again after answering,
+ * so no open chat ever read "Ready to close" for long (#237). Whether a message
+ * is new work is a reading of its words, which is the agent's job — hence
+ * `withdraw`, and the description telling the agent when to use it.
  */
 export function buildReadyToCloseTool(ctx: ReadyToCloseContext): NativeTool {
   return {
     name: 'mark_ready_to_close',
     description:
-      'Declare that this chat\'s unit of work has LANDED, so it reads as "Ready to close" rather than idle. Landed means merged and running where it runs — an open pull request, however green, is unfinished work and must NOT be marked. Call it once, when the work is genuinely finished and the only question left is whether it was the right work; then say so in your reply and let the human decide. Do not call it to mean "I have replied" or "I have written the code". Pass `withdraw: true` to take the claim back.',
+      'Declare that this chat\'s unit of work has LANDED, so it reads as "Ready to close" rather than idle. Landed means merged and running where it runs — an open pull request, however green, is unfinished work and must NOT be marked. Call it once, when the work is genuinely finished and the only question left is whether it was the right work; then say so in your reply and let the human decide. Do not call it to mean "I have replied" or "I have written the code". The mark survives later messages from the human: a question about the finished work, or answering a question you asked, leaves it standing. Pass `withdraw: true` when a message reopens the work — new changes asked for, or the work turns out not to have landed — or when you find the claim was wrong.',
     inputSchema: INPUT_SCHEMA,
     handler: async (input): Promise<string> => {
       const withdraw = input.withdraw === true;
