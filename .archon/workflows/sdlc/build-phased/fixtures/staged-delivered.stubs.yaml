@@ -1,0 +1,80 @@
+# Dry-run fixture: the green path. Every staged phase converges, so the final
+# phase goes through archon-deliver and the run returns its flipped PR.
+# until_bash is not executed by dry-run, so the loop body is exercised once;
+# multi-phase iteration and the retry are the scripts' own logic.
+phases: { total: 3, staged: true, last_title: "Push", last_file: "/fixture/build-phased/phase-3.md" }
+pick: { number: 2, total: 3, title: "Composer", file: "/fixture/build-phased/phase-2.md", attempt: 1, notes: "" }
+impl__pr-target:
+  repo: "example/repo"
+  reason: ""
+impl__implement:
+  done: true
+  green: true
+  red_cause: ""
+  summary: "stub: phase built, checks green"
+impl__assert-changed: "4 files changed"
+step: { next: "stop", completed: 2, total: 3 }
+status: { ready: true, has_work: true, completed: 2, total: 3, stopped: "" }
+deliver__impl__implement:
+  done: true
+  green: true
+  red_cause: ""
+  summary: "stub: implemented and green"
+deliver__impl__assert-changed: "3 files changed"
+deliver__gate-green: '{"gate":"green","red_cause":"","stage":"The implementation","summary":""}'
+deliver__pr__target: { host: "github.com", path: "example/repo", remote: "origin", branch: "fixture-branch" }
+deliver__pr__pr: { intent: "/fixture/pr-intent.json" }
+deliver__pr__publish: { schemaVersion: 1, repo: { host: "github.com", path: "example/repo" }, number: 2, url: "https://github.com/example/repo/pull/2", head: "fixture-branch", base: "dev", is_draft: true, state: "open", head_repo: { host: "github.com", path: "example/repo" }, head_revision: "fixturehead", base_revision: "fixturebase", maintainer_can_modify: null }
+deliver__review__mode: '{"continuation":false}'
+deliver__review__scope:
+  # PR diff in scope; head sha stubbed
+  docs: false
+  pr: { repo: { host: "github.com", path: "example/repo" }, number: 2 }
+deliver__review__code: "0 findings"
+deliver__review__seams: "0 findings"
+deliver__review__simplify: "0 findings"
+deliver__review__tests: "0 findings"
+deliver__review__review-complete: "settled"
+deliver__review__synthesize:
+  ready: true
+  action: none
+  findings_summary: "stub: clean on initial review"
+  report: { type: archon_artifact, run_id: "fixture-run", path: "review/report.md" }
+deliver__review__publish:
+  ready: true
+  action: none
+  findings_summary: "stub: clean on initial review"
+  report: { type: archon_artifact, run_id: "fixture-run", path: "review/report.md" }
+deliver__gate-ready: '{"ready":"true"}'
+deliver__validate__mode: '{"comparison":false}'
+deliver__validate__validate:
+  green: true
+  red_cause: ""
+  summary: "stub: full gate green"
+deliver__validate__result:
+  evidence: null
+  green: true
+  red_cause: ""
+  summary: "stub: full gate green"
+deliver__gate-validated: '{"gate":"green","red_cause":"","stage":"The project gate","summary":""}'
+ci-probe: '{"state":"concluded","detail":"no checks configured on this repository — nothing to await"}'
+deliver__ci-verdict: '{"state":"concluded","detail":"no checks configured on this repository — nothing to await"}'
+deliver__ci-attention-route: '{"attention":false,"red_cause":"","reason":"","action":""}'
+deliver__flip-ready: { pr_url: "https://github.com/example/repo/pull/2" }
+deliver__outcome: { pr_url: "https://github.com/example/repo/pull/2", summary: "https://github.com/example/repo/pull/2" }
+deliver__classify:
+  errors: false
+  docs: false
+  reasons:
+    errors: "stub: no failure paths"
+    docs: "stub: no doc-facing changes"
+deliver__resolve-scope: '{"errors":"false"}'
+deliver__impl__pr-target:
+  repo: "example/repo"
+  reason: ""
+outcome: { complete: true, summary: "All 3 phases built and delivered: https://github.com/example/repo/pull/2" }
+fixture:
+  expect: completed
+  # The final phase's work order names the spec and the last phase's file.
+  resolved-text-contains:
+    deliver__impl__implement: "/fixture/build-phased/phase-3.md"

@@ -1,0 +1,24 @@
+# Dry-run fixture: a phase is red on its retry, so the loop stops. Delivery is
+# skipped and what landed green goes up as a draft PR with the report.
+phases: { total: 3, staged: true, last_title: "Push", last_file: "/fixture/build-phased/phase-3.md" }
+pick: { number: 2, total: 3, title: "Composer", file: "/fixture/build-phased/phase-2.md", attempt: 2, notes: "/fixture/build-phased/phase-2-attempt-1.md" }
+impl__pr-target:
+  repo: "example/repo"
+  reason: ""
+impl__implement:
+  done: true
+  green: false
+  red_cause: "inherited"
+  summary: "stub: base branch test packages/web/e2e/chat.e2e.ts already fails on dev"
+impl__assert-changed: "0 files changed; red declared inherited with evidence"
+step: { next: "stop", completed: 1, total: 3 }
+status: { ready: false, has_work: true, completed: 1, total: 3, stopped: "phase 2 \"Composer\" was red on both attempts (cause: inherited)" }
+partial__target: { host: "github.com", path: "example/repo", remote: "origin", branch: "fixture-branch" }
+partial__pr: { intent: "/fixture/pr-intent.json" }
+partial__publish: { schemaVersion: 1, repo: { host: "github.com", path: "example/repo" }, number: 3, url: "https://github.com/example/repo/pull/3", head: "fixture-branch", base: "dev", is_draft: true, state: "open", head_repo: { host: "github.com", path: "example/repo" }, head_revision: "fixturehead", base_revision: "fixturebase", maintainer_can_modify: null }
+outcome: { complete: false, summary: "Stopped after 1 of 3 phases. Draft: https://github.com/example/repo/pull/3" }
+fixture:
+  expect: completed
+  # The retry is handed the first attempt's notes.
+  resolved-text-contains:
+    impl__implement: "phase-2-attempt-1.md"

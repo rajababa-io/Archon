@@ -1,0 +1,18 @@
+# Dry-run fixture: the first phase is red twice. Nothing landed, so neither a
+# delivery nor a draft is opened; the run completes with the report alone.
+phases: { total: 3, staged: true, last_title: "Push", last_file: "/fixture/build-phased/phase-3.md" }
+pick: { number: 1, total: 3, title: "Shell", file: "/fixture/build-phased/phase-1.md", attempt: 2, notes: "/fixture/build-phased/phase-1-attempt-1.md" }
+impl__pr-target:
+  repo: "example/repo"
+  reason: ""
+impl__implement:
+  done: true
+  green: false
+  red_cause: "environment"
+  summary: "stub: playwright browsers missing in the run environment"
+impl__assert-changed: "0 files changed; red declared environment with evidence"
+step: { next: "stop", completed: 0, total: 3 }
+status: { ready: false, has_work: false, completed: 0, total: 3, stopped: "phase 1 \"Shell\" was red on both attempts (cause: environment)" }
+outcome: { complete: false, summary: "Nothing landed." }
+fixture:
+  expect: completed
