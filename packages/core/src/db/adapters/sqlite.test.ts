@@ -204,6 +204,52 @@ describe('SqliteAdapter upgrade path', () => {
 
     expect(columnsOf(path, 'remote_agent_workflow_runs')).toContain('outcome');
   });
+  test('a #211 deploy table gains workflow_name and keeps its archon-host row', async () => {
+    const path = await upgradeFixturePath();
+    await new SqliteAdapter(path).close();
+    const raw = new Database(path);
+    try {
+      // The shape #211 shipped: no workflow_name, and no deploy-runs table.
+      raw.run('DROP TABLE remote_agent_deploy_runs');
+      raw.run('DROP TABLE remote_agent_project_deploy');
+      raw.run(`CREATE TABLE remote_agent_project_deploy (
+        codebase_id TEXT PRIMARY KEY REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        method TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        deploy_on_merge INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_by TEXT
+      )`);
+      raw.run(
+        "INSERT INTO remote_agent_codebases (id, name, default_cwd) VALUES ('p1', 'archon', '/src')"
+      );
+      raw.run(
+        "INSERT INTO remote_agent_project_deploy (codebase_id, method, branch) VALUES ('p1', 'archon-host', 'deploy')"
+      );
+    } finally {
+      raw.close();
+    }
+
+    const upgraded = new SqliteAdapter(path);
+    await upgraded.close();
+
+    expect(columnsOf(path, 'remote_agent_project_deploy')).toContain('workflow_name');
+    expect(columnsOf(path, 'remote_agent_deploy_runs')).toEqual(
+      expect.arrayContaining(['run_id', 'codebase_id', 'sha', 'created_at'])
+    );
+    const check = new Database(path);
+    const stmt = check.prepare(
+      'SELECT method, branch, workflow_name FROM remote_agent_project_deploy'
+    );
+    try {
+      expect(stmt.all()).toEqual([
+        { method: 'archon-host', branch: 'deploy', workflow_name: null },
+      ]);
+    } finally {
+      stmt.finalize();
+      check.close();
+    }
+  });
 });
 
 describe('SqliteAdapter', () => {

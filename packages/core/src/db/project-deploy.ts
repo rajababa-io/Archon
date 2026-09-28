@@ -13,6 +13,11 @@
  */
 import { createLogger } from '@archon/paths';
 
+import {
+  workflowRunStatusSchema,
+  type WorkflowRunStatus,
+} from '@archon/workflows/schemas/workflow-run';
+
 import { pool, getDialect } from './connection';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
@@ -27,24 +32,32 @@ function getLog(): ReturnType<typeof createLogger> {
  * was written by a newer binary; it is read as "no deploy" rather than guessed.
  *
  * - `archon-host`: this install itself — `scripts/request-deploy.sh` writes a
- *   request file and the host's `deploy-on-request.sh` acts on it.
+ *   request file and the host's `deploy-on-request.sh` acts on it. At most one
+ *   project carries it; no route creates it.
+ * - `workflow`: the project's own repository says how it deploys, as an Archon
+ *   workflow (`workflow_name`). Archon only runs that workflow and tracks the run.
  */
-export const DEPLOY_METHODS = ['archon-host'] as const;
+export const DEPLOY_METHODS = ['archon-host', 'workflow'] as const;
 export type DeployMethod = (typeof DEPLOY_METHODS)[number];
 
 function isDeployMethod(value: string): value is DeployMethod {
   return (DEPLOY_METHODS as readonly string[]).includes(value);
 }
 
-export interface ProjectDeploy {
+interface ProjectDeployBase {
   codebaseId: string;
-  method: DeployMethod;
   /** The branch merges land on; what "merged but not live" is measured along. */
   branch: string;
   deployOnMerge: boolean;
   updatedAt: string;
   updatedBy: string | null;
 }
+
+export type WorkflowProjectDeploy = ProjectDeployBase & {
+  method: 'workflow';
+  workflowName: string;
+};
+export type ProjectDeploy = (ProjectDeployBase & { method: 'archon-host' }) | WorkflowProjectDeploy;
 
 interface ProjectDeployRow {
   codebase_id: string;
@@ -54,6 +67,7 @@ interface ProjectDeployRow {
   deploy_on_merge: boolean | number;
   updated_at: string | Date;
   updated_by: string | null;
+  workflow_name: string | null;
 }
 
 function iso(value: string | Date): string {
@@ -65,17 +79,23 @@ function toProjectDeploy(row: ProjectDeployRow): ProjectDeploy | null {
     getLog().warn({ codebaseId: row.codebase_id, method: row.method }, 'deploy.unknown_method');
     return null;
   }
-  return {
+  const base: ProjectDeployBase = {
     codebaseId: row.codebase_id,
-    method: row.method,
     branch: row.branch,
     deployOnMerge: row.deploy_on_merge === true || row.deploy_on_merge === 1,
     updatedAt: iso(row.updated_at),
     updatedBy: row.updated_by,
   };
+  if (row.method === 'archon-host') return { ...base, method: 'archon-host' };
+  if (row.workflow_name === null || row.workflow_name === '') {
+    // A workflow deploy that names no workflow has nothing to run.
+    getLog().warn({ codebaseId: row.codebase_id }, 'deploy.workflow_unnamed');
+    return null;
+  }
+  return { ...base, method: 'workflow', workflowName: row.workflow_name };
 }
 
-const SELECT = `SELECT codebase_id, method, branch, deploy_on_merge, updated_at, updated_by
+const SELECT = `SELECT codebase_id, method, branch, deploy_on_merge, updated_at, updated_by, workflow_name
   FROM remote_agent_project_deploy`;
 
 /** Null means the project has no deploy, or one this binary cannot drive. */
@@ -91,7 +111,7 @@ export async function getProjectDeploy(codebaseId: string): Promise<ProjectDeplo
  * logged rather than resolved by picking silently.
  */
 export async function findProjectDeployByMethod(
-  method: DeployMethod
+  method: 'archon-host'
 ): Promise<ProjectDeploy | null> {
   const res = await pool.query<ProjectDeployRow>(
     `${SELECT} WHERE method = $1 ORDER BY updated_at ASC`,
@@ -108,19 +128,41 @@ export async function findProjectDeployByMethod(
 }
 
 /**
- * Give a project a deploy. Starts with `deploy_on_merge` off: a project gains the
- * ability to deploy before anyone has decided merges should ship on their own.
+ * The workflow deploys whose merges ship on their own along `branch`. The caller
+ * matches each to the repository the merge happened in.
  */
-export async function createProjectDeploy(
-  codebaseId: string,
-  method: DeployMethod,
-  branch: string
-): Promise<void> {
-  await pool.query(
-    `INSERT INTO remote_agent_project_deploy (codebase_id, method, branch, deploy_on_merge, updated_at)
-     VALUES ($1, $2, $3, $4, ${getDialect().now()})`,
-    [codebaseId, method, branch, false]
+export async function listMergeDeploysOnBranch(branch: string): Promise<WorkflowProjectDeploy[]> {
+  const res = await pool.query<ProjectDeployRow>(
+    `${SELECT} WHERE method = 'workflow' AND branch = $1 AND deploy_on_merge = $2`,
+    [branch, true]
   );
+  return res.rows
+    .map(toProjectDeploy)
+    .filter((d): d is WorkflowProjectDeploy => d?.method === 'workflow');
+}
+
+/**
+ * Give a project a workflow deploy. Starts with `deploy_on_merge` off: a project
+ * gains the ability to deploy before anyone has decided merges should ship on
+ * their own. Null when the project already has a row of any method — setting up
+ * never replaces a deploy, including one this binary cannot read.
+ */
+export async function setUpWorkflowDeploy(
+  codebaseId: string,
+  branch: string,
+  workflowName: string,
+  actor: string
+): Promise<ProjectDeploy | null> {
+  const res = await pool.query<{ codebase_id: string }>(
+    `INSERT INTO remote_agent_project_deploy
+       (codebase_id, method, branch, workflow_name, deploy_on_merge, updated_at, updated_by)
+     VALUES ($1, 'workflow', $2, $3, $4, ${getDialect().now()}, $5)
+     ON CONFLICT (codebase_id) DO NOTHING
+     RETURNING codebase_id`,
+    [codebaseId, branch, workflowName, false, actor]
+  );
+  if (res.rows.length === 0) return null;
+  return getProjectDeploy(codebaseId);
 }
 
 /** Flip the setting. Returns the value it was before, so the caller can log from/to. */
@@ -220,4 +262,66 @@ export async function isIssuedManualRequest(requestId: string, sha: string): Pro
     [requestId, sha]
   );
   return res.rows.length > 0;
+}
+
+// ─── Deploy runs ─────────────────────────────────────────────────────────────
+
+/** Record that `runId` is this project's deploy of `sha`. */
+export async function recordDeployRun(
+  codebaseId: string,
+  runId: string,
+  sha: string
+): Promise<void> {
+  await pool.query(
+    `INSERT INTO remote_agent_deploy_runs (run_id, codebase_id, sha, created_at)
+     VALUES ($1, $2, $3, ${getDialect().now()})`,
+    [runId, codebaseId, sha]
+  );
+}
+
+export interface DeployRun {
+  runId: string;
+  sha: string;
+  /** When the deploy was started. */
+  at: string;
+  /** The run's own status: the deploy's verdict, never a copy of it. */
+  status: WorkflowRunStatus;
+  finishedAt: string | null;
+}
+
+interface DeployRunRow {
+  run_id: string;
+  sha: string;
+  created_at: string | Date;
+  status: string;
+  completed_at: string | Date | null;
+}
+
+/** This project's deploy runs, newest first. Another project's runs never appear. */
+export async function listDeployRuns(codebaseId: string, limit = 50): Promise<DeployRun[]> {
+  const res = await pool.query<DeployRunRow>(
+    `SELECT d.run_id, d.sha, d.created_at, r.status, r.completed_at
+       FROM remote_agent_deploy_runs d
+       JOIN remote_agent_workflow_runs r ON r.id = d.run_id
+      WHERE d.codebase_id = $1
+      ORDER BY d.created_at DESC
+      LIMIT $2`,
+    [codebaseId, limit]
+  );
+  const runs: DeployRun[] = [];
+  for (const row of res.rows) {
+    const status = workflowRunStatusSchema.safeParse(row.status);
+    if (!status.success) {
+      getLog().warn({ runId: row.run_id, status: row.status }, 'deploy.run_status_unknown');
+      continue;
+    }
+    runs.push({
+      runId: row.run_id,
+      sha: row.sha,
+      at: iso(row.created_at),
+      status: status.data,
+      finishedAt: row.completed_at === null ? null : iso(row.completed_at),
+    });
+  }
+  return runs;
 }
