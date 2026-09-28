@@ -511,3 +511,62 @@ test('coming back from the background reopens the streams and rereads the chat',
   await expect.poll(() => count(chatStream)).toBeGreaterThan(before[1] ?? 0);
   await expect.poll(() => count(messages)).toBeGreaterThan(before[2] ?? 0);
 });
+
+test("a chat's bell follows it, and the chat on screen is reported as seen", async ({ page }) => {
+  await open(page, chatPath(CHAT_ID));
+  // The open chat is reported, so the server does not push about it.
+  await expect.poll(() => [...server.presence.values()]).toContain(CHAT_ID);
+
+  await page.getByRole('button', { name: 'Notifications: default' }).tap();
+  const sheet = page.getByRole('dialog', { name: 'Notifications for this chat' });
+  await sheet.getByRole('button', { name: /^Following/ }).tap();
+  await expect.poll(() => server.controls).toContain(`notify conversation ${CHAT_ID} following`);
+  await expect(page.getByRole('button', { name: 'Notifications: following' })).toBeVisible();
+  const row = await sheet.getByRole('button', { name: /^Following/ }).boundingBox();
+  expect(row?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+  // Leaving the chat takes it off screen.
+  await sheet.getByRole('button', { name: 'Close', exact: true }).tap();
+  await page.getByRole('link', { name: `${PROJECT_SHORT_NAME} ▸` }).tap();
+  await expect.poll(() => [...server.presence.values()]).not.toContain(CHAT_ID);
+});
+
+test('a project can be muted from its screen', async ({ page }) => {
+  await open(page, projectPath);
+  const mute = page.getByRole('button', { name: 'Mute this project' });
+  await mute.tap();
+  await expect.poll(() => server.controls).toContain(`notify project ${PROJECT_ID} muted`);
+  await expect(page.getByRole('button', { name: 'Unmute this project' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  );
+
+  // A chat in a muted project shows its bell muted.
+  await open(page, chatPath(CHAT_ID));
+  await expect(page.getByRole('button', { name: 'Notifications: muted' })).toBeVisible();
+});
+
+test('Settings switches push on, or says how to install first on an iPhone', async ({
+  page,
+}, testInfo) => {
+  // Headless Chromium's Notification.permission reads "denied" even when the
+  // permission is granted; a phone that has not been asked yet says "default".
+  await page.addInitScript(() => {
+    Object.defineProperty(Notification, 'permission', { get: () => 'default' });
+  });
+  await open(page, '/m/settings');
+  const section = page.getByRole('region', { name: 'Notifications' });
+  if (testInfo.project.name === 'iphone') {
+    // Safari in a tab cannot receive push; the only honest advice is installing.
+    await expect(section.getByRole('note', { name: 'Add to Home Screen' })).toBeVisible();
+    await expect(section.getByRole('button', { name: 'Turn on' })).toHaveCount(0);
+  } else {
+    await expect(section.getByRole('button', { name: 'Turn on' })).toBeEnabled();
+  }
+
+  const finished = section.getByRole('checkbox', { name: 'A run finished' });
+  await expect(finished).toBeChecked();
+  await finished.tap();
+  await expect(finished).not.toBeChecked();
+  await expect(section.getByRole('checkbox', { name: 'A chat needs you' })).toBeChecked();
+});

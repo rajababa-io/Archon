@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactElement } from 'react';
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useNavigate } from 'react-router';
 import { dashboardStreamKeys, useDashboardSSE } from '../lib/sse';
 import { invalidate } from '../store/cache';
 import { K } from '../store/keys';
@@ -12,6 +12,9 @@ import { SettingsScreen } from './routes/SettingsScreen';
 import { useForegroundEpoch } from './lib/foreground';
 import { useMobileHead } from './lib/head';
 import { registerShellWorker } from './lib/service-worker';
+import { setAppBadge } from './lib/push';
+import { useMobileChats } from './lib/use-mobile-chats';
+import { OPEN_PATH_MESSAGE, SHELL_SCOPE } from './pwa/paths';
 import { useViewportBox } from './lib/viewport';
 import '../theme.css';
 import '../rail.css';
@@ -20,6 +23,36 @@ import './mobile.css';
 /** The dashboard stream, as a component so a key can replace it. */
 function DashboardStream(): null {
   useDashboardSSE();
+  return null;
+}
+
+/** The Home Screen icon's badge follows the needs-you count while the app runs. */
+function AppBadge(): null {
+  const { chats, needsYou } = useMobileChats();
+  useEffect(() => {
+    if (chats !== undefined) setAppBadge(needsYou);
+  }, [chats, needsYou]);
+  return null;
+}
+
+/**
+ * A tapped notification, when the app was already open: the worker posts the
+ * page to show (see `pwa/service-worker.js`), and the app routes to it in place.
+ */
+function NotificationRouting(): null {
+  const navigate = useNavigate();
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (event: MessageEvent<unknown>): void => {
+      const data = event.data as { type?: unknown; path?: unknown } | null;
+      if (data?.type !== OPEN_PATH_MESSAGE || typeof data.path !== 'string') return;
+      if (data.path.startsWith(SHELL_SCOPE)) void navigate(data.path);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return (): void => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+    };
+  }, [navigate]);
   return null;
 }
 
@@ -46,6 +79,8 @@ export function MobileApp(): ReactElement {
   return (
     <div ref={rootRef} className="console-root mobile-root bg-surface text-text-primary">
       <DashboardStream key={epoch} />
+      <AppBadge />
+      <NotificationRouting />
       <Routes>
         <Route index element={<HomeScreen />} />
         <Route path="c/:conversationId" element={<ChatScreen />} />

@@ -6,6 +6,7 @@ import { K } from '../../store/keys';
 import type { Project } from '../../primitives/project';
 import { useProjectLabel } from '../../lib/display-name';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { ProjectMute } from '../components/NotifyControls';
 import { OverviewTab } from '../components/project/OverviewTab';
 import { RunsTab } from '../components/project/RunsTab';
 import { ChatsTab } from '../components/project/ChatsTab';
@@ -35,6 +36,7 @@ export function ProjectScreen(): ReactElement {
           project === undefined ? (error === undefined ? 'Project' : 'Project not found') : label
         }
         context={project?.name ?? null}
+        trailing={<ProjectMute projectId={projectId} />}
       />
       <nav
         aria-label="Project"

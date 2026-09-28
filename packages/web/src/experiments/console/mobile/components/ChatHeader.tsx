@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router';
 import { MessagesSquare } from 'lucide-react';
 import { STATUS_COLOR, STATUS_LABEL, type ChatStatus } from '../../primitives/chat-status';
@@ -14,6 +14,8 @@ interface ChatHeaderProps {
   project: string | null;
   title: string | null;
   status: ChatStatus | null;
+  /** The chat's notification bell, at the right end. */
+  bell?: ReactNode;
 }
 
 export function ChatHeader({
@@ -23,6 +25,7 @@ export function ChatHeader({
   project,
   title,
   status,
+  bell,
 }: ChatHeaderProps): ReactElement {
   return (
     <header className="mobile-safe-top flex shrink-0 items-center gap-2 border-b border-border bg-surface px-2 pb-1">
@@ -70,6 +73,7 @@ export function ChatHeader({
           </span>
         </span>
       ) : null}
+      {bell}
     </header>
   );
 }

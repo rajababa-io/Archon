@@ -29,5 +29,6 @@ export * from './settings';
 export * from './providers';
 export * from './github';
 export * from './providerKeys';
+export * from './push';
 
 export { HttpError } from '../lib/http';

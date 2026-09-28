@@ -15,6 +15,7 @@ import { conversationStreamKeys, useConversationSSE } from '../../lib/sse';
 import { StreamContextProvider } from '../../lib/stream-context';
 import { useFollowTail } from '../../hooks/useFollowTail';
 import { useReadMarker } from '../../hooks/useReadMarker';
+import { useChatPresence } from '../../hooks/useChatPresence';
 import { useTurnControls } from '../../hooks/useTurnControls';
 import { ChatStream } from '../../components/ChatStream';
 import { ChatStatusStrip } from '../../components/ChatStatusStrip';
@@ -33,6 +34,7 @@ import { SwitcherSheet } from '../components/ChatSwitcher';
 import { Composer, type MobileComposerControl } from '../components/Composer';
 import { ImageViewer, type ViewerImage } from '../components/ImageViewer';
 import { MessageActions } from '../components/MessageActions';
+import { ChatBell } from '../components/NotifyControls';
 import { RunCards } from '../components/RunCards';
 import type { SendMode } from '../components/SendMenu';
 import { openAsk } from '../lib/ask-chips';
@@ -252,6 +254,7 @@ function ChatView({
     });
   }, [working]);
 
+  useChatPresence(conversationId);
   useReadMarker({
     conversationId,
     lastActivityAt,
@@ -411,6 +414,7 @@ function ChatView({
         project={project}
         title={summary?.title ?? null}
         status={summary === undefined ? null : status}
+        bell={<ChatBell conversationId={conversationId} projectId={projectId} />}
       />
       <ConversationStream key={streamEpoch} conversationId={conversationId} onLive={onLive} />
       <div className="relative min-h-0 flex-1">

@@ -70,9 +70,11 @@ export interface StubServer {
   readonly unhandled: readonly string[];
   /**
    * Actions the console asked for: `steer <queued id>`, `interrupt <chat id>`,
-   * `respond <run id> <decision>`, `deploy <sha>`.
+   * `respond <run id> <decision>`, `deploy <sha>`, `notify <scope> <id> <mode>`.
    */
   readonly controls: readonly string[];
+  /** The chat each console last reported on screen (`null`: none), by its client id. */
+  readonly presence: ReadonlyMap<string, string | null>;
   /** Put the fixture's run on the project, paused on its approval gate. */
   showPausedRun: () => void;
   /** Report a chat as mid-turn, or not. */
@@ -129,7 +131,17 @@ interface StubState {
   controls: string[];
   /** The fixture run: absent, paused on its gate, or answered. */
   run: 'none' | 'paused' | 'completed';
+  /** What to be told about, as the push routes store it. */
+  pushPrefs: components['schemas']['PushPrefs'];
+  /** The chat each console last reported on screen, by client id. */
+  presence: Map<string, string | null>;
 }
+
+const PUSH_PREFS: components['schemas']['PushPrefs'] = {
+  triggers: { awaiting: true, runFinished: true, runFailed: true },
+  mutedProjects: [],
+  conversations: {},
+};
 
 type QueuedFile = components['schemas']['QueuedMessage']['files'][number];
 
@@ -412,6 +424,45 @@ function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, state: S
     return;
   }
 
+  // Web Push: configured, nothing muted. Changes are applied and recorded.
+  if (method === 'GET' && path === '/api/push/vapid-key') {
+    sendJson(res, { enabled: true, publicKey: 'BStubPublicKey' });
+    return;
+  }
+  if (path === '/api/push/prefs') {
+    if (method === 'GET') {
+      sendJson(res, state.pushPrefs);
+      return;
+    }
+    if (method === 'PUT') {
+      void readJson(req).then(body => {
+        const change = body as components['schemas']['PushPrefsChange'];
+        const prefs = state.pushPrefs;
+        if (change.scope === 'global') {
+          prefs.triggers = { ...prefs.triggers, ...change.triggers };
+        } else if (change.scope === 'project') {
+          prefs.mutedProjects = prefs.mutedProjects.filter(id => id !== change.id);
+          if (change.mode === 'muted') prefs.mutedProjects.push(change.id);
+          state.controls.push(`notify project ${change.id} ${change.mode}`);
+        } else {
+          const kept = Object.entries(prefs.conversations).filter(([id]) => id !== change.id);
+          if (change.mode !== 'default') kept.push([change.id, change.mode]);
+          prefs.conversations = Object.fromEntries(kept);
+          state.controls.push(`notify conversation ${change.id} ${change.mode}`);
+        }
+        sendJson(res, prefs);
+      });
+      return;
+    }
+  }
+  if (method === 'POST' && path === '/api/push/presence') {
+    void readJson(req).then(body => {
+      state.presence.set(String(body.clientId), (body.conversationId as string | null) ?? null);
+      sendJson(res, { success: true });
+    });
+    return;
+  }
+
   // The checkout: a README at the root beside an empty folder.
   if (method === 'GET' && path === `/api/codebases/${PROJECT_ID}/files`) {
     const dir = url.searchParams.get('path') ?? '';
@@ -503,6 +554,8 @@ export async function startStubServer(): Promise<StubServer> {
     busy: new Set(),
     controls: [],
     run: 'none',
+    pushPrefs: structuredClone(PUSH_PREFS),
+    presence: new Map(),
   };
   // Held so `close()` can end the event streams: Node's `close` waits for open
   // sockets, and an SSE response is an open socket by design.
@@ -528,6 +581,7 @@ export async function startStubServer(): Promise<StubServer> {
     url: `http://127.0.0.1:${String(address.port)}`,
     unhandled: state.unhandled,
     controls: state.controls,
+    presence: state.presence,
     setBusy: (chatId, busy): void => {
       if (busy) state.busy.add(chatId);
       else state.busy.delete(chatId);
@@ -540,6 +594,8 @@ export async function startStubServer(): Promise<StubServer> {
       state.busy.clear();
       state.controls.length = 0;
       state.run = 'none';
+      state.pushPrefs = structuredClone(PUSH_PREFS);
+      state.presence.clear();
     },
     close: async (): Promise<void> => {
       for (const socket of sockets) socket.destroy();

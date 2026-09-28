@@ -8,8 +8,9 @@ import { setAppearance, useAppearance, type ThemeChoice } from '../../../../them
 import { presetById } from '../../../../theme/presets';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SheetRow } from '../components/Sheet';
-
-const PUSH_TRIGGERS = ['A chat needs you', 'A run finished', 'A run failed'] as const;
+import { InstallCoachMark } from '../components/InstallCoachMark';
+import { usePushDevice, usePushPrefs } from '../lib/use-push';
+import type { PushTriggers as PushTriggerSet } from '../../skills';
 
 const THEMES: readonly { value: ThemeChoice; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -51,39 +52,160 @@ export function SettingsScreen(): ReactElement {
   );
 }
 
-/** Drawn now, switched on when push notifications ship; nothing here subscribes yet. */
+/** Push on this device, and the three things the install pushes about. */
 function PushSection(): ReactElement {
   return (
-    <Section title="Notifications on this phone">
+    <Section title="Notifications">
+      <PushDeviceControls />
+      <PushTriggers />
+    </Section>
+  );
+}
+
+function PushDeviceControls(): ReactElement {
+  const { data: key, error } = useEntity(K.pushKey, skill.getPushKey);
+  const device = usePushDevice();
+  const [test, setTest] = useState<string | null>(null);
+
+  if (error !== undefined) {
+    return (
+      <p className="mobile-note text-error">Couldn&apos;t read push settings: {error.message}</p>
+    );
+  }
+  if (key === undefined) return <p className="mobile-note">Loading…</p>;
+  if (!key.enabled) {
+    return (
+      <p role="status" className="mobile-note">
+        Push is off on this server.{' '}
+        {key.problem ?? `Set ${key.missing.join(', ')} in the server's environment.`}
+      </p>
+    );
+  }
+  if (device.availability === 'install-first') return <InstallCoachMark />;
+  if (device.availability === 'unsupported') {
+    return <p className="mobile-note">This browser can&apos;t receive push notifications.</p>;
+  }
+  if (device.availability === 'denied' && device.subscribed !== true) {
+    return (
+      <p className="mobile-note">
+        Notifications are blocked for this site. Allow them in the browser&apos;s settings, then
+        come back.
+      </p>
+    );
+  }
+
+  const sendTest = async (): Promise<void> => {
+    setTest('Sending…');
+    try {
+      const result = await skill.sendTestPush();
+      setTest(
+        result.delivered > 0
+          ? `Sent to ${String(result.delivered)} device${result.delivered === 1 ? '' : 's'}.`
+          : 'No device accepted it.'
+      );
+    } catch (e) {
+      setTest(`Couldn't send: ${errorDetail(e)}`);
+    }
+  };
+
+  return (
+    <>
       <p className="px-4 pb-2 text-small text-text-tertiary">
-        Push notifications are not available yet.
+        {device.subscribed === null
+          ? 'Checking this device…'
+          : device.subscribed
+            ? 'On for this device.'
+            : 'Off for this device.'}
       </p>
       <div className="flex gap-2 px-4">
-        <button
-          type="button"
-          disabled
-          className="mobile-tap flex-1 rounded-lg border border-border text-body text-text-primary disabled:opacity-45"
-        >
-          Turn on
-        </button>
-        <button
-          type="button"
-          disabled
-          className="mobile-tap flex-1 rounded-lg border border-border text-body text-text-primary disabled:opacity-45"
-        >
-          Send a test
-        </button>
+        {device.subscribed === true ? (
+          <>
+            <button
+              type="button"
+              onClick={() => void sendTest()}
+              className="mobile-tap flex-1 rounded-lg border border-border text-body text-text-primary"
+            >
+              Send a test
+            </button>
+            <button
+              type="button"
+              disabled={device.busy}
+              onClick={() => void device.disable()}
+              className="mobile-tap flex-1 rounded-lg border border-border text-body text-text-secondary disabled:opacity-45"
+            >
+              Turn off
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled={device.busy || device.subscribed === null}
+            onClick={() => void device.enable(key.publicKey)}
+            className="mobile-tap flex-1 rounded-lg border border-border text-body text-text-primary disabled:opacity-45"
+          >
+            Turn on
+          </button>
+        )}
       </div>
+      {device.failure !== null ? (
+        <p role="alert" className="mobile-note text-error">
+          {device.failure}
+        </p>
+      ) : null}
+      {test !== null ? (
+        <p role="status" className="mobile-note">
+          {test}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+const PUSH_TRIGGERS: readonly { key: keyof PushTriggerSet; label: string }[] = [
+  { key: 'awaiting', label: 'A chat needs you' },
+  { key: 'runFinished', label: 'A run finished' },
+  { key: 'runFailed', label: 'A run failed' },
+];
+
+/** Install-wide: every subscribed device hears the same things. */
+function PushTriggers(): ReactElement {
+  const { prefs, error, saving, failure, change } = usePushPrefs();
+  if (error !== undefined) {
+    return (
+      <p className="mobile-note text-error">
+        Couldn&apos;t read what to notify about: {error.message}
+      </p>
+    );
+  }
+  return (
+    <>
       {PUSH_TRIGGERS.map(trigger => (
         <label
-          key={trigger}
-          className="mobile-row flex items-center gap-3 px-4 text-body text-text-primary opacity-45"
+          key={trigger.key}
+          className="mobile-row flex items-center gap-3 px-4 text-body text-text-primary"
         >
-          <span className="flex-1">{trigger}</span>
-          <input type="checkbox" disabled className="size-5" />
+          <span className="flex-1">{trigger.label}</span>
+          <input
+            type="checkbox"
+            checked={prefs?.triggers[trigger.key] ?? false}
+            disabled={prefs === undefined || saving}
+            onChange={e => {
+              void change({ scope: 'global', triggers: { [trigger.key]: e.target.checked } });
+            }}
+            className="size-5"
+          />
         </label>
       ))}
-    </Section>
+      {failure !== null ? (
+        <p role="alert" className="mobile-note text-error">
+          {failure}
+        </p>
+      ) : null}
+      <p className="mobile-note">
+        For every device with push on. A chat or project can be muted, or a chat followed, from its
+        bell.
+      </p>
+    </>
   );
 }
 

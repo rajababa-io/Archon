@@ -30,6 +30,7 @@ import type { Run } from '../primitives/run';
 import { baselineUserIds, echoHasLanded } from '../primitives/pending-echo';
 import { useFollowTail } from '../hooks/useFollowTail';
 import { useReadMarker } from '../hooks/useReadMarker';
+import { useChatPresence } from '../hooks/useChatPresence';
 import { useArrowScroll } from '../hooks/useArrowScroll';
 import { useTurnControls } from '../hooks/useTurnControls';
 import { modalIsOpen } from '../lib/keymap';
@@ -630,6 +631,7 @@ export function ChatPage(): ReactElement {
   // so without this the arrows land in an empty textarea and do nothing.
   useArrowScroll(scrollRef, { onUserScroll: noteUserIntent });
 
+  useChatPresence(activeConvId);
   const readMarker = useReadMarker({
     conversationId: activeConvId,
     lastActivityAt,

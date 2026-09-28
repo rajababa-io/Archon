@@ -3,7 +3,13 @@ import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { shellFiles } from './precache';
 import { webManifest } from './manifest';
-import { MANIFEST_PATH, SERVICE_WORKER_PATH, SHELL_SCOPE } from './paths';
+import {
+  MANIFEST_PATH,
+  NOTIFICATION_ICON,
+  OPEN_PATH_MESSAGE,
+  SERVICE_WORKER_PATH,
+  SHELL_SCOPE,
+} from './paths';
 
 /** An emitted file's name is relative to the output directory. */
 const outFile = (path: string): string => path.replace(/^\//, '');
@@ -28,7 +34,9 @@ export function mobilePwa(): Plugin {
         source: template
           .replace('__SHELL_VERSION__', JSON.stringify(version))
           .replace('__SHELL_URL__', JSON.stringify(SHELL_SCOPE))
-          .replace('__SHELL_FILES__', JSON.stringify(files)),
+          .replace('__SHELL_FILES__', JSON.stringify(files))
+          .replace('__NOTIFICATION_ICON__', JSON.stringify(NOTIFICATION_ICON))
+          .replace('__OPEN_PATH_MESSAGE__', JSON.stringify(OPEN_PATH_MESSAGE)),
       });
       this.emitFile({
         type: 'asset',
