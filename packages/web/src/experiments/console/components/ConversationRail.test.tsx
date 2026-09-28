@@ -17,6 +17,7 @@ const chat = (id: string, completed = false): ConversationSummary => ({
   sortOrder: null,
   lastReadAt: null,
   ready: false,
+  projectId: null,
 });
 
 const ASK = '```ask\n{"questions":[{"id":"q1","question":"Pick one","options":["a","b"]}]}\n```';

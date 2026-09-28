@@ -693,6 +693,10 @@
   letter-spacing: 0.3px;
   font-variant-numeric: tabular-nums;
 }
+/* A project name keeps the case it was given; only the time is lowercased. */
+.chat-stamp-project {
+  text-transform: none;
+}
 /* A dashed row, not a button in a header. It sits where a new chat will
    appear, so the affordance is in the place the result shows up. */
 .newchat {

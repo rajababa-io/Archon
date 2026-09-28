@@ -783,6 +783,7 @@ export interface paths {
           limit?: number;
           platform?: string;
           codebaseId?: string;
+          inProject?: 'true' | 'false';
           mine?: 'true' | 'false';
           archived?: 'active' | 'archived' | 'all';
           state?: 'open' | 'done' | 'all';

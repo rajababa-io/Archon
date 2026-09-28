@@ -3604,6 +3604,7 @@ export function registerApiRoutes(
     try {
       const platformType = c.req.query('platform') ?? undefined;
       const codebaseId = c.req.query('codebaseId') ?? undefined;
+      const inProject = c.req.query('inProject') === 'true';
       // Non-enforcing "mine" filter: only narrows when an identity resolves.
       // Default visibility stays open (everyone sees everyone's conversations).
       const mine = c.req.query('mine') === 'true';
@@ -3636,6 +3637,7 @@ export function registerApiRoutes(
         limit,
         platformType,
         codebaseId,
+        inProject,
         excludeEmpty: true,
         userId,
         archived,

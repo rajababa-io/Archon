@@ -1,5 +1,6 @@
 import { Plus } from 'lucide-react';
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -21,6 +22,7 @@ import {
   STATUS_TITLE,
   type ChatStatusSets,
 } from '../primitives/chat-status';
+import { groupChatsByStatus } from '../primitives/chat-groups';
 import { MenuCheckItem, MenuItem, RowMenu } from './RowMenu';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
 
@@ -123,8 +125,15 @@ interface ConversationRailProps {
    * short looks exactly like a complete one.
    */
   omitted: number;
-  /** Which project's manual order to read and write. */
-  projectId: string;
+  /**
+   * Which project's manual order to read and write, or `null` for the list of
+   * every project's chats. That list has no arrangement to keep — a drag would
+   * trade positions between projects — so it is grouped by status instead,
+   * each row names its project, and a new chat is started inside a project.
+   */
+  projectId: string | null;
+  /** A project's display name, for the every-project list's rows. */
+  projectLabel?: (projectId: string) => string;
   /**
    * True while a new chat is pending. It has no row in the database until the
    * first message is sent, so the rail draws a placeholder — without one,
@@ -159,8 +168,10 @@ export function ConversationRail({
   omitted,
   pendingNew,
   projectId,
+  projectLabel,
   statusSets,
 }: ConversationRailProps): ReactElement {
+  const everyProject = projectId === null;
   /* No filter box: a permanent text field for one project's chats was chrome.
      Finding a chat by name is the ⌘K palette's job, across every project. */
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -289,7 +300,7 @@ export function ConversationRail({
    * server wins from then on, the same rule the project rail follows.
    */
   useEffect(() => {
-    if (visible.length === 0) return;
+    if (projectId === null || visible.length === 0) return;
     if (!visible.some(c => c.sortOrder === null)) {
       // Guarded, because this runs on every poll and only the first one has
       // anything to drop.
@@ -308,6 +319,13 @@ export function ConversationRail({
 
   /** The gap between cards, kept in step with each row's `mb-0.5`. */
   const ROW_GAP = 2;
+
+  const groups = useMemo(
+    () => (everyProject ? groupChatsByStatus(visible, id => chatStatus(id, statusSets)) : null),
+    [everyProject, visible, statusSets]
+  );
+  /** The rows in the order they are drawn, which is what "the next chat" means. */
+  const ordered = groups === null ? visible : groups.flatMap(g => g.chats);
 
   const dragFrom = dragId === null ? -1 : visible.findIndex(c => c.id === dragId);
 
@@ -381,6 +399,182 @@ export function ConversationRail({
     onSelect(id);
   };
 
+  const renderRow = (c: ConversationSummary, index: number): ReactElement => {
+    const isActive = c.id === activeConvId;
+    const status = chatStatus(c.id, statusSets);
+    const shift = dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
+    return (
+      <div
+        key={c.id}
+        ref={el => {
+          if (el === null) rowRefs.current.delete(c.id);
+          else rowRefs.current.set(c.id, el);
+        }}
+        aria-current={isActive}
+        className={`rail-row group${dragId === c.id ? ' opacity-40' : ''}`}
+        style={{
+          // A transform, never a layout change: the geometry captured at
+          // drag start has to stay true for the whole gesture.
+          transform: shift === 0 ? undefined : `translateY(${String(shift)}px)`,
+          transition: 'transform 150ms, opacity 150ms, background-color 110ms',
+        }}
+        draggable={!everyProject && armed === c.id && renamingId === null}
+        onDragStart={e => {
+          beginDrag(c.id, index);
+          e.dataTransfer.effectAllowed = 'move';
+          // Firefox refuses to start a drag without payload.
+          e.dataTransfer.setData('text/plain', c.id);
+        }}
+        onDragEnd={() => {
+          endDrag();
+        }}
+        onContextMenu={e => {
+          e.preventDefault();
+          setMenuFor(c.id);
+        }}
+      >
+        {/* Six dots in the row's reserved gutter, invisible until hover
+                  — the same handle the project rail uses, so reordering is one
+                  gesture to learn rather than two. */}
+        {renamingId !== c.id && !everyProject ? (
+          <span
+            aria-hidden
+            title="Drag to reorder"
+            className="rail-grip-dots"
+            onMouseDown={() => {
+              setArmed(c.id);
+            }}
+          >
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+        ) : null}
+
+        {/* Status on the LEFT, where the eye lands first on a list you
+                  scan rather than read. One mark in three states, never a
+                  different KIND of mark per state: a chat bubble for idle made
+                  the column read as two vocabularies — a glyph that says what
+                  the row is, and dots that say what it is doing — and it was
+                  also the one surface disagreeing with the chat's own status
+                  pill and the project chip, which have always drawn all three
+                  as dots. Idle is the quiet one: still, grey, no halo. */}
+        <span aria-hidden title={STATUS_TITLE[status]} className={`chat-status is-${status}`}>
+          <i />
+        </span>
+
+        {renamingId === c.id ? (
+          <input
+            ref={renameRef}
+            value={draft}
+            onChange={e => {
+              setDraft(e.target.value);
+            }}
+            onKeyDown={e => {
+              onRenameKey(e, c.id);
+            }}
+            onBlur={() => {
+              commitRename(c.id);
+            }}
+            maxLength={255}
+            aria-label="Rename chat"
+            className="chat-rename"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={e => {
+              e.stopPropagation();
+              open(c.id, e.metaKey || e.ctrlKey || e.shiftKey);
+            }}
+            className="min-w-0 flex-1 text-left"
+          >
+            {/* Two lines: the title wraps to two rather than being
+                      truncated at a width the rail never had, and the
+                      timestamp sits UNDER it instead of competing for the
+                      same line. */}
+            <span className="rail-text">{conversationLabel(c)}</span>
+            {/* Always the timestamp, never the state.
+                      The second line used to say the state in its own colour —
+                      "needs you", "editing rail.css" — and between the dot,
+                      the word and the colour a row said the same thing three
+                      times. Eleven rows of that is a rail you decode rather
+                      than scan. The dot carries the state; this line carries
+                      the one fact the dot cannot, which is how long ago.
+                      The chat you have OPEN still names its tool, in the status
+                      strip above the composer — one of those on screen, in the
+                      place where the detail is worth the room. */}
+            {everyProject && c.projectId !== null ? (
+              // Whose chat it is, before how long ago: across every
+              // project the name is the fact the dot cannot carry.
+              <span className="chat-stamp">
+                <span className="chat-stamp-project">
+                  {projectLabel?.(c.projectId) ?? c.projectId}
+                </span>
+                {c.lastActivityAt !== null ? (
+                  <>
+                    {' · '}
+                    <time dateTime={c.lastActivityAt}>{relativeTime(c.lastActivityAt)}</time>
+                  </>
+                ) : null}
+              </span>
+            ) : c.lastActivityAt !== null ? (
+              <time dateTime={c.lastActivityAt} className="chat-stamp">
+                {relativeTime(c.lastActivityAt)}
+              </time>
+            ) : null}
+          </button>
+        )}
+
+        <RowMenu
+          anchor={rowRefs.current.get(c.id) ?? null}
+          open={menuFor === c.id}
+          onClose={closeMenu}
+          width={220}
+          label={`Actions for ${conversationLabel(c)}`}
+        >
+          <MenuItem
+            label="Rename…"
+            onSelect={() => {
+              setDraft(conversationLabel(c));
+              setRenamingId(c.id);
+              setMenuFor(null);
+            }}
+          />
+          {/* Unticked, the row is the verb `Close`; ticked, it names the
+                    state `Closed` and the tick says it holds. Either way it is
+                    the second item — findable by position. `Reopen` appears
+                    only on a ticked row, because that is the only one whose
+                    click does the opposite of its label. */}
+          <MenuCheckItem
+            label={c.completed ? 'Closed' : 'Close'}
+            checked={c.completed}
+            checkedAction="Reopen"
+            onSelect={() => {
+              onComplete(
+                c.id,
+                !c.completed,
+                activeConvId === c.id ? chooseNeighbourChat(ordered, activeConvId, [c.id]) : null
+              );
+              setMenuFor(null);
+            }}
+          />
+          <MenuItem
+            label="Mark unread"
+            disabledReason={markUnreadBlocker(status, c.lastActivityAt !== null) ?? undefined}
+            onSelect={() => {
+              onMarkUnread(c.id);
+              setMenuFor(null);
+            }}
+          />
+        </RowMenu>
+      </div>
+    );
+  };
+
   return (
     <aside
       className="chatlist relative flex h-full min-h-0 shrink-0 flex-col"
@@ -427,33 +621,35 @@ export function ConversationRail({
         })}
       </div>
 
-      <div className="px-2">
-        <button
-          type="button"
-          onClick={() => {
-            onSelect(null);
-          }}
-          // Deliberately not gated on `busy`: a reply owed to another chat
-          // still lands in that chat, so waiting buys nothing and makes the
-          // project feel single-threaded when it is not.
-          disabled={activeConvId === null}
-          title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat'}
-          aria-keyshortcuts="Meta+Shift+O Control+Shift+O"
-          className="newchat disabled:cursor-default disabled:opacity-40"
-        >
-          <Plus className="h-[13px] w-[13px]" />
-          New chat
-          {/* Pinned right so the label stays centred; the same pill as ⌘K on
-              the project rail's Search row. */}
-          <span
-            aria-hidden
-            className="absolute right-2 rounded border px-[5px] py-px text-mini text-text-tertiary"
-            style={{ borderColor: 'var(--border-bright)' }}
+      {everyProject ? null : (
+        <div className="px-2">
+          <button
+            type="button"
+            onClick={() => {
+              onSelect(null);
+            }}
+            // Deliberately not gated on `busy`: a reply owed to another chat
+            // still lands in that chat, so waiting buys nothing and makes the
+            // project feel single-threaded when it is not.
+            disabled={activeConvId === null}
+            title={activeConvId === null ? 'Already on a new chat' : 'Start a new chat'}
+            aria-keyshortcuts="Meta+Shift+O Control+Shift+O"
+            className="newchat disabled:cursor-default disabled:opacity-40"
           >
-            {NEW_CHAT_KEY_LABEL}
-          </span>
-        </button>
-      </div>
+            <Plus className="h-[13px] w-[13px]" />
+            New chat
+            {/* Pinned right so the label stays centred; the same pill as ⌘K on
+              the project rail's Search row. */}
+            <span
+              aria-hidden
+              className="absolute right-2 rounded border px-[5px] py-px text-mini text-text-tertiary"
+              style={{ borderColor: 'var(--border-bright)' }}
+            >
+              {NEW_CHAT_KEY_LABEL}
+            </span>
+          </button>
+        </div>
+      )}
 
       <div
         ref={scrollRef}
@@ -506,170 +702,17 @@ export function ConversationRail({
           <p className="px-2 py-1.75 text-body text-text-tertiary">No chats yet.</p>
         ) : null}
 
-        {visible.map((c, index) => {
-          const isActive = c.id === activeConvId;
-          const status = chatStatus(c.id, statusSets);
-          const shift =
-            dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
-          return (
-            <div
-              key={c.id}
-              ref={el => {
-                if (el === null) rowRefs.current.delete(c.id);
-                else rowRefs.current.set(c.id, el);
-              }}
-              aria-current={isActive}
-              className={`rail-row group${dragId === c.id ? ' opacity-40' : ''}`}
-              style={{
-                // A transform, never a layout change: the geometry captured at
-                // drag start has to stay true for the whole gesture.
-                transform: shift === 0 ? undefined : `translateY(${String(shift)}px)`,
-                transition: 'transform 150ms, opacity 150ms, background-color 110ms',
-              }}
-              draggable={armed === c.id && renamingId === null}
-              onDragStart={e => {
-                beginDrag(c.id, index);
-                e.dataTransfer.effectAllowed = 'move';
-                // Firefox refuses to start a drag without payload.
-                e.dataTransfer.setData('text/plain', c.id);
-              }}
-              onDragEnd={() => {
-                endDrag();
-              }}
-              onContextMenu={e => {
-                e.preventDefault();
-                setMenuFor(c.id);
-              }}
-            >
-              {/* Six dots in the row's reserved gutter, invisible until hover
-                  — the same handle the project rail uses, so reordering is one
-                  gesture to learn rather than two. */}
-              {renamingId !== c.id ? (
-                <span
-                  aria-hidden
-                  title="Drag to reorder"
-                  className="rail-grip-dots"
-                  onMouseDown={() => {
-                    setArmed(c.id);
-                  }}
-                >
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </span>
-              ) : null}
-
-              {/* Status on the LEFT, where the eye lands first on a list you
-                  scan rather than read. One mark in three states, never a
-                  different KIND of mark per state: a chat bubble for idle made
-                  the column read as two vocabularies — a glyph that says what
-                  the row is, and dots that say what it is doing — and it was
-                  also the one surface disagreeing with the chat's own status
-                  pill and the project chip, which have always drawn all three
-                  as dots. Idle is the quiet one: still, grey, no halo. */}
-              <span aria-hidden title={STATUS_TITLE[status]} className={`chat-status is-${status}`}>
-                <i />
-              </span>
-
-              {renamingId === c.id ? (
-                <input
-                  ref={renameRef}
-                  value={draft}
-                  onChange={e => {
-                    setDraft(e.target.value);
-                  }}
-                  onKeyDown={e => {
-                    onRenameKey(e, c.id);
-                  }}
-                  onBlur={() => {
-                    commitRename(c.id);
-                  }}
-                  maxLength={255}
-                  aria-label="Rename chat"
-                  className="chat-rename"
-                />
-              ) : (
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation();
-                    open(c.id, e.metaKey || e.ctrlKey || e.shiftKey);
-                  }}
-                  className="min-w-0 flex-1 text-left"
-                >
-                  {/* Two lines: the title wraps to two rather than being
-                      truncated at a width the rail never had, and the
-                      timestamp sits UNDER it instead of competing for the
-                      same line. */}
-                  <span className="rail-text">{conversationLabel(c)}</span>
-                  {/* Always the timestamp, never the state.
-                      The second line used to say the state in its own colour —
-                      "needs you", "editing rail.css" — and between the dot,
-                      the word and the colour a row said the same thing three
-                      times. Eleven rows of that is a rail you decode rather
-                      than scan. The dot carries the state; this line carries
-                      the one fact the dot cannot, which is how long ago.
-                      The chat you have OPEN still names its tool, in the status
-                      strip above the composer — one of those on screen, in the
-                      place where the detail is worth the room. */}
-                  {c.lastActivityAt !== null ? (
-                    <time dateTime={c.lastActivityAt} className="chat-stamp">
-                      {relativeTime(c.lastActivityAt)}
-                    </time>
-                  ) : null}
-                </button>
-              )}
-
-              <RowMenu
-                anchor={rowRefs.current.get(c.id) ?? null}
-                open={menuFor === c.id}
-                onClose={closeMenu}
-                width={220}
-                label={`Actions for ${conversationLabel(c)}`}
-              >
-                <MenuItem
-                  label="Rename…"
-                  onSelect={() => {
-                    setDraft(conversationLabel(c));
-                    setRenamingId(c.id);
-                    setMenuFor(null);
-                  }}
-                />
-                {/* Unticked, the row is the verb `Close`; ticked, it names the
-                    state `Closed` and the tick says it holds. Either way it is
-                    the second item — findable by position. `Reopen` appears
-                    only on a ticked row, because that is the only one whose
-                    click does the opposite of its label. */}
-                <MenuCheckItem
-                  label={c.completed ? 'Closed' : 'Close'}
-                  checked={c.completed}
-                  checkedAction="Reopen"
-                  onSelect={() => {
-                    onComplete(
-                      c.id,
-                      !c.completed,
-                      activeConvId === c.id
-                        ? chooseNeighbourChat(visible, activeConvId, [c.id])
-                        : null
-                    );
-                    setMenuFor(null);
-                  }}
-                />
-                <MenuItem
-                  label="Mark unread"
-                  disabledReason={markUnreadBlocker(status, c.lastActivityAt !== null) ?? undefined}
-                  onSelect={() => {
-                    onMarkUnread(c.id);
-                    setMenuFor(null);
-                  }}
-                />
-              </RowMenu>
-            </div>
-          );
-        })}
+        {groups === null
+          ? visible.map((c, index) => renderRow(c, index))
+          : groups.map(g => (
+              <Fragment key={g.key}>
+                <div className="rail-owner">
+                  <span className="rail-owner-name">{g.label}</span>
+                  <span className="ml-auto tabular-nums">{g.chats.length}</span>
+                </div>
+                {g.chats.map((c, index) => renderRow(c, index))}
+              </Fragment>
+            ))}
 
         {/* The listing is capped server-side, so a long-running project's
             finished chats eventually outrun it. Say so under the last row:

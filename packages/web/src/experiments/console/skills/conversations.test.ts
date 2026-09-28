@@ -82,6 +82,19 @@ describe('listConversations', () => {
     await listConversations('project-1', 'done');
     expect(requested[0]).toContain('state=done');
   });
+
+  test('null lists every project, asking the server to leave out chats with none', async () => {
+    // Filtered server-side so the counts agree with the rows: a chat outside
+    // every project has nowhere to open, and must not inflate the tab number.
+    stubList({
+      conversations: [{ ...row('a'), codebase_id: 'p1' }],
+      counts: { open: 1, done: 0, all: 1 },
+    });
+    const list = await listConversations(null, 'open');
+    expect(requested[0]).not.toContain('codebaseId');
+    expect(requested[0]).toContain('inProject=true');
+    expect(list.chats[0]?.projectId).toBe('p1');
+  });
 });
 
 describe('listAllConversations', () => {
@@ -90,6 +103,7 @@ describe('listAllConversations', () => {
     await listAllConversations();
     expect(requested).toHaveLength(1);
     expect(requested[0]).not.toContain('codebaseId');
+    expect(requested[0]).toContain('inProject=true');
     expect(requested[0]).toContain('state=all');
   });
 

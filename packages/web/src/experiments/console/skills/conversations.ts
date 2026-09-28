@@ -118,15 +118,16 @@ export const EMPTY_CONVERSATION_LIST: ConversationList = {
  * sitting in a scope nothing navigates to.
  */
 export async function listConversations(
-  projectId: string,
+  /** One project's chats, or `null` for every project's — chats with no project left out. */
+  projectId: string | null,
   state: 'open' | 'done' | 'all' = 'open'
 ): Promise<ConversationList> {
+  const where =
+    projectId === null ? 'inProject=true' : `codebaseId=${encodeURIComponent(projectId)}`;
   const raw = await requestJson<{
     conversations: Parameters<typeof toConversationSummary>[0][];
     counts: { open: number; done: number; all: number };
-  }>(
-    `/api/conversations?codebaseId=${encodeURIComponent(projectId)}&mine=true&archived=active&state=${state}`
-  );
+  }>(`/api/conversations?${where}&mine=true&archived=active&state=${state}`);
   const chats = raw.conversations.map(toConversationSummary);
   // The count for the scope that was asked for. The server ignores `state`
   // when counting, so this picks the one the rows were drawn from rather than
@@ -146,9 +147,9 @@ export interface FoundChat {
  * Every chat of the caller's, open and done, across every project — one read
  * the palette filters locally, so typing never asks the server anything.
  *
- * A chat with no codebase is left out: the console only shows chats inside a
- * project, so the palette would have nowhere to take it. The route's cap still
- * applies; `truncated` says when it bit.
+ * A chat with no codebase is left out, by the server so the count agrees: the
+ * console only shows chats inside a project, so the palette would have nowhere
+ * to take it. The route's cap still applies; `truncated` says when it bit.
  */
 export async function listAllConversations(init?: { signal?: AbortSignal }): Promise<{
   chats: FoundChat[];
@@ -159,9 +160,10 @@ export async function listAllConversations(init?: { signal?: AbortSignal }): Pro
       codebase_id: string | null;
     })[];
     counts: { open: number; done: number; all: number };
-  }>('/api/conversations?mine=true&archived=active&state=all', init);
+  }>('/api/conversations?inProject=true&mine=true&archived=active&state=all', init);
   const chats: FoundChat[] = [];
   for (const row of raw.conversations) {
+    // `inProject` already left these out; this narrows the type.
     if (row.codebase_id === null) continue;
     chats.push({ chat: toConversationSummary(row), projectId: row.codebase_id });
   }

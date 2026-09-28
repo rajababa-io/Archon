@@ -6,6 +6,7 @@ import { OpenAPIHono } from '@hono/zod-openapi';
 import { removeTempTree } from '@archon/paths/test-utils';
 import { registerBuiltinProviders } from '@archon/providers';
 import type { ConversationLockManager, TurnContext } from '@archon/core';
+import type { ListConversationsOptions } from '@archon/core/db/conversations';
 import type { WebAdapter } from '../adapters/web';
 import { validationErrorHook } from './openapi-defaults';
 import { makeMockLockManager, mockAllWorkflowModules } from '../test/workflow-mock-factories';
@@ -36,11 +37,9 @@ const mockMarkConversationRead = mock(async (_id: string) => {});
 const mockMarkConversationUnread = mock(async (_id: string) => {});
 const mockSetConversationArchived = mock(async (_id: string, _archived: boolean) => {});
 const mockListConversations = mock(
-  async (_options?: {
-    limit?: number;
-    state?: 'open' | 'done' | 'all';
-    codebaseId?: string;
-  }): Promise<{
+  async (
+    _options?: ListConversationsOptions
+  ): Promise<{
     rows: unknown[];
     counts: { open: number; done: number; all: number };
   }> => ({ rows: [], counts: { open: 0, done: 0, all: 0 } })
@@ -235,6 +234,14 @@ describe('GET /api/conversations', () => {
     mockListConversations.mockClear();
     await listApp().request('/api/conversations?state=done');
     expect(mockListConversations.mock.calls[0]?.[0]?.state).toBe('done');
+  });
+
+  test('inProject reaches the database only when asked for', async () => {
+    mockListConversations.mockClear();
+    await listApp().request('/api/conversations?inProject=true');
+    await listApp().request('/api/conversations');
+    expect(mockListConversations.mock.calls[0]?.[0]?.inProject).toBe(true);
+    expect(mockListConversations.mock.calls[1]?.[0]?.inProject).toBe(false);
   });
 
   test('returns 500 when the listing throws', async () => {
