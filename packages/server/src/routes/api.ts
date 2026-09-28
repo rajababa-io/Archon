@@ -103,6 +103,7 @@ import {
   toWorktreePath,
   readWorkingChanges,
   readWorkingFileDiff,
+  listCheckoutFiles,
   NotAGitCheckoutError,
 } from '@archon/git';
 import { readConversationCheckout } from './conversation-checkout';
@@ -403,6 +404,7 @@ import {
   envVarMutationResponseSchema,
   codebaseFilePathQuerySchema,
   codebaseFilesResponseSchema,
+  codebasePathsResponseSchema,
   codebaseFileResponseSchema,
   writeCodebaseFileBodySchema,
   writeCodebaseFileResponseSchema,
@@ -1237,6 +1239,23 @@ const listCodebaseFilesRoute = createRoute({
     },
     400: jsonError('Bad request'),
     404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const listCodebasePathsRoute = createRoute({
+  method: 'get',
+  path: '/api/codebases/{id}/paths',
+  tags: ['Codebases'],
+  summary: "Every file in a codebase's git checkout, minus what .gitignore names",
+  request: { params: codebaseIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: codebasePathsResponseSchema } },
+      description: 'File paths relative to the project root',
+    },
+    404: jsonError('Not found'),
+    409: jsonError('The project is not a git checkout'),
     500: jsonError('Server error'),
   },
 });
@@ -4600,6 +4619,23 @@ export function registerApiRoutes(
       }
       getLog().error({ err: error, codebaseId: id }, 'codebase_files.list_failed');
       return apiError(c, 500, 'Failed to list directory');
+    }
+  });
+
+  registerOpenApiRoute(listCodebasePathsRoute, async c => {
+    const id = c.req.param('id') ?? '';
+    try {
+      const root = await codebaseRoot(id);
+      if (root === null) {
+        return apiError(c, 404, 'Codebase not found');
+      }
+      return c.json(await listCheckoutFiles(root));
+    } catch (error) {
+      if (error instanceof NotAGitCheckoutError) {
+        return apiError(c, 409, 'File search needs a git checkout, and this project is not one');
+      }
+      getLog().error({ err: error, codebaseId: id }, 'codebase_paths.list_failed');
+      return apiError(c, 500, 'Failed to list files');
     }
   });
 

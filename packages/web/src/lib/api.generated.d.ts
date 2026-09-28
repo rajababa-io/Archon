@@ -2039,6 +2039,71 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/codebases/{id}/paths': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Every file in a codebase's git checkout, minus what .gitignore names */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description File paths relative to the project root */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['CodebasePathsResponse'];
+          };
+        };
+        /** @description Not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description The project is not a git checkout */
+        409: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/codebases/{id}/file': {
     parameters: {
       query?: never;
@@ -5122,6 +5187,10 @@ export interface components {
       /** @enum {string} */
       kind: 'file' | 'dir' | 'other';
       size: number | null;
+    };
+    CodebasePathsResponse: {
+      paths: string[];
+      truncated: boolean;
     };
     CodebaseFileResponse: {
       path: string;

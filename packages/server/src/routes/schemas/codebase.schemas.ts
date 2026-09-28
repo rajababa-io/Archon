@@ -143,6 +143,18 @@ export const codebaseFilesResponseSchema = z
   .openapi('CodebaseFilesResponse');
 
 /**
+ * Response for GET /api/codebases/:id/paths — every file in the checkout, for
+ * a search box. `truncated` says the list stopped at the server's ceiling, so a
+ * search that finds nothing can say it may not have seen everything.
+ */
+export const codebasePathsResponseSchema = z
+  .object({
+    paths: z.array(z.string()),
+    truncated: z.boolean(),
+  })
+  .openapi('CodebasePathsResponse');
+
+/**
  * Version token for a file's contents, echoed back on write.
  *
  * A content hash, NOT an mtime: two writes inside one filesystem timestamp

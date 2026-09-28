@@ -3,7 +3,8 @@ import { join } from 'path';
 import { execFileAsync } from './exec';
 
 /**
- * The uncommitted changes in one checkout, read without touching it.
+ * The uncommitted changes in one checkout, and the files it holds, read
+ * without touching it.
  *
  * "Uncommitted" means the working tree and the index against HEAD, plus
  * untracked files that are not ignored — everything `git status` would show,
@@ -308,4 +309,33 @@ export async function readWorkingFileDiff(cwd: string, file: ChangedFile): Promi
     throw error;
   }
   return { path: file.path, binary: false, ...cutPatch(patch) };
+}
+
+/** Paths `listCheckoutFiles` returns before it stops and says so. */
+export const MAX_LISTED_FILES = 20_000;
+
+export interface CheckoutFiles {
+  /** Paths relative to the directory asked about, forward slashes, sorted. */
+  paths: string[];
+  /** True when the checkout holds more than MAX_LISTED_FILES and the rest were left out. */
+  truncated: boolean;
+}
+
+/**
+ * Every file in the checkout at `cwd` — tracked, plus untracked files that are
+ * not ignored — relative to `cwd`.
+ *
+ * Git's own listing rather than a directory walk: it is what keeps
+ * `node_modules`, build output and everything else `.gitignore` names out of
+ * the list, which a walk would have to reinvent and would get wrong.
+ */
+export async function listCheckoutFiles(cwd: string): Promise<CheckoutFiles> {
+  await repoState(cwd);
+  const out = await git(cwd, ['ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+  // A conflicted file is listed once per stage; the set keeps one.
+  const all = [...new Set(out.split('\0').filter(p => p.length > 0))].sort();
+  return {
+    paths: all.slice(0, MAX_LISTED_FILES),
+    truncated: all.length > MAX_LISTED_FILES,
+  };
 }

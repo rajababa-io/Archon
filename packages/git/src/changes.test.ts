@@ -7,13 +7,14 @@
  * behavior, not something a mock could assert.
  */
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { trackTempRoots } from '@archon/paths/test-utils';
 import {
   MAX_DIFF_LINES,
   NotAGitCheckoutError,
+  listCheckoutFiles,
   readWorkingChanges,
   readWorkingFileDiff,
   type ChangedFile,
@@ -189,5 +190,38 @@ describe('readWorkingFileDiff', () => {
     const diff = await readWorkingFileDiff(root, row(files, 'kept.txt'));
     expect(diff.truncated).toBe(true);
     expect(diff.patch.split('\n').length).toBeLessThanOrEqual(MAX_DIFF_LINES + 1);
+  });
+});
+
+describe('listCheckoutFiles', () => {
+  test('lists tracked and untracked files, leaving out what .gitignore names', async () => {
+    const root = repo();
+    writeFileSync(join(root, '.gitignore'), 'ignored.txt\nbuild/\n');
+    writeFileSync(join(root, 'ignored.txt'), 'nope\n');
+    mkdirSync(join(root, 'build'));
+    writeFileSync(join(root, 'build', 'out.js'), 'x\n');
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'fresh.ts'), 'y\n');
+
+    const listed = await listCheckoutFiles(root);
+
+    expect(listed).toEqual({
+      paths: ['.gitignore', 'gone.txt', 'kept.txt', 'moved.txt', 'src/fresh.ts'],
+      truncated: false,
+    });
+  });
+
+  test('paths are relative to the directory asked about, not the repository root', async () => {
+    const root = repo();
+    mkdirSync(join(root, 'pkg'));
+    writeFileSync(join(root, 'pkg', 'inner.ts'), 'z\n');
+    git(root, 'add', '.');
+
+    expect((await listCheckoutFiles(join(root, 'pkg'))).paths).toEqual(['inner.ts']);
+  });
+
+  test('a plain directory is not a checkout', async () => {
+    const plain = trackTempRoot(mkdtempSync(join(tmpdir(), 'not-a-checkout-')));
+    await expect(listCheckoutFiles(plain)).rejects.toBeInstanceOf(NotAGitCheckoutError);
   });
 });
