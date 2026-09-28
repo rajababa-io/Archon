@@ -1,0 +1,14 @@
+exec-code: true
+# A discovered command that cannot start is recorded, not thrown: the gate node
+# completes and the result join refuses a green over its error.
+discover:
+  gate: run
+  argv: ["/no/such/archon-validate-gate"]
+  reason: ""
+validate:
+  green: true
+  red_cause: ""
+  summary: "project gate passed on the current checkout"
+fixture:
+  expect: failed
+  fail-node: result

@@ -1,13 +1,26 @@
 # Validation and composition evidence
 
-`archon-validate` normally discovers and runs the project's checks on the current
-checkout. Its `scope` input narrows that ordinary path.
+`archon-validate` normally validates the current checkout in three steps. An agent
+(`discover`) finds the project's own gate and declares it as an argv; a script
+(`gate`) runs that argv as its own process with a 45-minute deadline, writing the
+log and a `gate.json` record under `validate-gate/` in the run's artifacts; an agent
+(`validate`) reads the record and declares the verdict. No agent shell runs the
+gate, so a long gate is not cut off by an agent's command limit. The `scope` input
+narrows discovery. The `result` node refuses a green verdict over a gate that did
+not pass.
 
-When ordinary validation stops before every applicable check runs (a usage limit,
-a killed process, a gate that cannot run) and no check that ran failed, it declares
-`green: false` with `red_cause: incomplete`. SDLC delivery refuses that result as
-unfinished rather than red; the action is to resume the run. The comparison path
-never declares `incomplete`.
+The gate runs against the tracked tree: every untracked, non-ignored path under
+`.archon/` (run scaffolding) is moved into `<git-dir>/archon-validate-quarantine`
+for its duration and restored afterwards. If that directory still exists, a previous
+gate was killed before it could restore; the next gate refuses to start until its
+contents are moved back. The gate node reports that refusal, a command that cannot
+start, and a restore that fails in its record's `error` field rather than failing
+itself, so the run still reaches a verdict.
+
+When the gate cannot run, or exceeds its deadline or is killed, and no check that
+ran failed, ordinary validation declares `green: false` with `red_cause: incomplete`.
+SDLC delivery refuses that result as unfinished rather than red; the action is to
+resume the run. The comparison path never declares `incomplete`.
 
 For an existing workflow that must test a composition, pass `comparison` as the path
 to an explicitly authored JSON request. This selects a deterministic script path;

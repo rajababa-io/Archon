@@ -1,0 +1,13 @@
+exec-code: true
+# An agent cannot certify a gate that failed: the result join refuses the green.
+discover:
+  gate: run
+  argv: ["bun", "-e", "process.exitCode = 1"]
+  reason: ""
+validate:
+  green: true
+  red_cause: ""
+  summary: "project gate passed on the current checkout"
+fixture:
+  expect: failed
+  fail-node: result

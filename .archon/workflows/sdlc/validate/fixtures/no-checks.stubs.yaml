@@ -1,0 +1,12 @@
+exec-code: true
+discover:
+  gate: none_defined
+  argv: []
+  reason: "the repository defines no checks"
+validate:
+  green: true
+  red_cause: ""
+  summary: "no checks defined by this project"
+fixture:
+  expect: completed
+  reached: [mode, discover, gate, validate, result]

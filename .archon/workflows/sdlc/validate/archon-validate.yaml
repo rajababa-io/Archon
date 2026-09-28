@@ -67,11 +67,64 @@ nodes:
               required: [type, run_id, path]
       required: [green, red_cause, summary, evidence]
 
-  - id: validate
-    command: validate
+  - id: discover
+    command: validate-discover
     depends_on: [mode]
     when: "$mode.output.comparison == false"
     always_run: true
+    output_format:
+      type: object
+      properties:
+        gate:
+          type: string
+          enum: [run, none_defined, unrunnable]
+        argv:
+          type: array
+          items: { type: string }
+        reason:
+          type: string
+      required: [gate, argv, reason]
+
+  # The project's gate runs here, not in an agent's shell: an agent's command cap
+  # or turn end would cut a long gate off and turn a healthy change `incomplete`.
+  - id: gate
+    script: gate
+    runtime: bun
+    depends_on: [discover]
+    always_run: true
+    # Backstop only, above GATE_DEADLINE_MS in .shared/gate.ts: the script's own
+    # deadline is what lets it restore quarantined files before it returns.
+    timeout: 3000000
+    with:
+      discovery: "$discover.output"
+    output_format:
+      type: object
+      properties:
+        ran: { type: boolean }
+        argv:
+          type: array
+          items: { type: string }
+        exit_code:
+          anyOf:
+            - type: "null"
+            - type: integer
+        timed_out: { type: boolean }
+        duration_ms: { type: number }
+        log: { type: string }
+        tail: { type: string }
+        quarantined:
+          type: array
+          items: { type: string }
+        error: { type: string }
+      required: [ran, argv, exit_code, timed_out, duration_ms, log, tail, quarantined, error]
+
+  - id: validate
+    command: validate
+    depends_on: [discover, gate]
+    always_run: true
+    with:
+      discovery: "$discover.output"
+      gate: "$gate.output"
     output_format:
       type: object
       properties:
@@ -92,10 +145,12 @@ nodes:
   - id: result
     script: result
     runtime: bun
-    depends_on: [compare, validate]
+    depends_on: [compare, gate, validate]
     trigger_rule: none_failed_min_one_success
     with:
       comparison: { from: "$compare.output", if_skipped: null }
       validation: { from: "$validate.output", if_skipped: null }
+      discovery: { from: "$discover.output", if_skipped: null }
+      gate: { from: "$gate.output", if_skipped: null }
     output_type: validation
     output_format: *composition_verdict
