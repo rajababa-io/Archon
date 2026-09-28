@@ -403,8 +403,8 @@ describe('unreadIds', () => {
 });
 
 describe('markUnreadBlocker', () => {
-  test('an idle chat you are not reading may be marked', () => {
-    expect(markUnreadBlocker('idle', false, true)).toBeNull();
+  test('an idle chat may be marked, including the one you have open', () => {
+    expect(markUnreadBlocker('idle', true)).toBeNull();
   });
 
   test('every other status is refused, each with its own reason', () => {
@@ -417,17 +417,13 @@ describe('markUnreadBlocker', () => {
       'running',
       'waiting',
     ] as const;
-    const reasons = others.map(s => markUnreadBlocker(s, false, true));
+    const reasons = others.map(s => markUnreadBlocker(s, true));
     for (const r of reasons) expect(r).not.toBeNull();
     expect(new Set(reasons).size).toBe(others.length);
   });
 
-  test('the open chat is refused even when idle — the page would clear it at once', () => {
-    expect(markUnreadBlocker('idle', true, true)).toBe("You're reading it");
-  });
-
   test('a chat with no activity is refused — the mark could not show', () => {
-    expect(markUnreadBlocker('idle', false, false)).toBe('Nothing to read yet');
+    expect(markUnreadBlocker('idle', false)).toBe('Nothing to read yet');
   });
 });
 

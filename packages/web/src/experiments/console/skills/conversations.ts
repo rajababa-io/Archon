@@ -318,7 +318,7 @@ export async function steerQueuedMessage(
 }
 
 /**
- * Record that the reader has reached the bottom of this chat.
+ * Record that the reader has opened this chat.
  *
  * The only thing that clears the rail's unread mark. A POST with no body: the
  * client is not choosing a value, it is reporting an event, and the server owns

@@ -660,9 +660,7 @@ export function ConversationRail({
                 />
                 <MenuItem
                   label="Mark unread"
-                  disabledReason={
-                    markUnreadBlocker(status, isActive, c.lastActivityAt !== null) ?? undefined
-                  }
+                  disabledReason={markUnreadBlocker(status, c.lastActivityAt !== null) ?? undefined}
                   onSelect={() => {
                     onMarkUnread(c.id);
                     setMenuFor(null);
