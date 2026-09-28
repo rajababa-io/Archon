@@ -154,6 +154,7 @@ import { findCommandFiles } from '@archon/core/utils/commands';
 import { conversationCheckout } from '@archon/core/utils/conversation-checkout';
 import { DEPLOY_VERDICTS, type DeployStatus, getDeployStatus } from '../services/deploy-status';
 import { registerProjectDeployRoutes } from './project-deploy';
+import type { DeployHost } from '../services/workflow-deploy';
 import { resumeWorkflowRunFromServer } from '../services/workflow-resume-service';
 import { TURN_RESUMED_NOTICE, type ParkedTurnDispatcher } from '../services/deploy-park';
 
@@ -2290,7 +2291,8 @@ export function registerApiRoutes(
   app: OpenAPIHono,
   webAdapter: WebAdapter,
   lockManager: ConversationLockManager,
-  activePlatforms?: readonly string[]
+  activePlatforms?: readonly string[],
+  deployHost: DeployHost | null = null
 ): ApiRoutesHandle {
   app.openAPIRegistry.register('DagNodeSseEvent', dagNodeSseEventSchema);
 
@@ -6743,13 +6745,17 @@ export function registerApiRoutes(
     }
   });
 
-  // The per-project deploy row (#211). Running counts are the same two the
+  // The per-project deploy bar (#211, #226). Running counts are the same two the
   // health route reports, so the Deploy now confirm and the drain agree.
-  registerProjectDeployRoutes(app, async () => {
-    const stats = lockManager.getStats();
-    const runs = await workflowDb.getRunningWorkflows();
-    return { chats: stats.active, workflows: runs.length };
-  });
+  registerProjectDeployRoutes(
+    app,
+    async () => {
+      const stats = lockManager.getStats();
+      const runs = await workflowDb.getRunningWorkflows();
+      return { chats: stats.active, workflows: runs.length };
+    },
+    deployHost
+  );
 
   /**
    * GET/PATCH /api/projects/:projectId/presentation — the console's own view of

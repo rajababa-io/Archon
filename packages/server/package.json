@@ -69,6 +69,9 @@
       "src/services/deploy-control.test.ts"
     ],
     [
+      "src/services/workflow-deploy.test.ts"
+    ],
+    [
       "src/services/human-pass.test.ts"
     ],
     [

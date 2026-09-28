@@ -137,20 +137,22 @@ interface RawHistory {
 
 /**
  * The merged PRs on the branch since the live commit, from GitHub's own commit
- * history and PR associations — never from commit subjects.
+ * history and PR associations — never from commit subjects. A null `liveSha`
+ * means nothing has been deployed yet, so the whole page is waiting.
  *
  * Exported for tests; the route calls {@link readWaiting}.
  */
-export function waitingFromHistory(raw: unknown, liveSha: string): Waiting | null {
+export function waitingFromHistory(raw: unknown, liveSha: string | null): Waiting | null {
   const target = (raw as RawHistory).repository?.ref?.target;
   const tip = target?.oid;
   if (tip === undefined) return null;
   if (tip === liveSha) return { tipSha: tip, prs: [], more: false };
 
+  const nodes = target?.history?.nodes ?? [];
   const prs: WaitingPr[] = [];
   const seen = new Set<number>();
   let reachedLive = false;
-  for (const node of target?.history?.nodes ?? []) {
+  for (const node of nodes) {
     if (node === null || node === undefined) continue;
     if (node.oid === liveSha) {
       reachedLive = true;
@@ -162,7 +164,8 @@ export function waitingFromHistory(raw: unknown, liveSha: string): Waiting | nul
       prs.push({ number: pr.number, title: pr.title ?? '', url: pr.url ?? '' });
     }
   }
-  return { tipSha: tip, prs, more: !reachedLive };
+  const more = liveSha === null ? nodes.length >= HISTORY_PAGE : !reachedLive;
+  return { tipSha: tip, prs, more };
 }
 
 /** Held briefly per (project, live) so a header poll is not a GitHub call. */
@@ -172,13 +175,17 @@ const waitingCache = new Map<
   { at: number; value: Waiting | null; reason: string | null }
 >();
 
+/**
+ * What has merged along `branch` since `liveSha`. Null `liveSha` means nothing
+ * from this branch is live yet — a caller that merely cannot tell what is live
+ * must say so itself rather than pass null.
+ */
 export async function readWaiting(
   codebase: Codebase,
   branch: string,
   liveSha: string | null
 ): Promise<{ waiting: Waiting | null; reason: string | null }> {
-  if (liveSha === null) return { waiting: null, reason: 'live-unknown' };
-  const key = `${codebase.id}:${branch}:${liveSha}`;
+  const key = `${codebase.id}:${branch}:${liveSha ?? ''}`;
   const hit = waitingCache.get(key);
   if (hit !== undefined && Date.now() - hit.at < WAITING_TTL_MS) {
     return { waiting: hit.value, reason: hit.reason };
@@ -219,6 +226,7 @@ export function resetWaitingCache(): void {
 // ─── The view the header draws ───────────────────────────────────────────────
 
 export interface ProjectDeployView {
+  method: 'archon-host';
   deployOnMerge: boolean;
   branch: string;
   live: { sha: string | null; deployedAt: string | null };
@@ -248,8 +256,12 @@ export async function getProjectDeployView(
     readHistory(dir),
     getDeployStatus(dir),
   ]);
-  const { waiting, reason } = await readWaiting(codebase, setting.branch, liveSha);
+  const { waiting, reason } =
+    liveSha === null
+      ? { waiting: null, reason: 'live-unknown' }
+      : await readWaiting(codebase, setting.branch, liveSha);
   return {
+    method: 'archon-host',
     deployOnMerge: setting.deployOnMerge,
     branch: setting.branch,
     live: { sha: liveSha, deployedAt: deployedAt(history, liveSha) },
@@ -269,6 +281,8 @@ export interface DeployLogEntry {
     | 'toggle_off'
     | 'deploy_requested'
     | 'deploy_cancelled'
+    /** A workflow deploy's run began. */
+    | 'started'
     | 'held'
     | 'ok'
     | 'failed'
