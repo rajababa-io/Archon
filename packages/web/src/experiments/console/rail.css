@@ -2,8 +2,9 @@
  * The rail, ported from the prototype rather than re-derived.
  *
  * Every number here was arrived at in the mockup and tested there: the icon
- * column at 23px, the row height pinned to the icon, the reserved action slot,
- * the 63px collapsed width that keeps every glyph exactly where it was. They
+ * column behind a 17px grip gutter, the row height pinned to the icon, the
+ * reserved action slot, the collapsed width that keeps every glyph exactly
+ * where it was. They
  * are expressed against the density and type tokens, so the five text sizes
  * and both densities fall out of one rule instead of two hand-tuned layouts
  * that drift apart.
@@ -13,6 +14,12 @@
  * is that tall; `h-[27px]` is a number someone measured once.
  */
 
+/* A row's content line: the 17px icon, until the label outgrows it. At L and
+   XL body text is taller than 17px, and a 17px line clipped every descender
+   in the rail — "Settings", "projects". */
+.console-root {
+  --rail-line: max(17px, 1.3 * var(--text-body));
+}
 .rail-row {
   display: flex;
   align-items: center;
@@ -27,11 +34,11 @@
   transition:
     background-color 0.11s,
     color 0.11s;
-  /* A rail row is exactly as tall as its ICON — never as tall as its contents.
-     Labels, counts and keycaps are all taller than 17px, so a row that sized
+  /* A rail row is exactly as tall as its content LINE — never as tall as its
+     contents. Counts and keycaps can be taller than the line, so a row that sized
      itself to them shrank when they hid and grew when they came back. Six rows
      of that is a rail that visibly reflows as you move through it. */
-  height: calc(17px + 2 * var(--row-y));
+  height: calc(var(--rail-line) + 2 * var(--row-y));
   box-sizing: border-box;
   overflow: hidden;
   cursor: pointer;
@@ -40,6 +47,7 @@
   background: var(--surface-hover);
 }
 .rail-row[aria-current='true'],
+.rail-row[aria-current='page'],
 .rail-row[aria-pressed='true'] {
   background: var(--surface-hover);
 }
@@ -81,14 +89,15 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-body);
-  /* Matched to the icon so the text can never be what makes a row tall. */
-  line-height: 17px;
+  /* Matched to the row so the text can never be what makes a row tall. */
+  line-height: var(--rail-line);
   color: var(--text-secondary);
 }
 .rail-row:hover .rail-text {
   color: var(--text-primary);
 }
 .rail-row[aria-current='true'] .rail-text,
+.rail-row[aria-current='page'] .rail-text,
 .rail-row[aria-pressed='true'] .rail-text {
   color: var(--text-primary);
   font-weight: 500;
@@ -180,21 +189,27 @@
 }
 
 /* ── COLLAPSE AND PEEK ──────────────────────────────────────────────────
-   Ported from the prototype, including why 63px.
+   The collapsed rail is exactly as wide as the icon COLUMN, with the same
+   space on both sides of the glyph: the section's side padding plus the 17px
+   grip gutter, then the 17px glyph, then the same again on the right.
 
-   The collapsed rail is exactly as wide as the icon COLUMN — the same left
-   offset (23px: 6px body padding + the 17px grip gutter), the same 17px glyph,
-   the same 23px on the right. 63px, not a round 50.
+   The padding is in rem (the sections use Tailwind's px-2.5) and so grows with
+   the text-size setting. A pixel width does not, which is what pushed the
+   glyphs against the right edge and clipped their highlights at L and XL. So
+   the width is computed from the same two numbers the glyph's position is.
 
-   Why it matters: at 50px the rows had to center their icons, so peeking moved
-   every glyph 6.5px to the right. Nothing should move. The panel gets wider;
-   the icon column stays exactly where it was, and the labels arrive beside it.
-   That is what makes it read as a slide rather than a jump. */
+   Why derive it at all rather than center the icons: at a fixed width the
+   rows had to center their icons, so peeking moved every glyph sideways.
+   Nothing should move. The panel gets wider; the icon column stays exactly
+   where it was, and the labels arrive beside it. */
+.console-root {
+  --rail-collapsed-w: calc(2 * (0.625rem + 17px) + 17px);
+}
 .rail-shell {
   position: relative;
 }
 .rail-spacer {
-  width: 63px;
+  width: var(--rail-collapsed-w);
   flex: 0 0 auto;
 }
 .rail-panel.is-collapsed {
@@ -203,8 +218,8 @@
   bottom: 0;
   left: 0;
   z-index: 60;
-  width: 63px !important;
-  flex-basis: 63px !important;
+  width: var(--rail-collapsed-w) !important;
+  flex-basis: var(--rail-collapsed-w) !important;
   transition: width 0.14s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
@@ -254,6 +269,15 @@
 }
 .rail-panel.is-collapsed .rail-grip,
 .rail-panel.is-peeking .rail-grip {
+  display: none;
+}
+/* Collapsed, the trailing slots are hidden but some are still laid out a few
+   pixels past the edge, and the list grew a horizontal scrollbar for them. */
+.rail-panel.is-collapsed .rail-scroll {
+  overflow-x: hidden;
+}
+/* There is no width to resize while collapsed. */
+.rail-panel.is-collapsed .rail-resize {
   display: none;
 }
 
@@ -974,5 +998,23 @@
    It stays a `rail-hide` so the peek fades it in with the other labels. */
 .rail-panel.is-collapsed .rail-owner.rail-hide {
   display: flex;
+  visibility: hidden;
+  position: relative;
+}
+/* The label's empty box would otherwise read as a gap in the list. A glyph-
+   wide rule in its place says what the gap is: one account's projects end and
+   the next one's begin. It takes over from the separator above the column
+   header, which would make two rules in a row. */
+.rail-panel.is-collapsed .rail-owner.rail-hide::after {
+  content: '';
+  visibility: visible;
+  position: absolute;
+  left: 17px;
+  right: 17px;
+  top: 50%;
+  height: 1px;
+  background: var(--border-bright);
+}
+.rail-panel.is-collapsed .rail-sep {
   visibility: hidden;
 }
