@@ -35,6 +35,7 @@ const chat = (
     sortOrder: null,
     lastReadAt: null,
     ready: false,
+    projectId: null,
   };
   return { chat: summary, projectId };
 };

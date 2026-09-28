@@ -24,6 +24,7 @@ function found(
       sortOrder: null,
       lastReadAt: null,
       ready: false,
+      projectId: null,
     },
   };
 }

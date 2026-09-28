@@ -28,6 +28,9 @@ export const listConversationsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().optional(),
   platform: z.string().optional(),
   codebaseId: z.string().optional(),
+  // 'true' leaves out chats with no project, from the rows and the counts
+  // alike — the every-project chat list has nowhere to open one.
+  inProject: z.enum(['true', 'false']).optional(),
   // Non-enforcing "mine" filter: 'true' restricts to the caller's own
   // conversations when an identity resolves. Default lists everything. Enum
   // makes the boolean contract explicit (the handler treats only 'true' as on).

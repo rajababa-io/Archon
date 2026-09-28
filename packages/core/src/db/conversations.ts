@@ -232,6 +232,13 @@ export interface ListConversationsOptions {
   limit?: number;
   platformType?: string;
   codebaseId?: string;
+  /**
+   * Only conversations that belong to a project. The every-project chat list
+   * cannot show a chat with no codebase — it has nowhere to open it — so the
+   * rows AND the counts have to leave those out, or the count promises chats
+   * the list never draws.
+   */
+  inProject?: boolean;
   excludeEmpty?: boolean;
   /**
    * Non-enforcing "mine" filter: when set, restrict to conversations attributed
@@ -293,6 +300,7 @@ export async function listConversations(
     limit = 50,
     platformType,
     codebaseId,
+    inProject = false,
     excludeEmpty = false,
     userId,
     archived = 'active',
@@ -330,6 +338,8 @@ export async function listConversations(
     params.push(codebaseId);
     where += ` AND codebase_id = $${String(params.length)}`;
   }
+
+  if (inProject) where += ' AND codebase_id IS NOT NULL';
 
   if (userId) {
     params.push(userId);

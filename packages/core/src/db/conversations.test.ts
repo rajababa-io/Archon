@@ -588,6 +588,20 @@ describe('conversations', () => {
       expect(page.counts).toEqual({ open: 0, done: 0, all: 0 });
     });
 
+    test('inProject narrows the rows and the counts alike', async () => {
+      // The every-project chat list cannot open a chat with no codebase. If
+      // only the page left those out, the count would promise chats the list
+      // never draws.
+      mockQuery.mockClear();
+      mockQuery.mockResolvedValueOnce(createQueryResult([]));
+      mockQuery.mockResolvedValueOnce(createQueryResult([]));
+      await listConversations({ inProject: true, state: 'open' });
+
+      expect(String(mockQuery.mock.calls[0]?.[0])).toContain('codebase_id IS NOT NULL');
+      expect(String(mockQuery.mock.calls[1]?.[0])).toContain('codebase_id IS NOT NULL');
+      expect(await sqlOf('open')).not.toContain('codebase_id IS NOT NULL');
+    });
+
     test('the two filters are separate clauses on separate columns', async () => {
       // `deleted_at` says whether a row was removed; `completed_at` says
       // whether the work landed. Collapsing them into one clause is what made

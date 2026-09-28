@@ -154,6 +154,7 @@ export function ConsoleApp(): ReactElement {
                 mounted above the page so navigation never unmounts it. */}
             <Route element={<ProjectLayout />}>
               <Route index element={<RunsPage />} />
+              <Route path="chat" element={<ChatPage />} />
               <Route path="p/:projectId" element={<RunsPage />} />
               <Route path="p/:projectId/chat" element={<ChatPage />} />
               <Route path="p/:projectId/issues" element={<IssuesPage />} />

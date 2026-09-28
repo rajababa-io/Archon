@@ -18,7 +18,9 @@ import { useLiveChats } from '../lib/live-chats';
 import { useTabSignal } from '../lib/use-tab-signal';
 import { chatStatuses } from '../primitives/tab-signal';
 import { useEntity, invalidate } from '../store/cache';
-import { K } from '../store/keys';
+import { ALL_SCOPE, K } from '../store/keys';
+import { getDisplayName, projectLabel } from '../lib/display-name';
+import type { Project } from '../primitives/project';
 import {
   awaitingInputIds,
   chatStatus,
@@ -97,17 +99,20 @@ const LIST_POLL_MS = 8000;
  * shared MessageItem/ToolCallItem cards inside a StreamContextProvider.
  */
 export function ChatPage(): ReactElement {
-  const { projectId } = useParams<{ projectId: string }>();
+  // No project in the route is the All projects page's Chat tab: every
+  // project's chats in one rail. The chat being read then supplies the project
+  // — its runs, its draft, its slash commands — so everything below that needs
+  // one reads `projectId`, and only the list and the rail read the route.
+  const { projectId: routeProjectId } = useParams<{ projectId: string }>();
+  const everyProject = routeProjectId === undefined;
+  const listScope = routeProjectId ?? ALL_SCOPE;
 
   // Which lifecycle scope the rail is showing. Part of the cache key, or
   // switching scope would render the previous scope's list.
   const [scope, setScope] = useState<ChatScope>('open');
   const { data: conversationList, error: conversationsError } = useEntity<skill.ConversationList>(
-    projectId !== undefined ? `${K.conversations(projectId)}:${scope}` : 'noop:no-project-convs',
-    () =>
-      projectId !== undefined
-        ? skill.listConversations(projectId, scope)
-        : Promise.resolve(skill.EMPTY_CONVERSATION_LIST)
+    `${K.conversations(listScope)}:${scope}`,
+    () => skill.listConversations(routeProjectId ?? null, scope)
   );
   const conversations = conversationList?.chats;
   // Every scope's size arrives with whichever scope is being shown, so the
@@ -118,6 +123,17 @@ export function ChatPage(): ReactElement {
 
   // Active conversation: most-recent web conversation, else null until first send.
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const activeConversation = (conversations ?? []).find(c => c.id === activeConvId);
+  const projectId = routeProjectId ?? activeConversation?.projectId ?? undefined;
+
+  const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
+  const labelOf = useCallback(
+    (id: string): string => {
+      const name = (projects ?? []).find(p => p.id === id)?.name ?? id;
+      return projectLabel(name, getDisplayName(id, name));
+    },
+    [projects]
+  );
   // Set when the user asks for a new chat. Without it the auto-select effect
   // below would immediately put them back in the most recent conversation, so
   // the button would appear to do nothing.
@@ -133,16 +149,16 @@ export function ChatPage(): ReactElement {
     setStartingNew(false);
     setSending(false);
     setPendingUser(null);
-  }, [projectId]);
+  }, [routeProjectId]);
 
   useEffect(() => {
-    if (activeConvId !== null || startingNew || projectId === undefined) return;
+    if (activeConvId !== null || startingNew) return;
     const web = (conversations ?? []).filter(c => c.platformType === 'web');
     if (web.length === 0) return;
     // byMostRecent already ordered the list, so [0] is the newest.
-    const open = chooseOpenChat(readLastChat(projectId), web);
+    const open = chooseOpenChat(readLastChat(listScope), web);
     if (open !== null) setActiveConvId(open);
-  }, [conversations, activeConvId, startingNew, projectId]);
+  }, [conversations, activeConvId, startingNew, listScope]);
 
   const selectConversation = (id: string | null): void => {
     setError(null);
@@ -157,7 +173,7 @@ export function ChatPage(): ReactElement {
     sawServerWorkingRef.current = false;
     // The echo belongs to the chat it was typed in, not to the page.
     setPendingUser(null);
-    if (projectId !== undefined) writeLastChat(projectId, id);
+    writeLastChat(listScope, id);
   };
 
   const selectConversationRef = useRef(selectConversation);
@@ -178,9 +194,11 @@ export function ChatPage(): ReactElement {
   const invalidateConversationsRef = useRef<() => void>(() => undefined);
 
   const invalidateConversations = (): void => {
-    if (projectId === undefined) return;
-    invalidate(`${K.conversations(projectId)}:${scope}`);
-    invalidate(K.conversations(projectId));
+    invalidate(`${K.conversations(listScope)}:${scope}`);
+    invalidate(K.conversations(listScope));
+    // A chat changed from the every-project list is also in its own
+    // project's list, which the project header's count reads.
+    if (everyProject && projectId !== undefined) invalidate(K.conversations(projectId));
   };
   invalidateConversationsRef.current = invalidateConversations;
 
@@ -188,7 +206,6 @@ export function ChatPage(): ReactElement {
   // interval stable across renders: depending on the callback itself would tear
   // the timer down and rebuild it on every keystroke in the composer.
   useEffect(() => {
-    if (projectId === undefined) return;
     const id = setInterval(() => {
       if (document.visibilityState !== 'visible') return;
       invalidateConversationsRef.current();
@@ -203,7 +220,7 @@ export function ChatPage(): ReactElement {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [projectId]);
+  }, [listScope]);
 
   /**
    * Mark a chat's unit of work finished, or reopen it.
@@ -444,12 +461,12 @@ export function ChatPage(): ReactElement {
    * to a RUN, and the run is what knows which conversation dispatched it; there
    * is no way to ask a conversation directly.
    */
-  const { data: runFeed } = useEntity<{ runs: Run[] }>(
-    projectId === undefined ? 'noop:no-project-runs' : K.runs(projectId),
-    () =>
-      projectId === undefined
-        ? Promise.resolve({ runs: [] })
-        : skill.listRuns({ codebaseId: projectId, limit: skill.RUN_LIMIT })
+  const { data: runFeed } = useEntity<{ runs: Run[] }>(K.runs(listScope), () =>
+    skill.listRuns(
+      routeProjectId === undefined
+        ? { limit: skill.RUN_LIMIT }
+        : { codebaseId: routeProjectId, limit: skill.RUN_LIMIT }
+    )
   );
   const awaitingIds = useMemo(() => awaitingInputIds(runFeed?.runs ?? []), [runFeed?.runs]);
   // The same feed, for chats whose run is moving rather than asking.
@@ -483,7 +500,8 @@ export function ChatPage(): ReactElement {
   // ⌘⇧O starts a new chat. A window listener, not the keymap: the keymap is
   // off while the composer has focus, which on this page is nearly always.
   useEffect(() => {
-    if (projectId === undefined) return;
+    // A new chat is started inside a project; the every-project list has none.
+    if (everyProject) return;
     const onKey = (e: KeyboardEvent): void => {
       if (!isNewChatKey(e) || modalIsOpen()) return;
       e.preventDefault();
@@ -493,7 +511,7 @@ export function ChatPage(): ReactElement {
     return (): void => {
       window.removeEventListener('keydown', onKey);
     };
-  }, [projectId]);
+  }, [everyProject]);
 
   /**
    * A correction for the gap a reconnect does not cover: the stream stays UP
@@ -702,12 +720,7 @@ export function ChatPage(): ReactElement {
     })();
   };
 
-  if (projectId === undefined) {
-    return <EmptyState title="No project selected." />;
-  }
-
   const messageList = messages ?? [];
-  const activeConversation = (conversations ?? []).find(c => c.id === activeConvId);
   // Which chat's summary is open, and whether it opened straight into the
   // editor. Keyed by conversation id rather than a boolean: the rail can open
   // the summary of a chat that is not the one being read.
@@ -777,7 +790,7 @@ export function ChatPage(): ReactElement {
       <ConversationRail
         // Remounted per project: the filter text, the selection and any open
         // menu all name chats in the project being left.
-        key={projectId}
+        key={listScope}
         conversations={conversations ?? []}
         omitted={
           conversationList === undefined
@@ -796,7 +809,8 @@ export function ChatPage(): ReactElement {
         onScopeChange={setScope}
         doneCount={counts.done}
         pendingNew={startingNew && activeConvId === null}
-        projectId={projectId}
+        projectId={routeProjectId ?? null}
+        projectLabel={labelOf}
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="relative min-h-0 flex-1">
@@ -808,10 +822,17 @@ export function ChatPage(): ReactElement {
             {/* Match the composer's centered 940px column (design: .stream-inner) */}
             <div ref={contentRef} className="mx-auto max-w-[940px]">
               {rendered.length === 0 && !working ? (
-                <EmptyState
-                  title={activeConvId === null ? 'New chat.' : 'No messages yet.'}
-                  hint="Ask the agent about this project, or tell it what to run."
-                />
+                everyProject && activeConvId === null ? (
+                  <EmptyState
+                    title="Pick a chat."
+                    hint="Every project's chats are on the left. A new chat starts inside its project."
+                  />
+                ) : (
+                  <EmptyState
+                    title={activeConvId === null ? 'New chat.' : 'No messages yet.'}
+                    hint="Ask the agent about this project, or tell it what to run."
+                  />
+                )
               ) : (
                 <StreamContextProvider
                   value={{
@@ -882,7 +903,7 @@ export function ChatPage(): ReactElement {
           ) : null}
         </div>
 
-        {activeConvDbId !== null ? (
+        {activeConvDbId !== null && projectId !== undefined ? (
           <ChatRunsPanel conversationDbId={activeConvDbId} projectId={projectId} />
         ) : null}
 
@@ -901,29 +922,38 @@ export function ChatPage(): ReactElement {
           </div>
         ) : null}
 
-        {/* Keyed by conversation: the composer holds its own in-flight text, so
+        {/* No composer with nothing to send to: the every-project list
+            cannot start a chat, because a chat has to belong to a project. */}
+        {projectId === undefined ? null : (
+          <>
+            {/* Keyed by conversation: the composer holds its own in-flight text, so
             switching chats must remount it to reseed from that chat's draft. */}
-        <ChatComposer
-          key={draftKey}
-          onSend={onSend}
-          draft={draft}
-          onDraftChange={setDraft}
-          working={working}
-          onStop={activeConvId === null ? undefined : turn.stop}
-          stopping={turn.stopping}
-          onPullBack={turn.pullBackLast}
-          onReachAsk={askWaiting ? reachAsk : undefined}
-          controlRef={turn.controlRef}
-          draftKey={draftKey}
-          history={sent}
-          projectId={projectId}
-          suggestion={working ? null : suggestion}
-          chat={
-            activeConversation !== undefined
-              ? { conversationId: activeConversation.id, provider: activeConversation.assistant }
-              : undefined
-          }
-        />
+            <ChatComposer
+              key={draftKey}
+              onSend={onSend}
+              draft={draft}
+              onDraftChange={setDraft}
+              working={working}
+              onStop={activeConvId === null ? undefined : turn.stop}
+              stopping={turn.stopping}
+              onPullBack={turn.pullBackLast}
+              onReachAsk={askWaiting ? reachAsk : undefined}
+              controlRef={turn.controlRef}
+              draftKey={draftKey}
+              history={sent}
+              projectId={projectId}
+              suggestion={working ? null : suggestion}
+              chat={
+                activeConversation !== undefined
+                  ? {
+                      conversationId: activeConversation.id,
+                      provider: activeConversation.assistant,
+                    }
+                  : undefined
+              }
+            />
+          </>
+        )}
       </div>
       {activeConvId !== null ? (
         <ChangesPanel conversationId={activeConvId} working={working} />

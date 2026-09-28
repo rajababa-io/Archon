@@ -27,6 +27,7 @@ const conv = (over: Partial<ConversationSummary> = {}): ConversationSummary => (
   sortOrder: null,
   lastReadAt: null,
   ready: false,
+  projectId: null,
   ...over,
 });
 

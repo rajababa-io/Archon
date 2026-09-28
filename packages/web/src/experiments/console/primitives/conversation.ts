@@ -91,6 +91,12 @@ export interface ConversationSummary {
    * already cleared this, so it cannot be both.
    */
   ready: boolean;
+  /**
+   * The project (codebase id) this chat belongs to, or null for a chat with
+   * none. A project's own list never needs it; the every-project list does,
+   * to say whose chat a row is and where its runs and drafts live.
+   */
+  projectId: string | null;
   /** Short summary of the chat, or null when nothing has written one yet. */
   /** When the summary was last written — what makes staleness visible. */
   /** True when a human wrote it, so the agent leaves it alone. */
@@ -109,6 +115,7 @@ interface RawConversation {
   ask_candidate?: string | null;
   last_read_at?: string | null;
   ready_at?: string | null;
+  codebase_id?: string | null;
 }
 
 /**
@@ -141,6 +148,7 @@ export function toConversationSummary(raw: RawConversation): ConversationSummary
     // than over-reports: a missing mark costs a glance, a false one would say
     // work had landed when it had not.
     ready: raw.ready_at != null,
+    projectId: raw.codebase_id ?? null,
   };
 }
 

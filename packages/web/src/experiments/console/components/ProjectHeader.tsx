@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { useLocation, useParams } from 'react-router';
-import { ProjectViewTabs } from './ProjectViewTabs';
+import { AllProjectsTabs, ProjectViewTabs } from './ProjectViewTabs';
 import { DeployStrip } from './DeployStrip';
 import { DeployRow } from './DeployRow';
 import { DeploySetupRow } from './DeploySetupRow';
@@ -163,9 +163,13 @@ export function ProjectHeader(): ReactElement {
           already drifted 1.5px off the tabs it was copying. */}
       <div className="flex min-h-[26px] items-end justify-between gap-3">
         {projectId === undefined ? (
-          <p className="min-w-0 truncate pb-1 text-small text-text-tertiary">
-            {allProjectsSubtitle(projects?.length ?? 0, counts)}
-          </p>
+          <>
+            <AllProjectsTabs active={activeProjectTab(pathname)} />
+            {/* In the place a project's path sits: the second line of context. */}
+            <p className="min-w-0 truncate pb-1 text-small text-text-tertiary">
+              {allProjectsSubtitle(projects?.length ?? 0, counts)}
+            </p>
+          </>
         ) : (
           <>
             <ProjectViewTabs projectId={projectId} active={activeProjectTab(pathname)} />
