@@ -20,7 +20,9 @@ inputs:
   spec:
     default: ""
     description: >-
-      Repository-relative path to the spec (required; the run refuses without it). It must contain a `## Phases` section
+      Repository-relative path to the spec. When empty (a run started from chat),
+      the first existing `.md` path in the trigger message is the spec; with
+      neither, the run refuses before any spend. It must contain a `## Phases` section
       whose `### ` subsections are the phases, in build order; each subsection's
       text is that phase's work order. The rest of the file is context every
       phase reads.
