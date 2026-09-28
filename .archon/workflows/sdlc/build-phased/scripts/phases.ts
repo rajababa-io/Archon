@@ -24,7 +24,7 @@ export function parsePhases(markdown: string): { title: string; body: string }[]
   let inFence = false;
   for (const line of lines) {
     if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
-    if (!inFence && /^## /.test(line)) {
+    if (!inFence && line.startsWith('## ')) {
       inSection = /^##\s+Phases\s*$/i.test(line);
       continue;
     }
@@ -73,12 +73,12 @@ function main(): void {
   });
   writeState(artifacts, { spec, phases, next: 0, attempt: 1, stopped: '', log: [] });
 
-  const last = phases[phases.length - 1] as Phase;
+  const last = phases[phases.length - 1];
   emit({
     total: phases.length,
     staged: phases.length > 1,
-    last_title: last.title,
-    last_file: last.file,
+    last_title: last?.title ?? '',
+    last_file: last?.file ?? '',
   });
 }
 
