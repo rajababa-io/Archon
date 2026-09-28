@@ -606,7 +606,7 @@ Signup uses email + password (no email verification by default). **Signup postur
 | `AUTH_SERVICE_PORT` | Port for the auth service container | `9000` |
 | `COOKIE_MAX_AGE` | Auth cookie lifetime in seconds | `86400` |
 | `ARCHON_DRAIN_TOKEN` | Bearer token for the `/internal/drain` endpoints, which stop the server accepting new work and park what is still running, so a deploy can replace the container without losing a turn in flight. Unset: the endpoints are not registered. Never proxy `/internal/*`. | -- |
-| `ARCHON_CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain (`yourteam.cloudflareaccess.com`). With `ARCHON_CF_ACCESS_AUD`, lets the server verify that a console action came from a signed-in person. Deploy on Merge, Deploy now and Cancel deploy are refused without it. | -- |
+| `ARCHON_CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain (`yourteam.cloudflareaccess.com`). With `ARCHON_CF_ACCESS_AUD`, lets the server verify that a console action came from a signed-in person. Set up deploys, Deploy on Merge, Deploy now and Cancel deploy are refused without it. | -- |
 | `ARCHON_CF_ACCESS_AUD` | Audience (AUD) tag of the Cloudflare Access application in front of Archon. | -- |
 
 ### Telemetry

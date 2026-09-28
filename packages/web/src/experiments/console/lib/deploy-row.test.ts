@@ -1,7 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import type { DeployDrain, DeployStatus } from '../skills/activeChats';
-import { parseDeployLog, parseProjectDeploy, type ProjectDeploy } from '../skills/deploy';
 import {
+  parseDeployAnswer,
+  parseDeployLog,
+  parseProjectDeploy,
+  type HostDeploy,
+  type WorkflowDeploy,
+} from '../skills/deploy';
+import {
+  blockedTitle,
   deployConfirm,
   deployProgress,
   deployProgressText,
@@ -23,8 +30,9 @@ const PRS = [
   { number: 155, title: 'Every chat image opens', url: 'https://github.com/x/y/pull/155' },
 ];
 
-function deploy(overrides: Partial<ProjectDeploy> = {}): ProjectDeploy {
+function deploy(overrides: Partial<HostDeploy> = {}): HostDeploy {
   return {
+    method: 'archon-host',
     deployOnMerge: false,
     branch: 'deploy',
     live: { sha: LIVE, deployedAt: '2026-09-27T07:00:00Z' },
@@ -46,6 +54,7 @@ describe('deployRowView — the mockup states', () => {
       live: { sha: 'a6dd05e0', ago: 'deployed 5h ago' },
       deployOnMerge: true,
       right: { kind: 'none' },
+      blocked: null,
     });
   });
 
@@ -204,6 +213,7 @@ describe('deployProgress', () => {
 describe('parsing', () => {
   test('reads a full answer and drops malformed PRs', () => {
     const parsed = parseProjectDeploy({
+      method: 'archon-host',
       deployOnMerge: true,
       branch: 'deploy',
       live: { sha: LIVE, deployedAt: null },
@@ -216,13 +226,20 @@ describe('parsing', () => {
     });
     expect(parsed?.waiting?.prs).toEqual([PRS[0]]);
     expect(parsed?.waiting?.more).toBe(true);
-    expect(parsed?.running).toEqual({ chats: 2, workflows: 0 });
+    expect(parsed?.method === 'archon-host' ? parsed.running : null).toEqual({
+      chats: 2,
+      workflows: 0,
+    });
     expect(parsed?.canAct).toBe(false);
   });
 
   test('a status this build cannot read yields no row rather than a guessed one', () => {
     expect(
-      parseProjectDeploy({ deployOnMerge: true, status: { phase: 'teleporting' } })
+      parseProjectDeploy({
+        method: 'archon-host',
+        deployOnMerge: true,
+        status: { phase: 'teleporting' },
+      })
     ).toBeNull();
   });
 
@@ -235,5 +252,126 @@ describe('parsing', () => {
         ],
       })
     ).toEqual([{ at: '2026-09-27T11:00:00Z', kind: 'ok', actor: null, sha: LIVE, detail: null }]);
+  });
+});
+
+function workflowDeploy(overrides: Partial<WorkflowDeploy> = {}): WorkflowDeploy {
+  return {
+    method: 'workflow',
+    workflowName: 'deploy',
+    deployOnMerge: false,
+    branch: 'main',
+    live: { sha: LIVE, deployedAt: '2026-09-27T07:00:00Z' },
+    waiting: null,
+    waitingReason: null,
+    cancellable: false,
+    canAct: true,
+    run: null,
+    blocked: null,
+    ...overrides,
+  };
+}
+
+describe('deployRowView — a workflow deploy', () => {
+  test('idle reads like the host deploy: Live, the switch, Up to date', () => {
+    const view = deployRowView(workflowDeploy(), undefined, NOW);
+    expect(view).toEqual({
+      kind: 'idle',
+      live: { sha: 'a6dd05e0', ago: 'deployed 5h ago' },
+      deployOnMerge: false,
+      right: { kind: 'up-to-date' },
+      blocked: null,
+    });
+  });
+
+  test('a run in flight is the deploy in progress, cancellable only while it runs', () => {
+    const run = {
+      id: 'r1',
+      sha: INCOMING,
+      status: 'running' as const,
+      startedAt: '2026-09-27T11:59:00Z',
+    };
+    expect(deployRowView(workflowDeploy({ run, cancellable: true }), undefined, NOW)).toEqual({
+      kind: 'deploying',
+      live: { sha: 'a6dd05e0', ago: null },
+      progress: 'Deploying 86b91ff0 · running',
+      fraction: null,
+      showCancel: true,
+    });
+    const pending = deployRowView(
+      workflowDeploy({ run: { ...run, status: 'pending' } }),
+      undefined,
+      NOW
+    );
+    expect(pending.kind === 'deploying' ? pending.progress : null).toBe(
+      'Deploying 86b91ff0 · starting'
+    );
+  });
+
+  test('a missing workflow greys Deploy now and says why', () => {
+    const view = deployRowView(
+      workflowDeploy({ blocked: 'workflow-missing', workflowName: 'ship' }),
+      undefined,
+      NOW
+    );
+    expect(view.kind === 'idle' ? view.blocked : null).toBe(
+      'This project has no workflow named "ship"'
+    );
+    expect(blockedTitle('no-trigger-host', 'ship')).toContain('ARCHON_TRIGGER_HOST');
+  });
+});
+
+describe('parsing the GET answer', () => {
+  test('no deploy is the not-set-up bar with the picker defaults', () => {
+    expect(
+      parseDeployAnswer({
+        deploy: null,
+        setup: { branch: 'main', workflows: ['build', 'deploy', 7], workflow: 'deploy' },
+        canAct: true,
+      })
+    ).toEqual({
+      kind: 'not-set-up',
+      setup: { branch: 'main', workflows: ['build', 'deploy'], workflow: 'deploy' },
+      canAct: true,
+    });
+  });
+
+  test('a default the list does not hold is not pre-selected', () => {
+    const answer = parseDeployAnswer({
+      deploy: null,
+      setup: { branch: null, workflows: ['build'], workflow: 'deploy' },
+    });
+    expect(answer?.kind === 'not-set-up' ? answer.setup : null).toEqual({
+      branch: null,
+      workflows: ['build'],
+      workflow: null,
+    });
+  });
+
+  test('a workflow deploy is read with its run and blocker', () => {
+    const answer = parseDeployAnswer({
+      deploy: {
+        method: 'workflow',
+        workflowName: 'deploy',
+        deployOnMerge: false,
+        branch: 'main',
+        live: { sha: null, deployedAt: null },
+        waiting: null,
+        waitingReason: null,
+        cancellable: true,
+        canAct: true,
+        run: { id: 'r1', sha: INCOMING, status: 'running', startedAt: '2026-09-27T11:59:00Z' },
+        blocked: 'restarting',
+      },
+    });
+    expect(answer?.kind === 'set-up' ? answer.deploy : null).toMatchObject({
+      method: 'workflow',
+      run: { id: 'r1', status: 'running' },
+      blocked: 'restarting',
+    });
+  });
+
+  test('a method this build does not know draws no bar', () => {
+    expect(parseDeployAnswer({ deploy: { method: 'teleport', deployOnMerge: true } })).toBeNull();
   });
 });

@@ -735,23 +735,41 @@ curl -N http://localhost:3090/api/stream/$CONV_ID
 
 ## Project deploy
 
-A project that deploys has a deploy row in the console header: what is live, the merged
-PRs not yet live, a **Deploy on Merge** switch, **Deploy now**, and **Cancel deploy**. A
-project with no deploy answers `{"deploy": null}` and gets no row.
+Every project has a deploy bar in the console header. A project with a deploy shows what
+is live, the merged PRs not yet live, a **Deploy on Merge** switch, **Deploy now**, and
+**Cancel deploy**. A project without one shows **Deploys: not set up** and a **Set up
+deploys** button.
+
+A project deploys one of two ways, named by its `method`:
+
+- `workflow` -- the project's own repository deploys it with an Archon workflow
+  (usually `.archon/workflows/deploy.yaml`). Deploy now runs that workflow on a checkout
+  cut from the branch tip; with Deploy on Merge on, a pull request merged into the branch
+  does the same. What is live is the commit of the newest deploy run that completed.
+  Starting a run needs `ARCHON_TRIGGER_HOST` on the server (see
+  [workflow triggers](/guides/workflow-triggers/)); without it Deploy now is refused.
+  Merges arrive through the GitHub webhook at `/webhooks/github`, so only repositories
+  whose webhook points at this install deploy on merge.
+- `archon-host` -- this install deploying itself through the host's request file. No
+  route creates it.
 
 | Method | Path | Who | Description |
 |--------|------|-----|-------------|
-| GET | `/api/projects/{projectId}/deploy` | any | Live commit, waiting PRs, the install's deploy status, and whether this request could act (`canAct`) |
+| GET | `/api/projects/{projectId}/deploy` | any | The deploy bar and whether this request could act (`canAct`). With no deploy: `{"deploy": null, "setup": {"branch", "workflows", "workflow"}, "canAct"}`, the picker's defaults |
+| PUT | `/api/projects/{projectId}/deploy` | person | Set up deploys: `{"branch": "main", "workflowName": "deploy"}`. Creates a `workflow` deploy with Deploy on Merge off and deploys nothing; `400` for a workflow the project does not have, `409` if it already has a deploy |
 | PATCH | `/api/projects/{projectId}/deploy` | person | `{"deployOnMerge": true \| false}` |
-| POST | `/api/projects/{projectId}/deploy` | person | Deploy now: `{"sha": "<the waiting tip>"}`; `409` if a deploy is already requested or the branch has moved |
-| DELETE | `/api/projects/{projectId}/deploy` | person | Cancel deploy; `409` once the swap has started |
-| GET | `/api/projects/{projectId}/deploy/log` | any | Toggle flips, Deploy now, Cancel, and every held, OK, failed and stopped deploy, newest first |
+| POST | `/api/projects/{projectId}/deploy` | person | Deploy now: `{"sha": "<the waiting tip>"}`; `409` if a deploy is already running, the branch has moved, or (for `workflow`) the workflow is missing |
+| DELETE | `/api/projects/{projectId}/deploy` | person | Cancel deploy: for `archon-host`, `409` once the swap has started; for `workflow`, cancels this project's running deploy run |
+| GET | `/api/projects/{projectId}/deploy/log` | any | Toggle flips, Deploy now, Cancel, and how each deploy went, newest first |
 
 **Person** means a request carrying a Cloudflare Access login pass
 (`Cf-Access-Jwt-Assertion`) that verifies against `ARCHON_CF_ACCESS_TEAM_DOMAIN` and
 `ARCHON_CF_ACCESS_AUD`. Anything else -- including every agent, which can reach the
 server directly -- gets `403`. With those two settings unset, every person-only action is
 refused.
+
+A workflow deploy runs as the Archon user of the person who pressed Deploy now; a merge
+deploy runs as the person who last set Deploy on Merge.
 
 A chat that runs `scripts/request-deploy.sh` asks as `merge`: the host deploys it only
 while Deploy on Merge is on, and otherwise records it in `deploy-history` as `HELD`.

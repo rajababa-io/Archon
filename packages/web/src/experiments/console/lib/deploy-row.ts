@@ -13,7 +13,14 @@
  */
 
 import type { DeployDrain, DeployStatus } from '../skills/activeChats';
-import type { DeployLogKind, DeployWaiting, ProjectDeploy } from '../skills/deploy';
+import type {
+  DeployBlocked,
+  DeployLogKind,
+  DeployWaiting,
+  HostDeploy,
+  ProjectDeploy,
+  WorkflowDeploy,
+} from '../skills/deploy';
 import { shortSha } from './deploy-strip';
 import { relativeTime } from './format';
 
@@ -101,7 +108,7 @@ export interface DeployConfirm {
  */
 export function deployConfirm(
   projectName: string,
-  running: ProjectDeploy['running']
+  running: HostDeploy['running']
 ): DeployConfirm | null {
   const what = countedParts([
     [running.chats, 'chat'],
@@ -196,6 +203,28 @@ export function deployProgressText(
   return parts.join(' · ');
 }
 
+/**
+ * A workflow deploy's progress: `Deploying 86b91ff0 · running`. The run
+ * reports no steps the bar could place, so there is no fraction to draw.
+ */
+export function workflowProgressText(run: NonNullable<WorkflowDeploy['run']>): string {
+  const state =
+    run.status === 'pending' ? 'starting' : run.status === 'paused' ? 'paused' : 'running';
+  return `Deploying ${shortSha(run.sha)} · ${state}`;
+}
+
+/** Why Deploy now is greyed, as its title says it. */
+export function blockedTitle(blocked: DeployBlocked, workflowName: string): string {
+  switch (blocked) {
+    case 'no-trigger-host':
+      return 'This server starts no workflow runs on its own: set ARCHON_TRIGGER_HOST to deploy with a workflow';
+    case 'restarting':
+      return 'Archon is restarting; deploy again once it is back';
+    case 'workflow-missing':
+      return `This project has no workflow named "${workflowName}"`;
+  }
+}
+
 export interface LiveView {
   /** The commit that is live, shortened. Null when the server does not know it. */
   sha: string | null;
@@ -220,6 +249,8 @@ export type DeployRowView =
       live: LiveView;
       deployOnMerge: boolean;
       right: DeployRowRight;
+      /** Deploy now is shown greyed with this title: pressing it could not deploy. */
+      blocked: string | null;
     }
   | {
       kind: 'deploying';
@@ -237,7 +268,16 @@ export function deployRowView(
 ): DeployRowView {
   const sha = deploy.live.sha === null ? null : shortSha(deploy.live.sha);
 
-  if (deploy.status.phase !== 'idle') {
+  if (deploy.method === 'workflow' && deploy.run !== null) {
+    return {
+      kind: 'deploying',
+      live: { sha, ago: null },
+      progress: workflowProgressText(deploy.run),
+      fraction: null,
+      showCancel: deploy.cancellable,
+    };
+  }
+  if (deploy.method === 'archon-host' && deploy.status.phase !== 'idle') {
     return {
       kind: 'deploying',
       live: { sha, ago: null },
@@ -263,7 +303,16 @@ export function deployRowView(
   } else {
     right = deploy.deployOnMerge ? { kind: 'none' } : { kind: 'up-to-date' };
   }
-  return { kind: 'idle', live: { sha, ago }, deployOnMerge: deploy.deployOnMerge, right };
+  const blocked =
+    deploy.method === 'workflow' && deploy.blocked !== null
+      ? blockedTitle(deploy.blocked, deploy.workflowName)
+      : null;
+  return { kind: 'idle', live: { sha, ago }, deployOnMerge: deploy.deployOnMerge, right, blocked };
+}
+
+/** The Live slot when no commit can be named. A workflow deploy may simply not have run yet. */
+export function liveMissingLabel(deploy: ProjectDeploy): string {
+  return deploy.method === 'workflow' ? 'not deployed yet' : 'unknown';
 }
 
 /** The title on every action while this browser cannot act. */
@@ -275,6 +324,7 @@ export const DEPLOY_LOG_LABEL: Record<DeployLogKind, string> = {
   toggle_off: 'Deploy on Merge turned off',
   deploy_requested: 'Deploy now pressed',
   deploy_cancelled: 'Cancel deploy pressed',
+  started: 'Deploy started',
   held: 'Held',
   ok: 'Deployed',
   failed: 'Failed',
