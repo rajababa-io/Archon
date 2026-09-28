@@ -168,6 +168,22 @@ async function hkdf(
 const RECORD_SIZE = 4096;
 
 /**
+ * A browser's subscription keys as bytes: an uncompressed P-256 point and a
+ * non-empty auth secret, or null when they cannot be encrypted to. The
+ * subscribe route refuses what this refuses, so a stored subscription never
+ * fails every push for a reason no retry can fix.
+ */
+export function readSubscriptionKeys(keys: {
+  p256dh: string;
+  auth: string;
+}): { uaPublic: Uint8Array; authSecret: Uint8Array } | null {
+  const uaPublic = decodeBase64Url(keys.p256dh);
+  const authSecret = decodeBase64Url(keys.auth);
+  if (uaPublic?.length !== 65 || authSecret === null || authSecret.length === 0) return null;
+  return { uaPublic, authSecret };
+}
+
+/**
  * Encrypt `plaintext` to a browser's subscription keys, as one `aes128gcm`
  * record with its header. `salt` and `local` are fixed only by the RFC test;
  * every real push draws fresh ones.
@@ -177,11 +193,9 @@ export async function encryptPayload(
   subscription: { p256dh: string; auth: string },
   fixed?: { salt: Uint8Array; local: EcdhKeyPair }
 ): Promise<Uint8Array> {
-  const uaPublic = decodeBase64Url(subscription.p256dh);
-  const authSecret = decodeBase64Url(subscription.auth);
-  if (uaPublic?.length !== 65 || authSecret === null || authSecret.length === 0) {
-    throw new Error('Push subscription keys are malformed');
-  }
+  const keys = readSubscriptionKeys(subscription);
+  if (keys === null) throw new Error('Push subscription keys are malformed');
+  const { uaPublic, authSecret } = keys;
   if (plaintext.length + 1 + 16 > RECORD_SIZE) {
     throw new Error(`Push payload is ${String(plaintext.length)} bytes; the limit is one record`);
   }

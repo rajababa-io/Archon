@@ -3,6 +3,7 @@
  */
 import { z } from '@hono/zod-openapi';
 import { NOTIFY_MODES } from '@archon/core/db/push';
+import { readSubscriptionKeys } from '../../services/web-push';
 
 /**
  * GET /api/push/vapid-key. Disabled names each unset variable, or the problem
@@ -23,7 +24,11 @@ export const pushVapidKeyResponseSchema = z
 export const pushSubscribeBodySchema = z
   .object({
     endpoint: z.string().url(),
-    keys: z.object({ p256dh: z.string().min(1), auth: z.string().min(1) }),
+    keys: z
+      .object({ p256dh: z.string(), auth: z.string() })
+      .refine(keys => readSubscriptionKeys(keys) !== null, {
+        message: 'p256dh must be an uncompressed P-256 key and auth a secret, both base64url',
+      }),
   })
   .openapi('PushSubscribeBody');
 
@@ -43,7 +48,7 @@ export const pushPrefsSchema = z
     /** Codebase ids of muted projects. */
     mutedProjects: z.array(z.string()),
     /** Platform conversation id → the chat's own mode. */
-    conversations: z.record(z.string(), z.enum(['muted', 'following'])),
+    conversations: z.record(z.string(), z.enum(NOTIFY_MODES).exclude(['default'])),
   })
   .openapi('PushPrefs');
 
@@ -54,7 +59,7 @@ export const pushPrefsChangeSchema = z
     z.object({
       scope: z.literal('project'),
       id: z.string().min(1),
-      mode: z.enum(['default', 'muted']),
+      mode: z.enum(NOTIFY_MODES).exclude(['following']),
     }),
     z.object({
       scope: z.literal('conversation'),

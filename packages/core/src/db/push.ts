@@ -140,20 +140,23 @@ export async function readNotifyPrefs(): Promise<NotifyPrefs> {
   return prefs;
 }
 
+/**
+ * Change some global triggers. The merge happens in SQL, not on a snapshot read
+ * first, so two changes to different triggers at once cannot undo each other.
+ * An untouched trigger is passed as NULL: kept on update, "on" when inserted.
+ */
 export async function setNotifyTriggers(triggers: Partial<NotifyTriggers>): Promise<void> {
-  const current = (await readNotifyPrefs()).triggers;
-  const next = { ...current, ...triggers };
   const now = getDialect().now();
   await pool.query(
     `INSERT INTO remote_agent_notify_prefs
        (scope, scope_id, mode, notify_awaiting, notify_run_finished, notify_run_failed, updated_at)
      VALUES ('global', '', 'default', $1, $2, $3, ${now})
      ON CONFLICT (scope, scope_id) DO UPDATE
-       SET notify_awaiting = excluded.notify_awaiting,
-           notify_run_finished = excluded.notify_run_finished,
-           notify_run_failed = excluded.notify_run_failed,
+       SET notify_awaiting = COALESCE(excluded.notify_awaiting, remote_agent_notify_prefs.notify_awaiting),
+           notify_run_finished = COALESCE(excluded.notify_run_finished, remote_agent_notify_prefs.notify_run_finished),
+           notify_run_failed = COALESCE(excluded.notify_run_failed, remote_agent_notify_prefs.notify_run_failed),
            updated_at = ${now}`,
-    [next.awaiting, next.runFinished, next.runFailed]
+    [triggers.awaiting ?? null, triggers.runFinished ?? null, triggers.runFailed ?? null]
   );
 }
 

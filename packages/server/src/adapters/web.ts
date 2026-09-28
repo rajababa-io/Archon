@@ -74,7 +74,7 @@ export class WebAdapter implements IWebPlatformAdapter {
   >();
 
   /** Told each time a turn ends, after its messages are persisted. */
-  private turnEndedListeners = new Set<(conversationId: string) => void>();
+  private turnEndedListener: ((conversationId: string) => void) | undefined;
 
   constructor(
     private transport: SSETransport,
@@ -85,13 +85,10 @@ export class WebAdapter implements IWebPlatformAdapter {
   /**
    * Hear about every turn that ends, whether or not a client is watching —
    * the dashboard announcement below is skipped when nobody is, which is
-   * exactly when the push notifier most needs to know. Returns unsubscribe.
+   * exactly when the push notifier most needs to know.
    */
-  onTurnEnded(listener: (conversationId: string) => void): () => void {
-    this.turnEndedListeners.add(listener);
-    return (): void => {
-      this.turnEndedListeners.delete(listener);
-    };
+  setTurnEndedListener(listener: (conversationId: string) => void): void {
+    this.turnEndedListener = listener;
   }
 
   /**
@@ -523,9 +520,7 @@ export class WebAdapter implements IWebPlatformAdapter {
     if (this.transport.hasActiveStream(DASHBOARD_STREAM)) {
       this.transport.emitWorkflowEvent(DASHBOARD_STREAM, lockEvent);
     }
-    if (!locked) {
-      for (const listener of this.turnEndedListeners) listener(conversationId);
-    }
+    if (!locked) this.turnEndedListener?.(conversationId);
   }
 
   /**

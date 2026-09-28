@@ -81,6 +81,20 @@ describe('notify prefs', () => {
     });
   });
 
+  test('two changes to different triggers at once both land', async () => {
+    await push.setNotifyTriggers({ awaiting: true, runFinished: true, runFailed: true });
+    await Promise.all([
+      push.setNotifyTriggers({ awaiting: false }),
+      push.setNotifyTriggers({ runFinished: false }),
+    ]);
+    expect((await push.readNotifyPrefs()).triggers).toEqual({
+      awaiting: false,
+      runFinished: false,
+      runFailed: true,
+    });
+    await push.setNotifyTriggers({ awaiting: true, runFinished: true });
+  });
+
   test('modes are stored per scope, and default removes the row', async () => {
     await push.setNotifyMode({ scope: 'project', id: 'p1', mode: 'muted' });
     await push.setNotifyMode({ scope: 'conversation', id: 'web-1', mode: 'following' });

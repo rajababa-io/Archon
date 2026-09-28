@@ -80,7 +80,7 @@ export function startPush(webAdapter: WebAdapter): PushRoutesDeps {
     const failed = (what: string, err: unknown): void => {
       getLog().error({ err, what }, 'push.notify_failed');
     };
-    webAdapter.onTurnEnded(conversationId => {
+    webAdapter.setTurnEndedListener(conversationId => {
       void notifier.turnEnded(conversationId).catch((err: unknown) => {
         failed('turn_ended', err);
       });

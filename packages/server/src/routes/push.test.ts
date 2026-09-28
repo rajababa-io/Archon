@@ -3,8 +3,10 @@
  * stored with the browser it came from, preferences change one scope at a
  * time and reject what they cannot mean, and presence reaches the registry.
  */
-import { beforeEach, describe, expect, mock, test } from 'bun:test';
-import { OpenAPIHono } from '@hono/zod-openapi';
+import { beforeEach, describe, expect, expectTypeOf, mock, test } from 'bun:test';
+import { OpenAPIHono, type z } from '@hono/zod-openapi';
+import type { NotifyTriggers, setNotifyMode } from '@archon/core/db/push';
+import type { pushPrefsChangeSchema } from './schemas/push.schemas';
 
 mock.module('@archon/paths', () => ({
   createLogger: () => ({
@@ -71,7 +73,10 @@ const send = (a: OpenAPIHono, method: string, path: string, body?: unknown): Pro
 const SUBSCRIPTION = {
   endpoint: 'https://web.push.apple.com/abc',
   expirationTime: null,
-  keys: { p256dh: 'BKey', auth: 'secret' },
+  keys: {
+    p256dh: Buffer.alloc(65, 4).toString('base64url'),
+    auth: Buffer.alloc(16, 7).toString('base64url'),
+  },
 };
 
 beforeEach(() => {
@@ -119,8 +124,8 @@ describe('push on', () => {
     expect(res.status).toBe(200);
     expect(mockSave).toHaveBeenCalledWith({
       endpoint: SUBSCRIPTION.endpoint,
-      p256dh: 'BKey',
-      auth: 'secret',
+      p256dh: SUBSCRIPTION.keys.p256dh,
+      auth: SUBSCRIPTION.keys.auth,
       userAgent: 'iPhone Safari',
     });
   });
@@ -130,6 +135,21 @@ describe('push on', () => {
       endpoint: SUBSCRIPTION.endpoint,
     });
     expect(res.status).toBe(400);
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  test('a subscription whose keys cannot be encrypted to is refused, not stored', async () => {
+    for (const keys of [
+      { p256dh: 'BKey', auth: SUBSCRIPTION.keys.auth },
+      { p256dh: SUBSCRIPTION.keys.p256dh, auth: '' },
+      { p256dh: SUBSCRIPTION.keys.p256dh, auth: 'not base64url!' },
+    ]) {
+      const res = await send(app(true).app, 'POST', '/api/push/subscribe', {
+        ...SUBSCRIPTION,
+        keys,
+      });
+      expect(res.status).toBe(400);
+    }
     expect(mockSave).not.toHaveBeenCalled();
   });
 
@@ -179,4 +199,10 @@ describe('presence', () => {
     await send(a, 'POST', '/api/push/presence', { clientId: 'tab-1', conversationId: null });
     expect(presence.isVisible('web-1')).toBe(false);
   });
+});
+
+test('a preference change is exactly the shape core stores', () => {
+  expectTypeOf<z.infer<typeof pushPrefsChangeSchema>>().toEqualTypeOf<
+    { scope: 'global'; triggers: Partial<NotifyTriggers> } | Parameters<typeof setNotifyMode>[0]
+  >();
 });
