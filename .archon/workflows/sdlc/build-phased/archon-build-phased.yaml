@@ -1,0 +1,164 @@
+name: archon-build-phased
+description: |
+  Build a spec too large for one implementation pass, one phase at a time, on
+  one branch, unattended. Every phase but the last is implemented and committed
+  in order, each gated on the project's own checks; the last phase goes through
+  archon-deliver, so the whole branch gets one reviewed, corrected, validated PR
+  flipped ready for review. A phase that ends red is retried once with the first
+  attempt's findings; a second red stops the build, and what landed green goes
+  up as a draft PR with a report of where it stopped.
+
+  Use when: a written spec with ordered phases should become one PR without a
+  human between phases — "build this spec overnight", "implement all phases of
+  docs/design/x.md".
+  NOT for: deciding what to build (plan), a change one implement pass can hold
+  (deliver), or merging (always human).
+
+requires: [github]
+
+inputs:
+  spec:
+    default: ""
+    description: >-
+      Repository-relative path to the spec (required; the run refuses without it). It must contain a `## Phases` section
+      whose `### ` subsections are the phases, in build order; each subsection's
+      text is that phase's work order. The rest of the file is context every
+      phase reads.
+
+returns: outcome
+outcome_field: complete
+
+nodes:
+  # Splits the spec into one work-order file per phase and seeds the build state
+  # the loop advances. A spec with no phases refuses here, before any spend.
+  - id: phases
+    script: phases
+    runtime: bun
+    with:
+      spec: "$INPUTS.spec"
+    output_format:
+      type: object
+      properties:
+        total: { type: integer }
+        staged: { type: boolean }
+        last_title: { type: string }
+        last_file: { type: string }
+      required: [total, staged, last_title, last_file]
+
+  # Phases 1..N-1, strictly in order: each builds on the commits of the ones
+  # before it, so they cannot fan out. One iteration is one attempt at one
+  # phase; `step` decides whether the next iteration advances, retries, or the
+  # loop ends. 16 iterations holds eight staged phases with a retry each.
+  - id: build
+    depends_on: [phases]
+    when: "$phases.output.staged == true"
+    loop_group:
+      until_bash: test $step.output.next = "stop"
+      max_iterations: 16
+      fresh_context: true
+      nodes:
+        - id: pick
+          script: pick
+          runtime: bun
+          output_format:
+            type: object
+            properties:
+              number: { type: integer }
+              total: { type: integer }
+              title: { type: string }
+              file: { type: string }
+              attempt: { type: integer }
+              notes: { type: string }
+            required: [number, total, title, file, attempt, notes]
+
+        - id: impl
+          include: archon-implement
+          depends_on: [pick]
+          with:
+            work: >-
+              Phase $pick.output.number of $pick.output.total of a phased build:
+              "$pick.output.title". Read the full spec at $INPUTS.spec first for
+              context, then this phase's work order at $pick.output.file. Earlier
+              phases are already committed on this branch: build on them, do not
+              redo them, and do not start later phases. This is attempt
+              $pick.output.attempt; when a previous attempt ended red, its
+              findings are at "$pick.output.notes" — read them before changing
+              anything.
+
+        # Records the attempt and decides the next iteration: advance on green,
+        # retry once on red, stop on a second red or when every staged phase is
+        # green. `impl` refusing outright (its assert-changed guard) fails this
+        # loop instead; `status` still reports from the recorded state.
+        - id: step
+          script: step
+          runtime: bun
+          depends_on: [impl]
+          with:
+            green: "$impl.output.green"
+            red_cause: "$impl.output.red_cause"
+            summary: "$impl.output.summary"
+          output_format:
+            type: object
+            properties:
+              next: { type: string, enum: [continue, stop] }
+              completed: { type: integer }
+              total: { type: integer }
+            required: [next, completed, total]
+
+  # Reads the recorded state, not the loop's output, so it reports truthfully
+  # whether the loop converged, stopped on a second red, failed outright, or
+  # was skipped because the spec has a single phase.
+  - id: status
+    script: status
+    runtime: bun
+    depends_on: [phases, build]
+    trigger_rule: all_done
+    output_format:
+      type: object
+      properties:
+        ready: { type: boolean }
+        has_work: { type: boolean }
+        completed: { type: integer }
+        total: { type: integer }
+        stopped: { type: string }
+      required: [ready, has_work, completed, total, stopped]
+
+  # The last phase carries the whole branch through the reviewed delivery tail.
+  # Its PR diff is every phase's commits, and review holds it to the full spec.
+  - id: deliver
+    include: archon-deliver
+    depends_on: [status]
+    when: "$status.output.ready == true"
+    with:
+      errors: "auto"
+      work: >-
+        Final phase ($phases.output.total of $phases.output.total) of a phased
+        build: "$phases.output.last_title". Implement the work order at
+        $phases.output.last_file. The accepted outcome of this pull request is the
+        whole spec at $INPUTS.spec: every earlier phase is already committed on
+        this branch (recorded in $ARTIFACTS_DIR/build-phased/state.json) and is
+        part of what this delivery must hold to that spec.
+
+  # A stopped build still hands over what landed green, as a draft — never
+  # flipped ready, because the spec is not done.
+  - id: partial
+    include: archon-pr
+    depends_on: [status]
+    when: "$status.output.ready == false && $status.output.has_work == true"
+    with:
+      draft: "true"
+
+  - id: outcome
+    script: outcome
+    runtime: bun
+    depends_on: [status, deliver, partial]
+    trigger_rule: none_failed_min_one_success
+    with:
+      delivered: { from: "$deliver.output.pr_url", if_skipped: null }
+      draft: { from: "$partial.output.url", if_skipped: null }
+    output_format:
+      type: object
+      properties:
+        complete: { type: boolean }
+        summary: { type: string }
+      required: [complete, summary]
