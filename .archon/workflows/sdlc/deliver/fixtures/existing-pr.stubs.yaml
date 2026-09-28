@@ -63,6 +63,19 @@ recheck__publish:
 read-pr-body: { body: "/fixture/pr-body-current.md", url: "https://github.com/example/repo/pull/42" }
 publish-pr-body: {}
 sync-pr-body: { intent: "/fixture/pr-body-intent.json" }
+validate__discover:
+  gate: run
+  argv: ["bun", "run", "validate"]
+  reason: ""
+validate__gate:
+  ran: true
+  argv: ["bun", "run", "validate"]
+  exit_code: 0
+  timed_out: false
+  duration_ms: 1
+  log: "validate-gate/gate.log"
+  tail: ""
+  quarantined: []
 validate__validate:
   green: true
   red_cause: ""

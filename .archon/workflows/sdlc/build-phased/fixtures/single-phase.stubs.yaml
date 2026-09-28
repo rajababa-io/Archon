@@ -34,6 +34,19 @@ deliver__review__publish:
   report: { type: archon_artifact, run_id: "fixture-run", path: "review/report.md" }
 deliver__gate-ready: '{"ready":"true"}'
 deliver__validate__mode: '{"comparison":false}'
+deliver__validate__discover:
+  gate: run
+  argv: ["bun", "run", "validate"]
+  reason: ""
+deliver__validate__gate:
+  ran: true
+  argv: ["bun", "run", "validate"]
+  exit_code: 0
+  timed_out: false
+  duration_ms: 1
+  log: "validate-gate/gate.log"
+  tail: ""
+  quarantined: []
 deliver__validate__validate:
   green: true
   red_cause: ""

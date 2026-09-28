@@ -1,8 +1,14 @@
+exec-code: true
+# The gate runs for real in its own script node, outside any agent, and its record
+# reaches the verdict. The deadline itself is covered by scripts/sdlc-validate-gate.test.ts.
+discover:
+  gate: run
+  argv: ["bun", "-e", "console.log('gate ran in its own node')"]
+  reason: ""
 validate:
   green: true
   red_cause: ""
   summary: "project gate passed on the current checkout"
 fixture:
   expect: completed
-  reached: [mode, validate, result]
-exec-code: true
+  reached: [mode, discover, gate, validate, result]

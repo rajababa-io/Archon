@@ -38,6 +38,19 @@ ci-probe: '{"state":"concluded","detail":"all checks passed"}'
 deliver__ci-verdict: '{"state":"concluded","detail":"all checks green"}'
 deliver__flip-ready: { pr_url: "https://github.com/example/repo/pull/2" }
 deliver__outcome: { pr_url: "https://github.com/example/repo/pull/2", summary: "https://github.com/example/repo/pull/2" }
+deliver__validate__discover:
+  gate: run
+  argv: ["bun", "run", "validate"]
+  reason: ""
+deliver__validate__gate:
+  ran: true
+  argv: ["bun", "run", "validate"]
+  exit_code: 0
+  timed_out: false
+  duration_ms: 1
+  log: "validate-gate/gate.log"
+  tail: ""
+  quarantined: []
 deliver__validate__validate:
   green: true
   red_cause: ""
