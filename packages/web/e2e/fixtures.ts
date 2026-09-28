@@ -151,7 +151,23 @@ export const MESSAGES: RawMessage[] = [
 /** The second chat has its own transcript, so opening a chat is observable. */
 export const OTHER_CHAT_TEXT = 'Nothing to see in this one.';
 
+/**
+ * Two images the agent drew, for the image viewer. Files the build already
+ * ships, so the stub serves them as the real server serves any static asset.
+ */
+export const IMAGES = [
+  { src: '/favicon.png', alt: 'First diagram' },
+  { src: '/m/icons/icon-192.png', alt: 'Second diagram' },
+] as const;
+
 export const OTHER_MESSAGES: RawMessage[] = [
+  {
+    id: 'msg-o0',
+    role: 'assistant',
+    content: IMAGES.map(image => `![${image.alt}](${image.src})`).join('\n\n'),
+    metadata: '{}',
+    created_at: '2026-09-26T10:20:00.000Z',
+  },
   {
     id: 'msg-o1',
     role: 'user',

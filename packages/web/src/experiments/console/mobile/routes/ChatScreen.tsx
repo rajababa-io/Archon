@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactElement,
+} from 'react';
 import { useParams } from 'react-router';
 import * as skill from '../../skills';
 import { invalidate, useEntity } from '../../store/cache';
@@ -18,11 +26,18 @@ import { reduceLive, type LiveEvent, type LiveSegment } from '../../primitives/l
 import { renderedMessages, type PendingUser } from '../../primitives/rendered-messages';
 import type { InlineToolCall, Message } from '../../primitives/message';
 import type { ConversationSummary } from '../../primitives/conversation';
+import { sentHistory } from '../../lib/composer-history';
+import { chatDraftKey } from '../../lib/draft-store';
 import { ChatHeader } from '../components/ChatHeader';
 import { SwitcherSheet } from '../components/ChatSwitcher';
-import { Composer } from '../components/Composer';
+import { Composer, type MobileComposerControl } from '../components/Composer';
+import { ImageViewer, type ViewerImage } from '../components/ImageViewer';
+import { MessageActions } from '../components/MessageActions';
 import { RunCards } from '../components/RunCards';
+import type { SendMode } from '../components/SendMenu';
+import { openAsk } from '../lib/ask-chips';
 import { useForegroundEpoch } from '../lib/foreground';
+import { EDGE_PX, PULL_PX, useLongPress, usePullToRefresh, useSwipe } from '../lib/gesture';
 import { writeMobileLastChat } from '../lib/last-chat';
 import { useMobileChats, type MobileChats } from '../lib/use-mobile-chats';
 
@@ -76,6 +91,7 @@ export function ChatScreen(): ReactElement {
           key={conversationId}
           conversationId={conversationId}
           summary={found?.chat}
+          projectId={found?.projectId ?? null}
           project={found === undefined ? null : chats.projectLabel(found.projectId)}
           chats={chats}
           onOpenSwitcher={openSwitcher}
@@ -110,14 +126,23 @@ interface ChatViewProps {
   conversationId: string;
   /** The chat's row; undefined until the chat list has loaded. */
   summary: ConversationSummary | undefined;
+  /** Its project's id; null until the chat list has loaded. */
+  projectId: string | null;
   project: string | null;
   chats: MobileChats;
   onOpenSwitcher: () => void;
 }
 
+/** The message a touch landed in, by the id `ChatGroup` stamps on it. */
+function messageIdAt(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) return null;
+  return target.closest('[data-message-id]')?.getAttribute('data-message-id') ?? null;
+}
+
 function ChatView({
   conversationId,
   summary,
+  projectId,
   project,
   chats,
   onOpenSwitcher,
@@ -238,9 +263,11 @@ function ChatView({
 
   const { scrollRef, contentRef, atBottom, scrollToBottom, scrollerProps } = useFollowTail();
 
-  const onSend = (text: string): void => {
+  const onSend = (text: string, files: File[] | undefined, mode: SendMode | null): void => {
     if (working) {
-      turn.queueSend(text);
+      if (mode === 'steer') turn.steerSend(text);
+      else if (mode === 'interrupt') turn.interruptSend(text, files);
+      else turn.queueSend(text, files);
       return;
     }
     setError(null);
@@ -249,10 +276,13 @@ function ChatView({
     setSending(true);
     setWorkingSince(Date.now());
     pendingBaseRef.current = baselineUserIds(messages ?? []);
-    setPendingUser({ content: text, files: [] });
+    setPendingUser({
+      content: text,
+      files: (files ?? []).map(f => ({ name: f.name, mimeType: f.type, size: f.size })),
+    });
     void (async (): Promise<void> => {
       try {
-        const dispatch = await skill.sendMessage(conversationId, text);
+        const dispatch = await skill.sendMessage(conversationId, text, files);
         // Queued by the server after all: the queued bubble shows it, so the
         // echo goes, or the message would read as sent twice.
         if (dispatch.queuedId !== undefined) setPendingUser(null);
@@ -269,8 +299,8 @@ function ChatView({
   // Memoized message items compare `onAnswer`, so it must be stable.
   const onSendRef = useRef(onSend);
   onSendRef.current = onSend;
-  const answerAsk = useCallback((text: string): void => {
-    onSendRef.current(text);
+  const answerAsk = useCallback((text: string, files?: File[]): void => {
+    onSendRef.current(text, files, null);
   }, []);
   const leaveAsk = useCallback((): void => {
     turn.controlRef.current?.focus();
@@ -323,6 +353,54 @@ function ChatView({
 
   const loadError = messagesError ?? chats.error;
 
+  const composerRef = useRef<MobileComposerControl | null>(null);
+  const history = useMemo(() => sentHistory(messageList), [messageList]);
+  const ask = useMemo(() => openAsk(messageList), [messageList]);
+  // A queued message will be the next word, so the question is already answered.
+  const chipsAsk = working || turn.queued.length > 0 ? null : ask;
+
+  const contentOf = (id: string | null): string | null =>
+    id === null ? null : (rendered.find(m => m.id === id)?.content.trim() ?? null);
+  const quote = (id: string | null): void => {
+    const text = contentOf(id);
+    if (text !== null && text !== '') composerRef.current?.quote(text);
+  };
+  useSwipe(scrollRef, (swipe, start) => {
+    if (swipe !== 'right') return;
+    if (start.x <= EDGE_PX) onOpenSwitcher();
+    // A code block or table scrolls sideways; dragging it is not a quote.
+    else if (!(start.target instanceof Element && start.target.closest('pre, table') !== null))
+      quote(messageIdAt(start.target));
+  });
+  const [held, setHeld] = useState<string | null>(null);
+  useLongPress(
+    scrollRef,
+    target => messageIdAt(target) !== null && !(target instanceof HTMLImageElement),
+    target => {
+      setHeld(contentOf(messageIdAt(target)));
+    }
+  );
+  const pull = usePullToRefresh(scrollRef, () => {
+    for (const key of conversationStreamKeys(conversationId)) invalidate(key);
+    invalidate(K.allConversations);
+    if (summary !== undefined) invalidate(K.chatRuns(summary.dbId));
+  });
+
+  const [viewer, setViewer] = useState<{ images: ViewerImage[]; start: number } | null>(null);
+  const openImage = (e: MouseEvent<HTMLDivElement>): void => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || messageIdAt(img) === null) return;
+    // The image's own link would open it in a browser tab, leaving the app.
+    e.preventDefault();
+    const all = Array.from(
+      e.currentTarget.querySelectorAll<HTMLImageElement>('[data-message-id] img')
+    );
+    setViewer({
+      images: all.map(i => ({ src: i.currentSrc || i.src, alt: i.alt })),
+      start: Math.max(0, all.indexOf(img)),
+    });
+  };
+
   return (
     <>
       <ChatHeader
@@ -334,10 +412,21 @@ function ChatView({
       />
       <ConversationStream key={streamEpoch} conversationId={conversationId} onLive={onLive} />
       <div className="relative min-h-0 flex-1">
+        {pull > 0 ? (
+          <p
+            aria-live="polite"
+            className="absolute inset-x-0 top-0 z-10 flex items-end justify-center text-small text-text-tertiary"
+            style={{ height: pull }}
+          >
+            {pull >= PULL_PX ? 'Release to refresh' : 'Pull to refresh'}
+          </p>
+        ) : null}
         <div
           ref={scrollRef}
           {...scrollerProps}
+          onClickCapture={openImage}
           className="h-full overflow-y-auto overscroll-contain px-3 pt-3 pb-3"
+          style={pull > 0 ? { transform: `translateY(${String(pull)}px)` } : undefined}
         >
           <div ref={contentRef} className="flex flex-col gap-3">
             <StreamContextProvider
@@ -406,7 +495,46 @@ function ChatView({
           {turn.notice}
         </p>
       ) : null}
-      <Composer onSend={onSend} working={working} controlRef={turn.controlRef} />
+      {summary === undefined || projectId === null ? (
+        <div className="mobile-composer shrink-0 border-t border-border">
+          <p className="mobile-note">Loading…</p>
+        </div>
+      ) : (
+        <Composer
+          key={chatDraftKey(projectId, conversationId)}
+          conversationId={conversationId}
+          projectId={projectId}
+          provider={summary.assistant}
+          draftKey={chatDraftKey(projectId, conversationId)}
+          history={history}
+          working={working}
+          stopping={turn.stopping}
+          steerable={turn.steerable}
+          onSend={onSend}
+          onInterrupt={turn.stop}
+          ask={chipsAsk}
+          controlRef={turn.controlRef}
+          mobileRef={composerRef}
+        />
+      )}
+      <MessageActions
+        text={held}
+        onClose={() => {
+          setHeld(null);
+        }}
+        onQuote={text => {
+          composerRef.current?.quote(text);
+        }}
+      />
+      {viewer !== null ? (
+        <ImageViewer
+          images={viewer.images}
+          start={viewer.start}
+          onClose={() => {
+            setViewer(null);
+          }}
+        />
+      ) : null}
     </>
   );
 }

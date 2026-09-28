@@ -58,6 +58,12 @@ export interface StubServer {
   readonly url: string;
   /** API paths the console asked for that this stub does not answer. */
   readonly unhandled: readonly string[];
+  /** Turn controls the console asked for: `steer <queued id>`, `interrupt <chat id>`. */
+  readonly controls: readonly string[];
+  /** Report a chat as mid-turn, or not. */
+  setBusy: (chatId: string, busy: boolean) => void;
+  /** Back to the fixture's world: no queues, nothing busy, no controls recorded. */
+  reset: () => void;
   close: () => Promise<void>;
 }
 
@@ -97,20 +103,44 @@ function messagesFor(platformId: string): RawMessage[] {
 /** Messages each chat has waiting behind a turn, keyed by platform id. */
 type Queues = Map<string, components['schemas']['QueuedMessage'][]>;
 
-async function readJson(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(chunk as Buffer);
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+/** What the stub holds between requests. */
+interface StubState {
+  unhandled: string[];
+  queues: Queues;
+  streams: Map<string, ServerResponse>;
+  /** Chats the stub reports mid-turn, by platform id. */
+  busy: Set<string>;
+  /** Turn controls asked for, as `steer <queued id>` and `interrupt <chat id>`. */
+  controls: string[];
 }
 
-function handleApi(
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: URL,
-  unhandled: string[],
-  queues: Queues,
-  streams: Map<string, ServerResponse>
-): void {
+type QueuedFile = components['schemas']['QueuedMessage']['files'][number];
+
+/**
+ * A send's text and attachments. JSON without files, multipart with them —
+ * the two bodies the console's send skill writes, parsed as the real route
+ * parses them.
+ */
+async function readSend(req: IncomingMessage): Promise<{ message: string; files: QueuedFile[] }> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) chunks.push(chunk as Buffer);
+  const body = Buffer.concat(chunks);
+  const type = req.headers['content-type'] ?? '';
+  if (type.startsWith('multipart/form-data')) {
+    const form = await new Response(body, { headers: { 'content-type': type } }).formData();
+    const message = form.get('message');
+    const files = form
+      .getAll('files')
+      .filter((f): f is File => typeof f !== 'string')
+      .map(f => ({ name: f.name, mimeType: f.type, size: f.size }));
+    return { message: typeof message === 'string' ? message : '', files };
+  }
+  const json = JSON.parse(body.toString('utf8')) as Record<string, unknown>;
+  return { message: typeof json.message === 'string' ? json.message : '', files: [] };
+}
+
+function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, state: StubState): void {
+  const { unhandled, queues, streams } = state;
   const path = url.pathname;
   const method = req.method ?? 'GET';
 
@@ -172,14 +202,15 @@ function handleApi(
     return;
   }
 
-  // Whether the server is mid-turn for this chat. Unlocked, which is what
-  // makes the composer usable — the console asks this after a stream reconnect,
-  // because the events that carry the answer are lost in the gap.
+  // Whether the server is mid-turn for this chat. Unlocked unless a test made
+  // the chat busy — the console asks this after a stream reconnect, because
+  // the events that carry the answer are lost in the gap.
   const lockMatch = /^\/api\/conversations\/([^/]+)\/lock$/.exec(path);
   if (method === 'GET' && lockMatch !== null) {
+    const chatId = decodeURIComponent(lockMatch[1]);
     const lock: components['schemas']['ConversationLockResponse'] = {
-      conversationId: decodeURIComponent(lockMatch[1]),
-      locked: false,
+      conversationId: chatId,
+      locked: state.busy.has(chatId),
     };
     sendJson(res, lock);
     return;
@@ -211,11 +242,11 @@ function handleApi(
     const chatId = decodeURIComponent(sendMatch[1]);
     const chatQueue = queues.get(chatId) ?? [];
     queues.set(chatId, chatQueue);
-    void readJson(req).then(body => {
+    void readSend(req).then(body => {
       const message: components['schemas']['QueuedMessage'] = {
         id: `queued-${String(chatQueue.length + 1)}`,
-        text: typeof body.message === 'string' ? body.message : '',
-        files: [],
+        text: body.message,
+        files: body.files,
         queuedAt: new Date().toISOString(),
         steering: false,
       };
@@ -239,12 +270,50 @@ function handleApi(
 
   const queueMatch = /^\/api\/conversations\/([^/]+)\/queue$/.exec(path);
   if (method === 'GET' && queueMatch !== null) {
+    const chatId = decodeURIComponent(queueMatch[1]);
+    // A busy chat's turn takes input mid-turn, as a Claude turn does.
     const queue: components['schemas']['ConversationQueueResponse'] = {
-      conversationId: decodeURIComponent(queueMatch[1]),
-      messages: queues.get(decodeURIComponent(queueMatch[1])) ?? [],
-      steerable: false,
+      conversationId: chatId,
+      messages: queues.get(chatId) ?? [],
+      steerable: state.busy.has(chatId),
     };
     sendJson(res, queue);
+    return;
+  }
+
+  const steerMatch = /^\/api\/conversations\/([^/]+)\/queue\/([^/]+)\/steer$/.exec(path);
+  if (method === 'POST' && steerMatch !== null) {
+    const queuedId = decodeURIComponent(steerMatch[2]);
+    state.controls.push(`steer ${queuedId}`);
+    const queued = queues.get(decodeURIComponent(steerMatch[1]))?.find(m => m.id === queuedId);
+    if (queued !== undefined) queued.steering = true;
+    const steered: components['schemas']['SteerQueuedResponse'] = {
+      status: queued === undefined ? 'not-queued' : 'sent',
+    };
+    sendJson(res, steered);
+    return;
+  }
+
+  const withdrawMatch = /^\/api\/conversations\/([^/]+)\/queue\/([^/]+)$/.exec(path);
+  if (method === 'DELETE' && withdrawMatch !== null) {
+    const chatQueue = queues.get(decodeURIComponent(withdrawMatch[1])) ?? [];
+    const at = chatQueue.findIndex(m => m.id === decodeURIComponent(withdrawMatch[2]));
+    const [message] = at === -1 ? [] : chatQueue.splice(at, 1);
+    const withdrawn: components['schemas']['WithdrawQueuedResponse'] =
+      message === undefined ? { status: 'not-queued' } : { status: 'withdrawn', message };
+    sendJson(res, withdrawn);
+    return;
+  }
+
+  const interruptMatch = /^\/api\/conversations\/([^/]+)\/interrupt$/.exec(path);
+  if (method === 'POST' && interruptMatch !== null) {
+    const chatId = decodeURIComponent(interruptMatch[1]);
+    state.controls.push(`interrupt ${chatId}`);
+    const stopped: components['schemas']['ConversationInterruptResponse'] = {
+      conversationId: chatId,
+      status: 'stopping',
+    };
+    sendJson(res, stopped);
     return;
   }
 
@@ -325,16 +394,20 @@ export async function startStubServer(): Promise<StubServer> {
     );
   }
 
-  const unhandled: string[] = [];
-  const queues: Queues = new Map();
-  const streams = new Map<string, ServerResponse>();
+  const state: StubState = {
+    unhandled: [],
+    queues: new Map(),
+    streams: new Map(),
+    busy: new Set(),
+    controls: [],
+  };
   // Held so `close()` can end the event streams: Node's `close` waits for open
   // sockets, and an SSE response is an open socket by design.
   const sockets = new Set<Socket>();
 
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
-    if (url.pathname.startsWith('/api/')) handleApi(req, res, url, unhandled, queues, streams);
+    if (url.pathname.startsWith('/api/')) handleApi(req, res, url, state);
     else serveStatic(res, url.pathname);
   });
   server.on('connection', socket => {
@@ -350,7 +423,17 @@ export async function startStubServer(): Promise<StubServer> {
 
   return {
     url: `http://127.0.0.1:${String(address.port)}`,
-    unhandled,
+    unhandled: state.unhandled,
+    controls: state.controls,
+    setBusy: (chatId, busy): void => {
+      if (busy) state.busy.add(chatId);
+      else state.busy.delete(chatId);
+    },
+    reset: (): void => {
+      state.queues.clear();
+      state.busy.clear();
+      state.controls.length = 0;
+    },
     close: async (): Promise<void> => {
       for (const socket of sockets) socket.destroy();
       await new Promise<void>((done, fail) => {

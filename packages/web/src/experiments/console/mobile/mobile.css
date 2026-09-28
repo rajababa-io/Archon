@@ -80,3 +80,9 @@
 .mobile-approval button {
   min-height: 44px;
 }
+
+/* A queued message's Send now, Edit and Remove, for the same reason. */
+.mobile-root [data-queued-messages] button {
+  min-height: 44px;
+  padding-inline: 0.75rem;
+}
