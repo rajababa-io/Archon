@@ -87,35 +87,17 @@ function ProgressNote({ content }: { content: string }): ReactElement {
 }
 
 /**
- * What the agent thought before this message, folded to one line by default.
+ * What the agent thought before this message, shown open in small grey text
+ * directly above the reply it led to.
  *
- * Folded because it is the working-out, not the answer: open, a long thought
- * would push the reply it led to off the screen. It is still worth a click,
- * because a wrong turn shows up in the thinking before it shows up in the
- * work — which is when stopping it is cheapest.
+ * Not folded and not labelled: a wrong turn shows up in the thinking before it
+ * shows up in the work, and a click per message meant it went unread. The size
+ * and colour are what set it apart from the answer, so no heading is needed.
  */
 function ThinkingBlock({ text }: { text: string }): ReactElement {
-  const [open, setOpen] = useState(false);
   return (
-    <div className="max-w-[74ch] min-w-0 text-small text-text-tertiary">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen(v => !v);
-        }}
-        className="flex items-baseline gap-[0.4rem] text-left hover:text-text-secondary"
-      >
-        <span aria-hidden className="shrink-0">
-          {open ? '▾' : '▸'}
-        </span>
-        <span className="italic">{open ? 'Hide thinking' : 'Thinking'}</span>
-      </button>
-      {open ? (
-        <div className="mt-[0.25rem] border-l border-border pl-[0.75rem] whitespace-pre-wrap text-text-secondary">
-          {text.trim()}
-        </div>
-      ) : null}
+    <div className="max-w-[74ch] min-w-0 text-small whitespace-pre-wrap text-text-tertiary">
+      {text.trim()}
     </div>
   );
 }
