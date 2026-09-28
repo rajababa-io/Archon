@@ -159,20 +159,16 @@ describe('readyIds', () => {
 });
 
 describe('awaitingInputIds', () => {
-  test('paused is not enough — something has to be being asked', () => {
-    expect([...awaitingInputIds([{ status: 'paused', conversationPlatformId: 'a' }])]).toEqual([]);
+  // What counts as a gate is `awaitsApproval`'s call (tested in @archon/awaiting);
+  // these cover which chat a counted run marks.
+  test('only a run awaiting approval marks its chat', () => {
     expect([
       ...awaitingInputIds([
+        { status: 'paused', conversationPlatformId: 'no-gate' },
+        { status: 'running', approval: { message: 'x' }, conversationPlatformId: 'moving' },
         { status: 'paused', approval: { message: 'ok?' }, conversationPlatformId: 'a' },
       ]),
     ]).toEqual(['a']);
-  });
-  test('a running run never counts, approval or not', () => {
-    expect([
-      ...awaitingInputIds([
-        { status: 'running', approval: { message: 'x' }, conversationPlatformId: 'a' },
-      ]),
-    ]).toEqual([]);
   });
   test('a chat-dispatched run is found by its worker id — the feed has no other', () => {
     // The dashboard runs feed exposes a web run's conversation as
@@ -260,52 +256,21 @@ describe('runningRunIds', () => {
 });
 
 describe('askAwaitingIds', () => {
-  const ask = (body: string): string => ['```ask', body, '```'].join('\n');
-  const spec = '{"questions":[{"title":"Ship it?","options":[{"label":"Yes"}]}]}';
-
-  test('a chat whose last message is a question is your move', () => {
+  // What counts as a question is `awaitsAnswer`'s call (tested in
+  // @archon/awaiting); this covers that the set is built from it.
+  test('marks the chats whose candidate is an open question', () => {
+    const ask = [
+      '```ask',
+      '{"questions":[{"title":"Ship it?","options":[{"label":"Yes"}]}]}',
+      '```',
+    ];
     expect([
       ...askAwaitingIds([
-        { id: 'a', completed: false, askCandidate: `Here is the call:\n${ask(spec)}` },
+        { id: 'asking', completed: false, askCandidate: ask.join('\n') },
+        { id: 'closed', completed: true, askCandidate: ask.join('\n') },
+        { id: 'quiet', completed: false, askCandidate: null },
       ]),
-    ]).toEqual(['a']);
-  });
-
-  test('no candidate, nothing to decide', () => {
-    expect([...askAwaitingIds([{ id: 'a', completed: false, askCandidate: null }])]).toEqual([]);
-  });
-
-  test('a question that failed to render is still a question', () => {
-    // The agent stopped to ask either way, and a chat whose card is broken is
-    // the one most in need of a human opening it. Dropping it from the rail
-    // would hide the breakage a second time.
-    expect([
-      ...askAwaitingIds([{ id: 'a', completed: false, askCandidate: ask('{ not json') }]),
-    ]).toEqual(['a']);
-  });
-
-  test('the parser decides, not the fence — an unterminated block is prose', () => {
-    // The server sends anything containing the fence, deliberately. What counts
-    // as a question is settled here, and half a block is not one yet.
-    expect([
-      ...askAwaitingIds([{ id: 'a', completed: false, askCandidate: '```ask\n{ not json' }]),
-    ]).toEqual([]);
-  });
-
-  test('an ask block shown as an EXAMPLE inside a longer fence is not a question', () => {
-    const quoted = ['````markdown', ask(spec), '````'].join('\n');
-    expect([...askAwaitingIds([{ id: 'a', completed: false, askCandidate: quoted }])]).toEqual([]);
-  });
-
-  test('a chat marked done is not asking, even when it ended on a question', () => {
-    // The Open tab hides done chats, so counting one put the project header on
-    // "Needs you" with no amber chat anywhere to explain it (#197).
-    expect([
-      ...askAwaitingIds([
-        { id: 'open', completed: false, askCandidate: ask(spec) },
-        { id: 'done', completed: true, askCandidate: ask(spec) },
-      ]),
-    ]).toEqual(['open']);
+    ]).toEqual(['asking']);
   });
 });
 

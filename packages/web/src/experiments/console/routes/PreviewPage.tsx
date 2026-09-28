@@ -8,7 +8,7 @@ import { importWorkflowDefinition } from '../builder/model';
 import type { Run } from '../primitives/run';
 import { AskCard } from '../components/AskCard';
 import { AskErrorCard } from '../components/AskErrorCard';
-import { parseAskSpec, splitReply, type AskParse, type ReplyPart } from '../primitives/ask';
+import { parseAskSpec, splitReply, type AskParse, type ReplyPart } from '@archon/awaiting';
 import { FilesMock } from '../preview/FilesMock';
 
 /**

@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
-import { isComplete, type AskSpec } from '../../primitives/ask';
+import type { AskSpec } from '@archon/awaiting';
+import { isComplete } from '../../primitives/ask';
 import { currentQuestion, type ChipState } from '../lib/ask-chips';
 
 interface AskChipsProps {

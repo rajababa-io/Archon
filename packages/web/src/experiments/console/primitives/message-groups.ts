@@ -19,7 +19,7 @@
  * grouping depend on the 12/24-hour preference, which is a display choice and
  * must not reshape the conversation.
  */
-import { splitReply } from './ask';
+import { splitReply } from '@archon/awaiting';
 import type { Message, MessageRole } from './message';
 
 export interface MessageGroup {

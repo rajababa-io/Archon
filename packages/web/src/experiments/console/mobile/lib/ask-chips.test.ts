@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { composeAnswer, type AskSpec } from '../../primitives/ask';
+import type { AskSpec } from '@archon/awaiting';
+import { composeAnswer } from '../../primitives/ask';
 import { toMessage, type Message } from '../../primitives/message';
 import { answerOwn, confirmChips, openAsk, startChips, tapChip, type ChipStep } from './ask-chips';
 

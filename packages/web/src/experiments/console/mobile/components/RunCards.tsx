@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import * as skill from '../../skills';
 import { useEntity } from '../../store/cache';
 import { K } from '../../store/keys';
-import { awaitsApproval } from '../../primitives/run';
+import { awaitsApproval } from '@archon/awaiting';
 import { ApprovalContext } from '../../components/ApprovalContext';
 import { ApprovalPanel } from '../../components/ApprovalPanel';
 import { runPath } from '../lib/paths';

@@ -66,7 +66,7 @@
  * scanning the rail. It ranks below `working` because a chat mid-sentence is
  * unfinished rather than unread.
  */
-import { splitReply } from './ask';
+import { awaitsAnswer, awaitsApproval } from '@archon/awaiting';
 import { runOwnerChatId } from './run';
 
 export type ChatStatus =
@@ -255,36 +255,18 @@ export function completedIds(
  *
  * An ask block is the agent asking you something in a form you can click, and
  * a chat sitting on one is waiting for a human exactly as a paused gate is.
- * The two arrive by different routes — a gate belongs to a RUN, a question is
- * a MESSAGE — but they mean the same thing to a reader scanning the rail.
+ * What counts is `awaitsAnswer`'s call — shared with the server, which pushes
+ * a notification on the same rule.
  *
- * "Unanswered" needs no state of its own: answering an ask block is sending a
- * message, so a reply makes the newest message the human's and the question
- * stops being the last word. That is also why this reads the LAST message
- * only, and why nothing has to be marked as resolved.
- *
- * `splitReply` is the authority on what an ask block is, deliberately: the
- * server's test for what to send is broader on purpose (see `ask_candidate`),
- * so the decision has to be made here, with the parser that renders the card.
- *
- * A malformed block counts too. The agent stopped to ask something either way,
- * and a chat whose question failed to render is the one most in need of a human
- * looking at it — dropping it from the rail would hide the breakage twice.
- *
- * A chat a human has marked done is never asking. Closing it is the answer:
- * the question was settled some other way, or dropped. Counting it anyway
- * kept a whole project on "Needs you" from a chat the Open tab does not even
- * list, so the reader saw amber with nothing amber to open (#197).
+ * `askCandidate` is the server's newest agent message, sent only when it holds
+ * an ask block.
  */
 export function askAwaitingIds(
   conversations: readonly { id: string; askCandidate: string | null; completed: boolean }[]
 ): Set<string> {
   const out = new Set<string>();
   for (const c of conversations) {
-    if (c.completed) continue;
-    if (c.askCandidate === null || c.askCandidate === '') continue;
-    if (splitReply(c.askCandidate).some(p => p.kind === 'ask' || p.kind === 'ask-error'))
-      out.add(c.id);
+    if (awaitsAnswer({ completed: c.completed, newestAgentMessage: c.askCandidate })) out.add(c.id);
   }
   return out;
 }
@@ -329,12 +311,7 @@ function instant(raw: string | null): number | null {
 }
 
 /**
- * Chats with a run paused on an approval.
- *
- * `status === 'paused'` alone is not enough: a run can be paused without
- * anything being asked of you, and marking those chats as needing you would
- * make the mark mean "something is not finished" — which is what `idle`
- * already means.
+ * Chats with a run paused on an approval (`awaitsApproval`).
  *
  * Which chat a run belongs to is `runOwnerChatId`'s to decide, and asking it
  * is not optional here. This once read `conversationPlatformId` alone, which
@@ -353,8 +330,7 @@ export function awaitingInputIds(
 ): Set<string> {
   const out = new Set<string>();
   for (const r of runs) {
-    if (r.status !== 'paused') continue;
-    if (r.approval === null || r.approval === undefined) continue;
+    if (!awaitsApproval(r)) continue;
     const id = runOwnerChatId(r);
     if (id !== null && id !== '') out.add(id);
   }

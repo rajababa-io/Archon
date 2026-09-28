@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@archon/adapters": "workspace:*",
+    "@archon/awaiting": "workspace:*",
     "@archon/core": "workspace:*",
     "@archon/git": "workspace:*",
     "@archon/paths": "workspace:*",

@@ -12,7 +12,7 @@ import {
 import { ChevronUp } from 'lucide-react';
 import type { ComposerControl } from '../../components/ChatComposer';
 import { admitFiles, imagesFromClipboard, MAX_FILES } from '../../primitives/file';
-import type { AskSpec } from '../../primitives/ask';
+import type { AskSpec } from '@archon/awaiting';
 import { AT_DRAFT, stepHistory, type HistoryWalk } from '../../lib/composer-history';
 import { loadDraftText, saveDraftText } from '../../lib/draft-store';
 import {

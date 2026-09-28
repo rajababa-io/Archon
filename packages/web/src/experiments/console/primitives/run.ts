@@ -108,11 +108,6 @@ export interface Run {
   parentRunId?: string | null;
 }
 
-/** A run stopped on a human gate: paused, with something to approve. */
-export function awaitsApproval(run: Pick<Run, 'status' | 'approval'>): boolean {
-  return run.status === 'paused' && run.approval !== null && run.approval !== undefined;
-}
-
 export function runDetailPath(run: Pick<Run, 'id' | 'projectId'>): string {
   const runId = encodeURIComponent(run.id);
   return run.projectId === null

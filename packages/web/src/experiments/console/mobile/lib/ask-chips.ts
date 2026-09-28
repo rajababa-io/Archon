@@ -6,15 +6,13 @@
  * `composeAnswer`), so an answer sent from a chip is byte-for-byte the message
  * the card would have sent.
  */
+import { splitReply, type AskQuestion, type AskSpec } from '@archon/awaiting';
 import {
   composeAnswer,
   isComplete,
   setCustomAnswer,
-  splitReply,
   toggleChoice,
   type Answer,
-  type AskQuestion,
-  type AskSpec,
 } from '../../primitives/ask';
 import type { Message } from '../../primitives/message';
 

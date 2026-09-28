@@ -4,7 +4,7 @@ import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { copyLabel, useCopy } from '../lib/clipboard';
 import { useClock } from '../lib/clock';
-import { splitReply } from '../primitives/ask';
+import { splitReply } from '@archon/awaiting';
 import { AskErrorCard } from './AskErrorCard';
 import { formatBytes } from '../primitives/file';
 import { progressNoteIds, type MessageGroup } from '../primitives/message-groups';

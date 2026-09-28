@@ -6,7 +6,8 @@ import { runStatusLabel, statusDotClass, statusTextClass } from '../../lib/run-s
 import { elapsedSince, formatElapsed } from '../../lib/format';
 import { useNow } from '../../lib/clock';
 import { useRunDetail } from '../../hooks/useRunDetail';
-import { awaitsApproval, type Run } from '../../primitives/run';
+import { awaitsApproval } from '@archon/awaiting';
+import type { Run } from '../../primitives/run';
 import { foldNodeRuns, type NodeRun, type RunEvent } from '../../primitives/event';
 import type { Message } from '../../primitives/message';
 import { ApprovalContext } from '../../components/ApprovalContext';

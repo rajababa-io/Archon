@@ -11,6 +11,7 @@ import { cors } from 'hono/cors';
 import type { WebAdapter } from '../adapters/web';
 import { boundMetadataToolOutputs } from '../adapters/web/truncate';
 import { DASHBOARD_STREAM } from '../adapters/web/transport';
+import { awaitsAnswer } from '@archon/awaiting';
 import {
   rm,
   readFile,
@@ -3498,19 +3499,13 @@ export function registerApiRoutes(
 
   /**
    * The content of each chat's newest message, but only where that message is
-   * an assistant reply that MIGHT hold an ask block — the agent's clickable
-   * multiple-choice question. Everything else maps to nothing.
+   * the agent's and holds an open question — an ask block, the agent's
+   * clickable multiple-choice question. Everything else maps to nothing.
    *
-   * The substring test here is a deliberate OVER-approximation and must stay
-   * one. What actually counts as an ask block — a top-level fence, of any
-   * length, not nested inside a longer one — is decided by the console's own
-   * parser (`experiments/console/primitives/ask.ts`), which is where the
-   * format is defined and where the card is rendered. The console cannot
-   * import server code and the server cannot import the console, so the rule
-   * lives in exactly one of them and this end only decides what is worth
-   * SENDING. Being broader than the real rule costs a few KB on a chat that
-   * turns out not to have one; being narrower would hide a question, so it is
-   * the one direction this may never drift in.
+   * `awaitsAnswer` (`@archon/awaiting`) is the one rule for that, shared with
+   * the console, which runs the same check on what arrives, and with the push
+   * notifier. Completion is left to the console: a closed chat still sends its
+   * question, and the console's own read of `completed` drops it.
    */
   async function lastMessageFacts(
     conversations: readonly import('@archon/core').Conversation[]
@@ -3518,7 +3513,9 @@ export function registerApiRoutes(
     const out = new Map<string, { askCandidate: string | null }>();
     const last = await messageDb.getLastMessagePerConversation(conversations.map(c => c.id));
     for (const [conversationId, message] of last) {
-      const isAsk = message.role === 'assistant' && message.content.includes('```ask');
+      const isAsk =
+        message.role === 'assistant' &&
+        awaitsAnswer({ completed: false, newestAgentMessage: message.content });
       out.set(conversationId, { askCandidate: isAsk ? message.content : null });
     }
     return out;

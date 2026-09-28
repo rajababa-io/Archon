@@ -9,14 +9,13 @@ import {
 import { Paperclip } from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { AskQuestion, AskSpec } from '@archon/awaiting';
 import {
   composeSubmission,
   isComplete,
   setCustomAnswer,
   toggleChoice,
   type Answer,
-  type AskQuestion,
-  type AskSpec,
 } from '../primitives/ask';
 import {
   ACCEPTED_EXTENSIONS,

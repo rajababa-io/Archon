@@ -6,7 +6,7 @@
  * MOVE the highlight; Enter is the one key that commits, so a stray letter can
  * never answer a question on its own.
  */
-import { splitReply } from '../primitives/ask';
+import { splitReply } from '@archon/awaiting';
 import type { Message } from '../primitives/message';
 
 /** Keycap letters. Ten options is far past the point the list stops being readable. */

@@ -2,7 +2,7 @@ import { memo, type ReactElement } from 'react';
 import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { useClock } from '../lib/clock';
-import { splitReply } from '../primitives/ask';
+import { splitReply } from '@archon/awaiting';
 import { AskErrorCard } from './AskErrorCard';
 import type { Message } from '../primitives/message';
 
