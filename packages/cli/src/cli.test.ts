@@ -85,6 +85,9 @@ describe('forge user trust boundary', () => {
             ARCHON_HOME: trustedHome,
             ARCHON_TELEMETRY_DISABLED: '1',
             FORGE_SECRET: '',
+            // Inside an Archon run this names that run, and the CLI would audit
+            // against it in a scratch database that has no such row.
+            WORKFLOW_ID: '',
           },
         }
       );
