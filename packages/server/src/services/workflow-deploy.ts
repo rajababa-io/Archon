@@ -27,6 +27,7 @@ import * as userDb from '@archon/core/db/users';
 import { CancelRefusedError, cancelWorkflow } from '@archon/core/operations/workflow-operations';
 import type { BranchMerged } from '@archon/core/services/branch-merged';
 import { discoverWorkflowsWithConfig } from '@archon/workflows/workflow-discovery';
+import { isTerminalRunStatus } from '@archon/workflows/schemas/workflow-run';
 import { githubRepoOf } from '../routes/github-issues';
 import {
   type DeployLogEntry,
@@ -56,8 +57,6 @@ export interface DeployHost {
 
 /** Why Deploy now cannot run, as the bar names it. */
 export type DeployBlocked = 'no-trigger-host' | 'restarting' | 'workflow-missing';
-
-const ACTIVE: readonly DeployRun['status'][] = ['pending', 'running', 'paused'];
 
 // ─── Setting up ──────────────────────────────────────────────────────────────
 
@@ -143,7 +142,7 @@ export async function getWorkflowDeployView(
     blockerFor(codebase, setting, host),
   ]);
   const live = runs.find(r => r.status === 'completed');
-  const active = runs.find(r => ACTIVE.includes(r.status));
+  const active = runs.find(r => !isTerminalRunStatus(r.status));
   const { waiting, reason } = await readWaiting(codebase, setting.branch, live?.sha ?? null);
   // Nothing new since the live commit reads as up to date. Before the first
   // deploy there is no live commit, so whatever the branch holds is waiting.
@@ -170,7 +169,9 @@ export async function getWorkflowDeployView(
 
 export type StartDeployResult =
   | { ok: true; runId: string }
-  | { ok: false; status: 409 | 500 | 503; error: string };
+  | { ok: false; status: 409 | 500 | 503; error: string }
+  /** The same delivery key was accepted before: that earlier request is the deploy. */
+  | { ok: false; status: 409; error: string; replay: true };
 
 const BLOCKED_TEXT: Record<DeployBlocked, string> = {
   'no-trigger-host':
@@ -221,7 +222,7 @@ export async function startWorkflowDeploy(
     };
   }
   const runs = await projectDeployDb.listDeployRuns(codebase.id, 10);
-  if (runs.some(r => ACTIVE.includes(r.status))) {
+  if (runs.some(r => !isTerminalRunStatus(r.status))) {
     return { ok: false, status: 409, error: 'A deploy of this project is already running.' };
   }
 
@@ -257,7 +258,7 @@ export async function startWorkflowDeploy(
   });
   if (accepted.replay) {
     getLog().info({ codebaseId: codebase.id, key: request.deliveryKey }, 'deploy.replay_ignored');
-    return { ok: false, status: 409, error: 'This deploy was already requested.' };
+    return { ok: false, status: 409, error: 'This deploy was already requested.', replay: true };
   }
 
   await host.requestDrain();
@@ -356,12 +357,17 @@ function isMergedRepo(codebase: Codebase, signal: BranchMerged): boolean {
  * A merge landed. Every project whose deploy follows that repository's branch
  * with Deploy on Merge on starts its deploy; a project with the switch off is
  * not even read, so it records nothing.
+ *
+ * Throws after trying every project when any of them did not start, so the
+ * adapter lets a redelivery of the same merge try again. A project that did
+ * start is not started twice: its receipt carries the merge as its delivery key.
  */
 export async function deployMergedBranch(
   signal: BranchMerged,
   host: DeployHost | null
 ): Promise<void> {
   const settings = await projectDeployDb.listMergeDeploysOnBranch(signal.branch);
+  const notStarted: string[] = [];
   for (const setting of settings) {
     const codebase = await codebaseDb.getCodebase(setting.codebaseId);
     if (codebase === null || !isMergedRepo(codebase, signal)) continue;
@@ -385,12 +391,18 @@ export async function deployMergedBranch(
       },
       host
     );
-    if (!result.ok) {
+    if (!result.ok && !('replay' in result)) {
       getLog().warn(
         { codebaseId: codebase.id, pr: signal.pr, sha: signal.sha, error: result.error },
         'deploy.merge_not_started'
       );
+      notStarted.push(codebase.id);
     }
+  }
+  if (notStarted.length > 0) {
+    throw new Error(
+      `Merge of ${signal.repo.owner}/${signal.repo.name}#${String(signal.pr)} did not start the deploy of project(s) ${notStarted.join(', ')}`
+    );
   }
 }
 
@@ -406,7 +418,7 @@ export async function cancelWorkflowDeploy(
   actor: string
 ): Promise<CancelWorkflowDeployResult> {
   const runs = await projectDeployDb.listDeployRuns(codebaseId, 10);
-  const active = runs.find(r => ACTIVE.includes(r.status));
+  const active = runs.find(r => !isTerminalRunStatus(r.status));
   if (active === undefined) return { ok: false, status: 409, error: 'No deploy is running.' };
   try {
     await cancelWorkflow(active.runId);

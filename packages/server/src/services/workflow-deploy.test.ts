@@ -234,6 +234,17 @@ describe('Deploy now', () => {
     expect(accepted).toHaveLength(0);
   });
 
+  test('while the server drains for its replacement nothing is accepted', async () => {
+    const draining = { ...host, isDraining: () => true };
+    const result = await deployWorkflowNow(ATLAS as never, setting(ATLAS.id), TIP, 'you', draining);
+    expect(result).toMatchObject({
+      ok: false,
+      status: 409,
+      error: expect.stringContaining('restarting'),
+    });
+    expect(accepted).toHaveLength(0);
+  });
+
   test('without a trigger host nothing is accepted that would never run', async () => {
     const result = await deployWorkflowNow(ATLAS as never, setting(ATLAS.id), TIP, 'you', null);
     expect(result).toMatchObject({ ok: false, status: 409 });
@@ -312,12 +323,26 @@ describe('a merged pull request', () => {
     expect(accepted).toHaveLength(0);
   });
 
-  test('a redelivered merge starts no second deploy', async () => {
+  test('a redelivered merge starts no second deploy, and is not a failure', async () => {
     mergeDeploys = [setting(ATLAS.id)];
     replay = true;
     await deployMergedBranch(merge(), host);
     expect(drains).toEqual([]);
     expect(mockRecordDeployRun).not.toHaveBeenCalled();
+  });
+
+  test('starts nothing when no person owns the switch', async () => {
+    mergeDeploys = [setting(ATLAS.id, { updatedBy: null })];
+    await deployMergedBranch(merge(), host);
+    expect(accepted).toHaveLength(0);
+    expect(mockRecordDeployRun).not.toHaveBeenCalled();
+  });
+
+  test('a deploy that did not start fails the merge, so a redelivery can try again', async () => {
+    mergeDeploys = [setting(ATLAS.id)];
+    discovered = [];
+    await expect(deployMergedBranch(merge(), host)).rejects.toThrow(ATLAS.id);
+    expect(accepted).toHaveLength(0);
   });
 });
 

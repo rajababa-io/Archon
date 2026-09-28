@@ -1122,7 +1122,12 @@ ${userComment}`;
     this.branchMergedListener = listener;
   }
 
-  /** A failure in the listener is logged here and never fails the delivery. */
+  /**
+   * A failure in the listener is logged here and never fails the delivery. It
+   * releases the merge's dedup key: the key is claimed before the listener runs
+   * so a near-simultaneous dual delivery collapses into one call, but a failed
+   * call must leave a redelivery free to try again.
+   */
   private async announceMerge(
     owner: string,
     repo: string,
@@ -1136,10 +1141,12 @@ ${userComment}`;
       getLog().warn({ owner, repo, number: pullRequest.number }, 'github.merge_without_commit');
       return;
     }
-    if (this.mergeDedup.seen(`${owner}/${repo}#${String(pullRequest.number)}`)) return;
+    const dedupKey = `${owner}/${repo}#${String(pullRequest.number)}`;
+    if (this.mergeDedup.seen(dedupKey)) return;
     try {
       await listener({ repo: { owner, name: repo }, branch, sha, pr: pullRequest.number });
     } catch (error) {
+      this.mergeDedup.forget(dedupKey);
       getLog().error(
         { err: error as Error, owner, repo, number: pullRequest.number },
         'github.branch_merged_listener_failed'

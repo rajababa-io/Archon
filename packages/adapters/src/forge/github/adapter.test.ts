@@ -692,6 +692,25 @@ describe('GitHubAdapter', () => {
       adapter.onBranchMerged(() => Promise.reject(new Error('db down')));
       await adapter.handleWebhook(closedPr(15, true), 'mock-signature', 'm5', 'pull_request');
     });
+
+    test('a merge whose listener failed is heard again when redelivered', async () => {
+      const adapter = new GitHubAdapter(
+        { kind: 'pat', token: 'fake-token-for-testing' },
+        'fake-webhook-secret',
+        mockLockManager
+      );
+      // @ts-expect-error - accessing private method for testing
+      adapter.verifySignature = mock(() => true);
+      let calls = 0;
+      adapter.onBranchMerged(async () => {
+        calls += 1;
+        if (calls === 1) throw new Error('checkout unreadable');
+      });
+      await adapter.handleWebhook(closedPr(16, true), 'mock-signature', 'm6', 'pull_request');
+      await adapter.handleWebhook(closedPr(16, true), 'mock-signature', 'm7', 'pull_request');
+      await adapter.handleWebhook(closedPr(16, true), 'mock-signature', 'm8', 'pull_request');
+      expect(calls).toBe(2);
+    });
   });
 
   describe('lifecycle methods', () => {
