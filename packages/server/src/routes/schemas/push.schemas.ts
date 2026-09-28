@@ -3,7 +3,7 @@
  */
 import { z } from '@hono/zod-openapi';
 import { NOTIFY_MODES } from '@archon/core/db/push';
-import { readSubscriptionKeys } from '../../services/web-push';
+import { isPushServiceEndpoint, readSubscriptionKeys } from '../../services/web-push';
 
 /**
  * GET /api/push/vapid-key. Disabled names each unset variable, or the problem
@@ -23,7 +23,9 @@ export const pushVapidKeyResponseSchema = z
 /** POST /api/push/subscribe — the browser's `PushSubscription.toJSON()`. */
 export const pushSubscribeBodySchema = z
   .object({
-    endpoint: z.string().url(),
+    endpoint: z.string().url().refine(isPushServiceEndpoint, {
+      message: 'endpoint must be an https URL on a browser push service',
+    }),
     keys: z
       .object({ p256dh: z.string(), auth: z.string() })
       .refine(keys => readSubscriptionKeys(keys) !== null, {

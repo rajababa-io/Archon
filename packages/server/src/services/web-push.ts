@@ -291,12 +291,49 @@ export type PushDelivery =
   | { outcome: 'gone'; status: number }
   | { outcome: 'failed'; status: number | null; detail: string };
 
+/**
+ * The browser push services a subscription endpoint may name. The server POSTs to
+ * whatever URL a subscription carries, so an unchecked endpoint would let anyone who
+ * can reach `POST /api/push/subscribe` point that request at an internal address.
+ * These are the services the browsers the mobile shell supports hand out: Apple
+ * (Safari, iOS), Google FCM (Chrome, Android), Mozilla (Firefox), and Microsoft WNS
+ * (Edge, whose hosts are regional subdomains).
+ */
+const PUSH_SERVICE_HOSTS = [
+  'web.push.apple.com',
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+];
+const PUSH_SERVICE_HOST_SUFFIXES = ['.notify.windows.com'];
+
+/** True when `endpoint` is an https URL on a known browser push service. */
+export function isPushServiceEndpoint(endpoint: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:' || url.username !== '' || url.password !== '') return false;
+  if (url.port !== '' && url.port !== '443') return false;
+  const host = url.hostname.toLowerCase();
+  return (
+    PUSH_SERVICE_HOSTS.includes(host) ||
+    PUSH_SERVICE_HOST_SUFFIXES.some(suffix => host.endsWith(suffix))
+  );
+}
+
 export async function sendWebPush(
   subscription: { endpoint: string; p256dh: string; auth: string },
   payload: string,
   keys: VapidKeys,
   fetchImpl: typeof fetch = fetch
 ): Promise<PushDelivery> {
+  // Checked here as well as at subscribe, so a row stored before the check existed
+  // is never fetched either.
+  if (!isPushServiceEndpoint(subscription.endpoint)) {
+    return { outcome: 'failed', status: null, detail: 'endpoint is not a known push service' };
+  }
   let body: Uint8Array;
   let authorization: string;
   try {

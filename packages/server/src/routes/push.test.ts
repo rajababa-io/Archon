@@ -153,6 +153,17 @@ describe('push on', () => {
     expect(mockSave).not.toHaveBeenCalled();
   });
 
+  test('a subscription pointing anywhere but a push service is refused, not stored', async () => {
+    for (const endpoint of ['https://127.0.0.1/x', 'http://web.push.apple.com/x']) {
+      const res = await send(app(true).app, 'POST', '/api/push/subscribe', {
+        ...SUBSCRIPTION,
+        endpoint,
+      });
+      expect(res.status).toBe(400);
+    }
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
   test('a test push reports what the push services said', async () => {
     const res = await send(app(true).app, 'POST', '/api/push/test');
     expect(await res.json()).toEqual({ delivered: 1, failed: 0, removed: 0 });

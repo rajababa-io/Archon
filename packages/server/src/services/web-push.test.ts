@@ -3,6 +3,7 @@ import {
   decodeBase64Url,
   encodeBase64Url,
   encryptPayload,
+  isPushServiceEndpoint,
   generateEcdhKeyPair,
   importEcdhKeyPair,
   readVapidConfig,
@@ -154,7 +155,7 @@ describe('sendWebPush', () => {
   async function subscription(): Promise<{ endpoint: string; p256dh: string; auth: string }> {
     const browser = await generateEcdhKeyPair();
     return {
-      endpoint: 'https://push.example/send/1',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/1',
       p256dh: encodeBase64Url(browser.publicKey),
       auth: 'BTBZMqHH6r4Tts7J_aSIgg',
     };
@@ -194,5 +195,57 @@ describe('sendWebPush', () => {
   test('any other refusal is a failure that keeps the subscription', async () => {
     const result = await sendWebPush(await subscription(), 'x', await vapidKeys(), answering(429));
     expect(result).toEqual({ outcome: 'failed', status: 429, detail: 'no' });
+  });
+});
+
+describe('isPushServiceEndpoint', () => {
+  test('accepts the browser push services', () => {
+    for (const endpoint of [
+      'https://web.push.apple.com/QGq7abc',
+      'https://fcm.googleapis.com/fcm/send/abc:def',
+      'https://updates.push.services.mozilla.com/wpush/v2/abc',
+      'https://wns2-by3p.notify.windows.com/w/?token=abc',
+      'https://WEB.PUSH.APPLE.COM:443/x',
+    ]) {
+      expect(isPushServiceEndpoint(endpoint)).toBe(true);
+    }
+  });
+
+  test('refuses anything else the server could be pointed at', () => {
+    for (const endpoint of [
+      'http://web.push.apple.com/x',
+      'https://127.0.0.1/x',
+      'https://localhost:3000/api/push/test',
+      'https://169.254.169.254/latest/meta-data',
+      'https://archon-postgres-1:5432/',
+      'https://web.push.apple.com.evil.example/x',
+      'https://evilnotify.windows.com/x',
+      'https://user:pass@fcm.googleapis.com/x',
+      'https://fcm.googleapis.com:8443/x',
+      'file:///etc/passwd',
+      'not a url',
+    ]) {
+      expect(isPushServiceEndpoint(endpoint)).toBe(false);
+    }
+  });
+
+  test('a stored subscription on another host is never fetched', async () => {
+    let fetched = false;
+    const spy = (async () => {
+      fetched = true;
+      return new Response(null, { status: 201 });
+    }) as unknown as typeof fetch;
+    const result = await sendWebPush(
+      { endpoint: 'https://127.0.0.1/internal', p256dh: 'unused', auth: 'unused' },
+      'x',
+      await vapidKeys(),
+      spy
+    );
+    expect(result).toEqual({
+      outcome: 'failed',
+      status: null,
+      detail: 'endpoint is not a known push service',
+    });
+    expect(fetched).toBe(false);
   });
 });
