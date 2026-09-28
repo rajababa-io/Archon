@@ -41,26 +41,30 @@ export function ChatHeader({
         {needsYou > 0 ? (
           <span
             aria-hidden
-            className="absolute top-1 right-0.5 min-w-4 rounded-full px-1 text-center text-mini leading-4 font-medium text-black"
-            style={{ background: 'var(--warning)' }}
+            className="absolute top-1 right-0.5 min-w-4 rounded-full px-1 text-center text-mini leading-4 font-medium"
+            style={{ background: 'var(--warning)', color: 'var(--surface)' }}
           >
             {badgeText(needsYou)}
           </span>
         ) : null}
       </button>
-      <div className="min-w-0 flex-1">
-        {projectId !== null && project !== null ? (
-          <Link
-            to={projectPath(projectId)}
-            className="block truncate text-mini text-text-tertiary underline-offset-2 active:underline"
-          >
+      {/* The whole title block opens the project: the project line alone is
+          a caption's height, far under a finger's. */}
+      {projectId !== null && project !== null ? (
+        <Link
+          to={projectPath(projectId)}
+          className="group flex min-h-11 min-w-0 flex-1 flex-col justify-center"
+        >
+          <span className="block truncate text-mini text-text-tertiary underline-offset-2 group-active:underline">
             {project} ▸
-          </Link>
-        ) : null}
-        <h1 className="truncate text-body font-medium text-text-primary">
-          {title ?? 'Untitled chat'}
-        </h1>
-      </div>
+          </span>
+          <ChatTitle title={title} />
+        </Link>
+      ) : (
+        <div className="min-w-0 flex-1">
+          <ChatTitle title={title} />
+        </div>
+      )}
       {status !== null ? (
         <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-small">
           <span aria-hidden className={`chat-status is-${status}`}>
@@ -75,5 +79,11 @@ export function ChatHeader({
       ) : null}
       {bell}
     </header>
+  );
+}
+
+function ChatTitle({ title }: { title: string | null }): ReactElement {
+  return (
+    <h1 className="truncate text-body font-medium text-text-primary">{title ?? 'Untitled chat'}</h1>
   );
 }

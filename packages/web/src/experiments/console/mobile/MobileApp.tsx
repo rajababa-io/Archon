@@ -9,11 +9,12 @@ import { HomeScreen } from './routes/HomeScreen';
 import { ProjectScreen } from './routes/ProjectScreen';
 import { RunScreen } from './routes/RunScreen';
 import { SettingsScreen } from './routes/SettingsScreen';
-import { useForegroundEpoch } from './lib/foreground';
+import { useReturnEpoch } from './lib/return-epoch';
 import { useMobileHead } from './lib/head';
 import { registerShellWorker } from './lib/service-worker';
 import { setAppBadge } from './lib/push';
 import { useMobileChats } from './lib/use-mobile-chats';
+import { ReachBanner } from './components/ReachBanner';
 import { OPEN_PATH_MESSAGE, SHELL_SCOPE } from './pwa/paths';
 import { useViewportBox } from './lib/viewport';
 import '../theme.css';
@@ -26,13 +27,16 @@ function DashboardStream(): null {
   return null;
 }
 
-/** The Home Screen icon's badge follows the needs-you count while the app runs. */
-function AppBadge(): null {
-  const { chats, needsYou } = useMobileChats();
+/**
+ * The Home Screen icon's badge follows the needs-you count while the app runs,
+ * and the banner says when Archon cannot be reached.
+ */
+function ShellStatus(): ReactElement | null {
+  const { chats, needsYou, reach } = useMobileChats();
   useEffect(() => {
-    if (chats !== undefined) setAppBadge(needsYou);
-  }, [chats, needsYou]);
-  return null;
+    if (chats !== undefined && reach === 'online') setAppBadge(needsYou);
+  }, [chats, needsYou, reach]);
+  return <ReachBanner reach={reach} />;
 }
 
 /**
@@ -69,9 +73,10 @@ export function MobileApp(): ReactElement {
     registerShellWorker();
   }, []);
 
-  // Back from the background: fresh streams, and everything they would have
-  // kept live asked again. The chat screen does the same for its own stream.
-  const epoch = useForegroundEpoch(() => {
+  // Back from the background, or back in reach: fresh streams, and everything
+  // they would have kept live asked again. The chat screen does the same for
+  // its own stream.
+  const epoch = useReturnEpoch(() => {
     for (const key of dashboardStreamKeys()) invalidate(key);
     invalidate(K.allConversations);
   });
@@ -79,7 +84,7 @@ export function MobileApp(): ReactElement {
   return (
     <div ref={rootRef} className="console-root mobile-root bg-surface text-text-primary">
       <DashboardStream key={epoch} />
-      <AppBadge />
+      <ShellStatus />
       <NotificationRouting />
       <Routes>
         <Route index element={<HomeScreen />} />

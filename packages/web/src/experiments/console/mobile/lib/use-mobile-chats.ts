@@ -23,6 +23,8 @@ import {
 import { chatStatuses, wantingCount } from '../../primitives/tab-signal';
 import type { Project } from '../../primitives/project';
 import type { Run } from '../../primitives/run';
+import { reachOf, useOnLine, type Reach } from './reach';
+import { useSavedChats } from './saved-chats';
 
 /**
  * How often the chat list is re-read while the app is on screen.
@@ -35,8 +37,13 @@ import type { Run } from '../../primitives/run';
 const LIST_POLL_MS = 8000;
 
 export interface MobileChats {
+  /**
+   * The server's list — or, while Archon cannot be reached and the list was
+   * never read, the chats saved on this phone for reading offline.
+   */
   chats: readonly skill.FoundChat[] | undefined;
   error: Error | undefined;
+  reach: Reach;
   statusSets: ChatStatusSets;
   statuses: ReadonlyMap<string, ChatStatus>;
   /** Chats that want you — the same count the desktop tab badge shows. */
@@ -54,6 +61,8 @@ export function useMobileChats(): MobileChats {
     skill.listRuns({ limit: skill.RUN_LIMIT })
   );
   const live = useLiveChats();
+  const reach = reachOf(useOnLine(), error);
+  const saved = useSavedChats();
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -64,7 +73,7 @@ export function useMobileChats(): MobileChats {
     };
   }, []);
 
-  const chats = all?.chats;
+  const chats = all?.chats ?? (reach === 'online' ? undefined : saved?.map(s => s.found));
   const statusSets = useMemo(
     () =>
       chatStatusSets(
@@ -88,17 +97,26 @@ export function useMobileChats(): MobileChats {
   );
 
   const names = useMemo(() => new Map((projects ?? []).map(p => [p.id, p.name])), [projects]);
+  const savedLabels = useMemo(
+    () => new Map((saved ?? []).map(s => [s.found.projectId, s.projectLabel])),
+    [saved]
+  );
   const label = useCallback(
     (projectId: string): string => {
-      const name = names.get(projectId) ?? projectId;
-      return projectLabel(name, getDisplayName(projectId, name));
+      const name = names.get(projectId);
+      if (name === undefined) {
+        const offline = savedLabels.get(projectId);
+        if (offline !== undefined) return offline;
+      }
+      return projectLabel(name ?? projectId, getDisplayName(projectId, name ?? projectId));
     },
-    [names]
+    [names, savedLabels]
   );
 
   return {
     chats,
     error,
+    reach,
     statusSets,
     statuses,
     needsYou: wantingCount(statuses),

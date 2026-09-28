@@ -163,6 +163,7 @@ export function ChatStatusStrip({
         <button
           type="button"
           onClick={onToggle}
+          data-status-pill
           disabled={trace.length === 0}
           title={
             trace.length === 0

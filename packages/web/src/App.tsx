@@ -6,7 +6,7 @@ import { queryClient } from '@/lib/query-client';
 import { LegacyRedirect } from '@/routes/LegacyRedirect';
 import { LoginPage } from '@/routes/LoginPage';
 import { ConsoleApp } from '@/experiments/console/ConsoleApp';
-import { MobileApp } from '@/experiments/console/mobile/MobileApp';
+import { MobileGate } from '@/components/auth/MobileGate';
 import { SessionGate } from '@/components/auth/SessionGate';
 
 interface ErrorBoundaryState {
@@ -81,15 +81,9 @@ export function App(): React.ReactElement {
                 </SessionGate>
               }
             />
-            {/* The phone shell. Behind the same gate as the console, for the same reason. */}
-            <Route
-              path="/m/*"
-              element={
-                <SessionGate>
-                  <MobileApp />
-                </SessionGate>
-              }
-            />
+            {/* The phone shell. Behind the same gate as the console, for the same
+                reason; MobileGate says when it may open before the server answers. */}
+            <Route path="/m/*" element={<MobileGate />} />
             {/*
               The classic UI is retired. LegacyRedirect maps each old path to the
               console page that replaced it, so a bookmark keeps its meaning

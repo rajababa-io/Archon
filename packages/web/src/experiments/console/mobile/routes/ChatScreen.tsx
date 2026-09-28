@@ -28,6 +28,7 @@ import { renderedMessages, type PendingUser } from '../../primitives/rendered-me
 import type { InlineToolCall, Message } from '../../primitives/message';
 import type { ConversationSummary } from '../../primitives/conversation';
 import { sentHistory } from '../../lib/composer-history';
+import { relativeTime } from '../../lib/format';
 import { chatDraftKey } from '../../lib/draft-store';
 import { ChatHeader } from '../components/ChatHeader';
 import { SwitcherSheet } from '../components/ChatSwitcher';
@@ -38,9 +39,10 @@ import { ChatBell } from '../components/NotifyControls';
 import { RunCards } from '../components/RunCards';
 import type { SendMode } from '../components/SendMenu';
 import { openAsk } from '../lib/ask-chips';
-import { useForegroundEpoch } from '../lib/foreground';
+import { useReturnEpoch } from '../lib/return-epoch';
 import { EDGE_PX, PULL_PX, useLongPress, usePullToRefresh, useSwipe } from '../lib/gesture';
 import { writeMobileLastChat } from '../lib/last-chat';
+import { saveChat, useSavedChats } from '../lib/saved-chats';
 import { useMobileChats, type MobileChats } from '../lib/use-mobile-chats';
 
 /**
@@ -82,10 +84,17 @@ export function ChatScreen(): ReactElement {
             title="Chat not found"
             status={null}
           />
-          <EmptyState
-            title="This chat is not in your list."
-            hint="It may have been deleted, or it belongs to another user."
-          />
+          {chats.reach === 'online' ? (
+            <EmptyState
+              title="This chat is not in your list."
+              hint="It may have been deleted, or it belongs to another user."
+            />
+          ) : (
+            <EmptyState
+              title="This chat is not saved on this phone."
+              hint="The last chats you opened can be read offline. This one opens once Archon can be reached."
+            />
+          )}
         </>
       ) : (
         // Keyed by chat: everything below is one chat's state, and a switch
@@ -112,7 +121,7 @@ export function ChatScreen(): ReactElement {
 
 /**
  * The chat's own event stream, as a component so a key can replace it: see
- * `useForegroundEpoch`.
+ * `useReturnEpoch`.
  */
 function ConversationStream({
   conversationId,
@@ -160,11 +169,34 @@ function ChatView({
   const locked = lock?.locked ?? false;
   const { data: config } = useEntity(K.config, skill.getConfig);
 
+  const offline = chats.reach !== 'online';
+  const saved = useSavedChats()?.find(c => c.found.chat.id === conversationId);
+  // Only while the server is out of reach, and only when it never answered:
+  // a transcript it did send, even one gone stale, is newer than the copy.
+  const readingSaved = offline && messages === undefined && saved !== undefined;
+  const shownMessages = readingSaved ? saved.messages : messages;
+
+  const hasSummary = summary !== undefined;
+  const summaryRef = useRef(summary);
+  summaryRef.current = summary;
+  const labelRef = useRef(project);
+  labelRef.current = project;
+  useEffect(() => {
+    const chat = summaryRef.current;
+    if (offline || messages === undefined || chat === undefined || projectId === null) return;
+    saveChat({
+      found: { chat, projectId },
+      projectLabel: labelRef.current ?? projectId,
+      messages,
+      savedAt: Date.now(),
+    });
+  }, [offline, messages, hasSummary, projectId]);
+
   const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
   const onLive = useCallback((event: LiveEvent): void => {
     setLiveSegments(prev => reduceLive(prev, event));
   }, []);
-  const streamEpoch = useForegroundEpoch(() => {
+  const streamEpoch = useReturnEpoch(() => {
     for (const key of conversationStreamKeys(conversationId)) invalidate(key);
   });
 
@@ -310,7 +342,7 @@ function ChatView({
     turn.controlRef.current?.focus();
   }, [turn.controlRef]);
 
-  const messageList = useMemo(() => messages ?? [], [messages]);
+  const messageList = useMemo(() => shownMessages ?? [], [shownMessages]);
   const rendered = useMemo(
     () => renderedMessages(messageList, pendingUser, liveSegments, new Date().toISOString()),
     [messageList, pendingUser, liveSegments]
@@ -439,9 +471,25 @@ function ChatView({
               value={{ runStartedAt: null, assistant: summary?.assistant ?? null, leaveAsk }}
             >
               {rendered.length === 0 && !working ? (
-                <EmptyState title={messages === undefined ? 'Loading…' : 'No messages yet.'} />
+                <EmptyState
+                  title={
+                    shownMessages !== undefined
+                      ? 'No messages yet.'
+                      : offline
+                        ? 'This chat is not saved on this phone.'
+                        : 'Loading…'
+                  }
+                  hint={
+                    shownMessages === undefined && offline
+                      ? 'It opens once Archon can be reached.'
+                      : undefined
+                  }
+                />
               ) : (
-                <ChatStream messages={rendered} onAnswer={working ? undefined : answerAsk} />
+                <ChatStream
+                  messages={rendered}
+                  onAnswer={working || offline ? undefined : answerAsk}
+                />
               )}
               <ChatStatusStrip
                 status={status}
@@ -467,7 +515,9 @@ function ChatView({
                   ) : undefined
                 }
               />
-              {summary !== undefined ? <RunCards conversationDbId={summary.dbId} /> : null}
+              {summary !== undefined && !offline ? (
+                <RunCards conversationDbId={summary.dbId} />
+              ) : null}
               <QueuedMessages
                 messages={turn.queued}
                 busyIds={turn.busyIds}
@@ -491,7 +541,14 @@ function ChatView({
           </button>
         ) : null}
       </div>
-      {error !== null || loadError !== undefined ? (
+      {offline ? (
+        <p role="status" className="mobile-note shrink-0 border-t border-border">
+          {readingSaved
+            ? `Saved copy from ${relativeTime(new Date(saved.savedAt).toISOString())}. `
+            : ''}
+          Sending is off until Archon can be reached.
+        </p>
+      ) : error !== null || loadError !== undefined ? (
         <p role="alert" className="mobile-note shrink-0 border-t border-error/30 text-error">
           {error ?? `Failed to load: ${loadError?.message ?? 'unknown error'}`}
         </p>
@@ -518,7 +575,8 @@ function ChatView({
           steerable={turn.steerable}
           onSend={onSend}
           onInterrupt={turn.stop}
-          ask={chipsAsk}
+          ask={offline ? null : chipsAsk}
+          offline={offline}
           controlRef={turn.controlRef}
           mobileRef={composerRef}
         />

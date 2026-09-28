@@ -214,6 +214,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
             copy(group.messages.map(m => m.content).join('\n\n'));
           }}
           aria-label="Copy message as markdown"
+          data-copy-message
           className={`ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] border border-border-bright px-[0.45rem] py-[0.1rem] text-mini transition-opacity focus:opacity-100 group-hover:opacity-100 ${
             copyState === 'idle' ? 'opacity-0' : 'opacity-100'
           } ${copyState === 'copied' ? 'text-success' : 'text-text-secondary hover:text-text-primary'}`}

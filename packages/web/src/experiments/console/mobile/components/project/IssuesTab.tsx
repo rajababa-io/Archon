@@ -66,7 +66,7 @@ export function IssuesTab({ projectId }: { projectId: string }): ReactElement {
           >
             <span aria-hidden className="size-2 rounded-full" style={{ background: c.color }} />
             {c.label}
-            <span className="tabular-nums text-text-tertiary">{board.get(c.key)?.length ?? 0}</span>
+            <span className="tabular-nums">{board.get(c.key)?.length ?? 0}</span>
           </button>
         ))}
       </div>

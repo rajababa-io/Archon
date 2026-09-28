@@ -99,3 +99,25 @@
   min-height: 44px;
   padding-inline: 0.75rem;
 }
+
+/*
+ * The out-of-reach banner sits above the screen and takes the status-bar
+ * inset itself, so the screen's header under it does not pad for it again.
+ */
+.mobile-root > .mobile-banner {
+  flex: none;
+}
+.mobile-banner + * > .mobile-safe-top {
+  padding-top: 0.5rem;
+}
+
+/* The chat status pill opens the turn's trace; a finger needs the full height. */
+.mobile-root [data-status-pill] {
+  min-height: 44px;
+}
+
+/* A message's Copy appears on hover, which a finger never does: on a phone it
+   would be an invisible target. Long-press offers Copy instead. */
+.mobile-root [data-copy-message] {
+  display: none;
+}

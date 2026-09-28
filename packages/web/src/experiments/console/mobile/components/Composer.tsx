@@ -63,6 +63,11 @@ interface ComposerProps {
    */
   onSend: (text: string, files: File[] | undefined, mode: SendMode | null) => void;
   onInterrupt: () => void;
+  /**
+   * Archon cannot be reached. The draft can still be written, and is kept;
+   * nothing that needs the server — sending, commands, files, the model — works.
+   */
+  offline: boolean;
   /** The question the chat waits on, answerable from chips; null for none. */
   ask: AskSpec | null;
   /** Queue pull-back and focus, the same handle the desktop composer offers. */
@@ -74,6 +79,9 @@ interface ComposerProps {
 const MAX_HEIGHT_PX = 160;
 
 type SheetName = 'commands' | 'files' | 'model' | 'send';
+
+/** Keys that ask the server for something, so do nothing while it is out of reach. */
+const SERVER_KEYS: readonly KeyAction[] = ['commands', 'files', 'model', 'interrupt'];
 
 /** Chip progress, and the question it belongs to, so a new question starts clean. */
 interface Chips {
@@ -115,6 +123,7 @@ export function Composer({
   steerable,
   onSend,
   onInterrupt,
+  offline,
   ask,
   controlRef,
   mobileRef,
@@ -239,7 +248,7 @@ export function Composer({
     setChips({ key: chips.key, state: step.state, own: false });
   };
 
-  const canSend = text.trim() !== '' && preparing === 0;
+  const canSend = !offline && text.trim() !== '' && preparing === 0;
   const send = (mode: SendMode | null): void => {
     const trimmed = text.trim();
     if (!canSend) return;
@@ -301,6 +310,7 @@ export function Composer({
     disabledKeys.add('camera');
   }
   if (history.length === 0) disabledKeys.add('recall');
+  if (offline) for (const key of SERVER_KEYS) disabledKeys.add(key);
 
   const steerBlocked = !steerable
     ? 'This turn cannot take a message until it ends.'
@@ -312,9 +322,11 @@ export function Composer({
   const placeholder =
     chips.own && question !== undefined
       ? `Your answer: ${question.title}`
-      : working
-        ? 'Agent is working — Queue sends it after…'
-        : 'Message the agent…';
+      : offline
+        ? 'Offline — write now, send later'
+        : working
+          ? 'Agent is working — Queue sends it after…'
+          : 'Message the agent…';
 
   const pickFile = (input: HTMLInputElement | null): void => {
     if (input?.files != null) attach(Array.from(input.files));

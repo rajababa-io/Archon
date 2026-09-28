@@ -29,7 +29,7 @@ export function ChatRow({ chat, status, current = false, onPick }: ChatRowProps)
         <span className="block truncate text-body text-text-primary">
           {chat.title ?? 'Untitled chat'}
         </span>
-        <span className="block text-small text-text-tertiary">
+        <span className="block text-small text-text-secondary">
           {STATUS_LABEL[status]}
           {chat.lastActivityAt !== null ? ` · ${relativeTime(chat.lastActivityAt)}` : ''}
         </span>

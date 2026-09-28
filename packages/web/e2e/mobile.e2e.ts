@@ -570,3 +570,105 @@ test('Settings switches push on, or says how to install first on an iPhone', asy
   await expect(finished).not.toBeChecked();
   await expect(section.getByRole('checkbox', { name: 'A chat needs you' })).toBeChecked();
 });
+
+test('a chat read once is still readable when Archon cannot be reached', async ({ page }) => {
+  await open(page, chatPath(CHAT_ID));
+  await expect(page.getByText(ASSISTANT_PROSE)).toBeVisible();
+  // The copy is taken once the transcript lands; wait for it, not a clock.
+  const savedIds = (): Promise<string[]> =>
+    page.evaluate(
+      () =>
+        new Promise<string[]>((resolve, reject) => {
+          const req = indexedDB.open('archon-mobile');
+          req.onerror = (): void => {
+            reject(new Error('no database'));
+          };
+          req.onsuccess = (): void => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains('chats')) {
+              db.close();
+              resolve([]);
+              return;
+            }
+            const keys = db.transaction('chats').objectStore('chats').getAllKeys();
+            keys.onsuccess = (): void => {
+              db.close();
+              resolve(keys.result.map(String));
+            };
+          };
+        })
+    );
+  await expect.poll(savedIds).toContain(CHAT_ID);
+
+  // The tailnet goes down: every API read fails without an answer.
+  await page.route('**/api/**', route => route.abort('internetdisconnected'));
+  await page.reload();
+
+  const banner = page.getByRole('status').filter({ hasText: /Can.t reach Archon/ });
+  await expect(banner).toBeVisible();
+  await expect(page.getByText(ASSISTANT_PROSE)).toBeVisible();
+  await expect(page.getByText(/Saved copy from/)).toBeVisible();
+
+  // A draft can be written; it cannot be sent.
+  await page.getByRole('textbox', { name: 'Message' }).fill('written on the train');
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+
+  // Only the saved chats are offered, the one not read here is not.
+  await page.getByRole('button', { name: /^Open chat list/ }).tap();
+  const list = page.getByRole('navigation', { name: 'Chats' });
+  await expect(list.getByText(CHAT_TITLE)).toBeVisible();
+  await expect(list.getByText(OTHER_CHAT_TITLE)).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // Back in reach: the banner goes and the chat can be sent to again.
+  await page.unroute('**/api/**');
+  await page.getByRole('button', { name: 'Try again' }).tap();
+  await expect(banner).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+});
+
+test('with no network at all, the shell says so and sending is off', async ({ page, context }) => {
+  await open(page, chatPath(CHAT_ID));
+  await expect(page.getByText(ASSISTANT_PROSE)).toBeVisible();
+  await page.getByRole('textbox', { name: 'Message' }).fill('hello');
+
+  await context.setOffline(true);
+  await expect(page.getByRole('status').filter({ hasText: 'You are offline.' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+
+  await context.setOffline(false);
+  await expect(page.getByRole('status').filter({ hasText: 'You are offline.' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
+});
+
+test('every control on the main screens is big enough for a finger', async ({ page }) => {
+  // Links inside prose are exempt, as WCAG exempts them: they sit in a line of text.
+  const small = (): Promise<string[]> =>
+    page.evaluate(() =>
+      [...document.querySelectorAll('button, a[href], [role="tab"]')]
+        .filter(el => el.closest('.chat-markdown') === null)
+        .map(el => ({ el, box: el.getBoundingClientRect() }))
+        .filter(({ el, box }) => {
+          if (box.width === 0 || box.height === 0) return false;
+          if (getComputedStyle(el).visibility === 'hidden') return false;
+          return box.width < 44 || box.height < 44;
+        })
+        .map(
+          ({ el, box }) =>
+            `${el.getAttribute('aria-label') ?? el.textContent?.trim() ?? el.tagName} ${String(Math.round(box.width))}x${String(Math.round(box.height))}`
+        )
+    );
+  server.showPausedRun();
+  // Each screen with the content that says it has finished loading.
+  const screens: [string, Locator][] = [
+    [chatPath(CHAT_ID), page.getByText(ASSISTANT_PROSE)],
+    [projectPath, page.getByTestId('mobile-deploy').getByRole('button', { name: 'Deploy' })],
+    [runPath, page.getByText(RUN_FIRST_STEP).first()],
+    ['/m/settings', page.getByRole('checkbox', { name: 'A run finished' })],
+  ];
+  for (const [path, loaded] of screens) {
+    await open(page, path);
+    await expect(loaded).toBeVisible();
+    expect(await small(), `controls under 44px on ${path}`).toEqual([]);
+  }
+});

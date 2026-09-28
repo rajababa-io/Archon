@@ -19,13 +19,18 @@ interface ChatSwitcherProps {
  * project's heading opens that project.
  */
 export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
-  const { chats: all, error, statuses, projectLabel } = chats;
+  const { chats: all, error, reach, statuses, projectLabel } = chats;
   const groups = useMemo(
     () => switcherGroups(all ?? [], statuses, projectLabel),
     [all, statuses, projectLabel]
   );
 
-  if (error !== undefined) {
+  // Out of reach, the list is the saved copies, and the banner says why.
+  if (reach !== 'online') {
+    if (all === undefined || all.length === 0) {
+      return <p className="mobile-note">No chats are saved on this phone to read offline.</p>;
+    }
+  } else if (error !== undefined) {
     return <p className="mobile-note text-error">Couldn&apos;t load your chats: {error.message}</p>;
   }
   if (all === undefined) return <p className="mobile-note">Loading chats…</p>;

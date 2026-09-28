@@ -10,6 +10,7 @@ import {
   Slash,
   Square,
 } from 'lucide-react';
+import { tick } from '../lib/haptics';
 
 export type KeyAction =
   | 'hide-keyboard'
@@ -69,6 +70,7 @@ export function KeyRow({ onKey, disabled }: KeyRowProps): ReactElement {
             if (action !== 'hide-keyboard') e.preventDefault();
           }}
           onClick={() => {
+            tick();
             onKey(action);
           }}
           className={`mobile-tap flex shrink-0 items-center justify-center rounded-lg text-text-secondary active:bg-[color:var(--surface-hover)] disabled:opacity-35 ${
