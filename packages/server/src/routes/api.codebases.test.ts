@@ -50,6 +50,13 @@ const mockRegisterFolder = mock(async (_path: string) => ({
 const mockFindRepoRoot = mock(async (p: string) => p as string | null);
 const mockListByCodebase = mock(async (_id: string) => [] as unknown[]);
 const mockRemoveWorktree = mock(async () => {});
+const mockListCheckoutFiles = mock(
+  async (_cwd: string): Promise<{ paths: string[]; truncated: boolean }> => ({
+    paths: [],
+    truncated: false,
+  })
+);
+class MockNotAGitCheckoutError extends Error {}
 const mockUpdateStatus = mock(async (_id: string, _status: string) => {});
 
 mock.module('@archon/core', () => ({
@@ -113,6 +120,8 @@ mock.module('@archon/git', () => ({
   toRepoPath: (p: string) => p,
   toWorktreePath: (p: string) => p,
   findRepoRoot: mockFindRepoRoot,
+  listCheckoutFiles: mockListCheckoutFiles,
+  NotAGitCheckoutError: MockNotAGitCheckoutError,
 }));
 
 mock.module('@archon/core/db/conversations', () => ({
@@ -899,6 +908,54 @@ describe('Files tab — GET /api/codebases/:id/files and /file', () => {
 // The conflict check is the reason this endpoint exists, so it is tested
 // against a real file that really changes underneath the caller.
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tests: the file search list. Git's own listing is tested against real git
+// in @archon/git; this is the route's translation of it.
+// ---------------------------------------------------------------------------
+
+describe('GET /api/codebases/:id/paths', () => {
+  beforeEach(() => {
+    mockGetCodebase.mockReset();
+    mockListCheckoutFiles.mockReset();
+  });
+
+  test("lists the project root's files", async () => {
+    mockGetCodebase.mockImplementationOnce(async () => MOCK_CODEBASE as never);
+    mockListCheckoutFiles.mockImplementationOnce(async () => ({
+      paths: ['README.md', 'src/index.ts'],
+      truncated: false,
+    }));
+
+    const response = await makeApp().request('/api/codebases/codebase-uuid-1/paths');
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      paths: ['README.md', 'src/index.ts'],
+      truncated: false,
+    });
+    expect(mockListCheckoutFiles).toHaveBeenCalledWith(MOCK_CODEBASE.default_cwd);
+  });
+
+  test('a project that is not a git checkout is a 409 that says so', async () => {
+    mockGetCodebase.mockImplementationOnce(async () => MOCK_CODEBASE as never);
+    mockListCheckoutFiles.mockImplementationOnce(async () => {
+      throw new MockNotAGitCheckoutError(MOCK_CODEBASE.default_cwd);
+    });
+
+    const response = await makeApp().request('/api/codebases/codebase-uuid-1/paths');
+
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { error: string }).error).toContain('git checkout');
+  });
+
+  test('an unknown project is 404', async () => {
+    mockGetCodebase.mockImplementationOnce(async () => null);
+    const response = await makeApp().request('/api/codebases/nope/paths');
+    expect(response.status).toBe(404);
+    expect(mockListCheckoutFiles).not.toHaveBeenCalled();
+  });
+});
 
 describe('Files tab - PUT /api/codebases/:id/file', () => {
   let root: string;

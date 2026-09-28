@@ -7,6 +7,17 @@
  */
 const key = (draftKey: string): string => `console:draft:${draftKey}`;
 
+/**
+ * The draft key for one chat. Keyed by project as well as conversation: the
+ * desktop chat page stays mounted across a project switch, so a bare
+ * new-chat slot would be shared by every project and text typed in one
+ * project's new chat would surface in another's. The mobile shell uses the
+ * same key, so a chat's draft is one draft on either screen.
+ */
+export function chatDraftKey(projectId: string | null, conversationId: string | null): string {
+  return `${projectId ?? '_'}:${conversationId ?? '__new__'}`;
+}
+
 // localStorage throws in private-browsing modes or when disabled by policy.
 // A draft that cannot be saved is the same as the old behaviour — it lives in
 // the page until a reload — so a failure reads as "nothing stored".

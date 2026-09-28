@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AskCard } from './AskCard';
-import type { AskSpec } from '../primitives/ask';
+import type { AskSpec } from '@archon/awaiting';
 
 const noop = (): void => undefined;
 

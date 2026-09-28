@@ -70,6 +70,18 @@ export async function listRuns(
   };
 }
 
+/**
+ * The runs a chat launched, newest first. Every reader of `K.chatRuns` goes
+ * through this, so the key always holds the same page: two limits under one
+ * key would mean whichever request landed first decided what both showed.
+ * Deep history belongs on the runs view, not the chat.
+ */
+export async function listChatRuns(
+  conversationDbId: string
+): Promise<{ runs: Run[]; counts: RunCounts; total: number }> {
+  return listRuns({ parentConversationId: conversationDbId, limit: 25 });
+}
+
 export async function listGlobalCounts(): Promise<RunCounts> {
   // Counts without any codebase filter — used by top chrome pill.
   const res = await requestJson<DashboardRunsResponse>('/api/dashboard/runs?limit=1');
@@ -152,10 +164,15 @@ export async function listRunArtifacts(runId: string): Promise<ArtifactFile[]> {
   return res.files;
 }
 
+/** Where one artifact file is served: each path segment encoded, the slashes kept. */
+export function artifactUrl(runId: string, path: string): string {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+  return `/api/artifacts/${encodeURIComponent(runId)}/${encodedPath}`;
+}
+
 /** Fetch a single artifact file as text (markdown or plain). */
 export async function fetchArtifact(runId: string, path: string): Promise<string> {
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/');
-  const res = await fetch(`/api/artifacts/${encodeURIComponent(runId)}/${encodedPath}`);
+  const res = await fetch(artifactUrl(runId, path));
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Failed to fetch artifact: ${res.status.toString()}`);

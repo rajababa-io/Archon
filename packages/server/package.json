@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@archon/adapters": "workspace:*",
+    "@archon/awaiting": "workspace:*",
     "@archon/core": "workspace:*",
     "@archon/git": "workspace:*",
     "@archon/paths": "workspace:*",
@@ -154,6 +155,16 @@
     ],
     [
       "src/routes/internal-drain.test.ts"
+    ],
+    [
+      "src/services/web-push.test.ts",
+      "src/services/push-presence.test.ts"
+    ],
+    [
+      "src/services/push-notifier.test.ts"
+    ],
+    [
+      "src/routes/push.test.ts"
     ],
     [
       "src/services/deploy-park.integration.test.ts"

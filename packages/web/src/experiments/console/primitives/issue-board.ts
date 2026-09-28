@@ -87,6 +87,30 @@ export function issuePlacement(
   return { column: 'todo', reason: 'GitHub · open, nothing else known' };
 }
 
+/** An issue and where it sits on the board. */
+export interface PlacedIssue {
+  issue: GithubIssue;
+  placement: IssuePlacement;
+}
+
+/**
+ * Every issue in its column, in the order given, every column present even
+ * when empty. `typeFilter` keeps only issues of that type; null keeps all.
+ */
+export function issuesByColumn(
+  issues: readonly GithubIssue[],
+  runningIssueNumbers: ReadonlySet<number>,
+  typeFilter: string | null = null
+): Map<IssueColumn, PlacedIssue[]> {
+  const out = new Map<IssueColumn, PlacedIssue[]>(ISSUE_COLUMNS.map(c => [c.key, []]));
+  for (const issue of issues) {
+    if (typeFilter !== null && issueType(issue)?.name !== typeFilter) continue;
+    const placement = issuePlacement(issue, runningIssueNumbers);
+    out.get(placement.column)?.push({ issue, placement });
+  }
+  return out;
+}
+
 /**
  * The GitHub issue TYPE, or one derived from a legacy label.
  *

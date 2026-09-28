@@ -150,7 +150,7 @@ export interface FoundChat {
  * project, so the palette would have nowhere to take it. The route's cap still
  * applies; `truncated` says when it bit.
  */
-export async function listAllConversations(): Promise<{
+export async function listAllConversations(init?: { signal?: AbortSignal }): Promise<{
   chats: FoundChat[];
   truncated: boolean;
 }> {
@@ -159,7 +159,7 @@ export async function listAllConversations(): Promise<{
       codebase_id: string | null;
     })[];
     counts: { open: number; done: number; all: number };
-  }>('/api/conversations?mine=true&archived=active&state=all');
+  }>('/api/conversations?mine=true&archived=active&state=all', init);
   const chats: FoundChat[] = [];
   for (const row of raw.conversations) {
     if (row.codebase_id === null) continue;

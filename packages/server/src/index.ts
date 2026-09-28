@@ -87,6 +87,8 @@ import {
   CONVERSATION_EVENT_NOTIFY_CHANNEL,
 } from '@archon/core/db/adapters/types';
 import { registerApiRoutes } from './routes/api';
+import { registerPushRoutes } from './routes/push';
+import { startPush } from './services/push-service';
 import {
   settleCiWatchesForHead,
   startCiWatchReconcileScheduler,
@@ -832,6 +834,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
         }
       : null;
   const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms, deployHost);
+  registerPushRoutes(app, startPush(webAdapter));
   // A turn that starts taking mid-turn input, or a steered message it read,
   // changes what the chat's queue shows — "send now" appears, a message leaves.
   lockManager.setQueueListener(apiRoutes.emitQueueChanged);
@@ -1015,6 +1018,20 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
     });
     app.use('/assets/*', serveStatic({ root: webDistPath }));
     app.use('/favicon.png', serveStatic({ root: webDistPath, path: 'favicon.png' }));
+    // The mobile shell's service worker, manifest and icons. Under `/m/`
+    // because a service worker's default scope is its own directory, and the
+    // worker must control the mobile shell and nothing else. Stable names, so
+    // they revalidate rather than cache forever; any other `/m/...` path is a
+    // shell route and falls through to the SPA below.
+    app.use(
+      '/m/*',
+      serveStatic({
+        root: webDistPath,
+        onFound: (_path, c) => {
+          c.header('Cache-Control', 'no-cache');
+        },
+      })
+    );
     // The shell is the opposite case and must never be cached. Its own URL never
     // changes, so a browser holding a copy keeps asking for the asset names that
     // copy names — and a deployed build stays invisible until someone thinks to

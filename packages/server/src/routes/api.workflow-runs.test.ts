@@ -3955,6 +3955,31 @@ describe('GET /api/artifacts/:runId/* storage-key resolution', () => {
     expect(await response.text()).toBe('# folder plan');
   });
 
+  test('serves an image artifact as its bytes, typed as an image', async () => {
+    const runId = 'run-serve-image';
+    const dir = join(wsRoot(), '_folder', 'my-ops-folder', 'artifacts', 'runs', runId);
+    await mkdir(dir, { recursive: true });
+    // Not valid UTF-8: a text read would replace these bytes and corrupt the picture.
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0xfe]);
+    await writeFile(join(dir, 'diagram.png'), bytes);
+    mockGetWorkflowRun.mockImplementationOnce(async () => ({
+      ...MOCK_RUNNING_RUN,
+      id: runId,
+      codebase_id: 'cb-folder',
+    }));
+    mockGetCodebase.mockImplementationOnce(async () => ({
+      name: 'My Ops Folder',
+      kind: 'folder',
+      default_cwd: '/srv/ops',
+    }));
+    const { app } = makeApp();
+    const response = await app.request(`/api/artifacts/${runId}/diagram.png`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('image/png');
+    expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+  });
+
   test('serves a no-remote local repo’s artifact (404 before #2200)', async () => {
     const runId = 'run-serve-local';
     const dir = join(wsRoot(), '_local', 'workspace', 'artifacts', 'runs', runId);

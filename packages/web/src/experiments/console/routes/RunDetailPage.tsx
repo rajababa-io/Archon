@@ -1,12 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactElement,
-} from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { shortRunId } from '../lib/format';
 import { useKeymap, type Binding } from '../lib/keymap';
@@ -20,36 +12,22 @@ import { RunGraphPanel } from '../components/RunGraphPanel';
 import { ArtifactPanel } from '../components/ArtifactPanel';
 import { RunStartedLine, RunFinishedLine } from '../components/RunLifecycle';
 import { StreamContextProvider } from '../lib/stream-context';
-import { useRunStreamSSE } from '../lib/sse';
-import { useEntity, invalidate } from '../store/cache';
+import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import { useFollowTail } from '../hooks/useFollowTail';
+import { useRunDetail } from '../hooks/useRunDetail';
 import * as skill from '../skills';
-import { runMessageConversationId, type Run } from '../primitives/run';
-import { foldNodeRuns, type RunEvent } from '../primitives/event';
-import type { Message } from '../primitives/message';
+import { foldNodeRuns } from '../primitives/event';
 import type { Project } from '../primitives/project';
 import type { ArtifactFile } from '../skills/runs';
-
-interface RunDetailView {
-  run: Run;
-  events: RunEvent[];
-}
 
 /**
  * Run detail — the "logs" page, promoted out of a hidden tab.
  *
- * Data sources:
- *   - skill.getRun(id)     → run metadata + workflow_events
- *   - skill.listMessages() → conversation messages (assistant text, user input,
- *                            persisted tool calls in metadata)
- *
- * RunStream merges both into one timeline. Paused runs render the
- * ApprovalContext + ApprovalPanel at the bottom of the stream so the user can
- * answer the gate in place.
- *
- * Updates flow through SSE (lib/sse.ts) with a 30s safety-net refetch
- * for runs that are still running/paused.
+ * The run, its events and its messages come from `useRunDetail`; RunStream
+ * merges them into one timeline. Paused runs render the ApprovalContext +
+ * ApprovalPanel at the bottom of the stream so the user can answer the gate
+ * in place.
  */
 const TOGGLE_KEYS = {
   toolCalls: 'archon.console.showToolCalls',
@@ -149,62 +127,12 @@ export function RunDetailPage(): ReactElement {
     return willMove;
   }, []);
 
-  // `Project | null` / `RunDetailView | null` rather than the `as unknown as T`
-  // casts the original sentinel used — keeps the null path honest for
-  // downstream readers (they can guard explicitly instead of meeting a
-  // mis-typed value).
-  const { data: detail, error: detailError } = useEntity<RunDetailView | null>(
-    runId !== undefined ? K.run(runId) : 'noop:no-run-id',
-    () => (runId !== undefined ? skill.getRun(runId) : Promise.resolve(null))
-  );
+  const { detail, detailError, messages } = useRunDetail(runId);
   const projectId = detail?.run.projectId ?? undefined;
   const { data: project, error: projectError } = useEntity<Project | null>(
     projectId !== undefined ? K.project(projectId) : 'noop:no-project-id',
     () => (projectId !== undefined ? skill.getProject(projectId) : Promise.resolve(null))
   );
-
-  // Messages are tied to the run's conversation — and the /messages endpoint
-  // takes the *platform* conversation id, not the DB id. CLI runs expose it as
-  // conversationPlatformId; chat-dispatched runs only expose the worker
-  // conversation (workerPlatformId), which holds their messages (#2048). The
-  // helper picks whichever is present.
-  const conversationPlatformId = runMessageConversationId(detail?.run);
-
-  const { data: messages } = useEntity<Message[]>(
-    conversationPlatformId !== null
-      ? K.messages(conversationPlatformId)
-      : 'noop:no-conversation-id',
-    () =>
-      conversationPlatformId !== null
-        ? skill.listMessages(conversationPlatformId)
-        : Promise.resolve([])
-  );
-
-  // Live updates: subscribe to the conversation SSE stream. Events here
-  // invalidate the run and messages caches; useEntity refetches authoritative
-  // state. Auto-reconnects on disconnect. The hook itself no-ops while the
-  // conversation id is still unknown.
-  useRunStreamSSE(conversationPlatformId, runId ?? null);
-
-  // SSE-drop safety net: if the stream silently dies (network hiccup,
-  // sleep/wake, mobile transitions) the EventSource will reconnect but we
-  // may have missed terminal events in the meantime. A 30s heartbeat refetch
-  // while status is non-terminal catches that without being polling proper —
-  // it stops the moment the run hits a terminal state.
-  const status = detail?.run.status;
-  useEffect(() => {
-    if (runId === undefined) return;
-    if (status !== 'running' && status !== 'paused') return;
-    const id = setInterval(() => {
-      invalidate(K.run(runId));
-      if (conversationPlatformId !== null) {
-        invalidate(K.messages(conversationPlatformId));
-      }
-    }, 30000);
-    return (): void => {
-      clearInterval(id);
-    };
-  }, [runId, status, conversationPlatformId]);
 
   // Surface the artifact count on the tab even when the user hasn't visited
   // the panel yet. Cheap call — the server walks one directory. Must live

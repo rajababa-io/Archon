@@ -6,7 +6,7 @@
  * MOVE the highlight; Enter is the one key that commits, so a stray letter can
  * never answer a question on its own.
  */
-import { splitReply } from '../primitives/ask';
+import { splitReply } from '@archon/awaiting';
 import type { Message } from '../primitives/message';
 
 /** Keycap letters. Ten options is far past the point the list stops being readable. */
@@ -83,6 +83,10 @@ export function startRow(
  * Whether the agent's latest reply is waiting on an ask card: some message
  * after your last one carries an ask block. Answering sends a message, which
  * is what ends the wait — the card's own "sent" state never needs to leave it.
+ *
+ * Narrower than `awaitsAnswer` on purpose: this gates the key that moves focus
+ * INTO a live card, and a malformed block (`ask-error`) renders no card to
+ * focus, while `awaitsAnswer` still counts it as a chat waiting on you.
  */
 export function askAwaitsAnswer(messages: readonly Pick<Message, 'role' | 'content'>[]): boolean {
   for (let i = messages.length - 1; i >= 0; i--) {

@@ -11,6 +11,7 @@ import { cors } from 'hono/cors';
 import type { WebAdapter } from '../adapters/web';
 import { boundMetadataToolOutputs } from '../adapters/web/truncate';
 import { DASHBOARD_STREAM } from '../adapters/web/transport';
+import { awaitsAnswer } from '@archon/awaiting';
 import {
   rm,
   readFile,
@@ -23,7 +24,7 @@ import {
   rename,
 } from 'fs/promises';
 import { existsSync, readFileSync } from 'fs';
-import { normalize, join, basename, dirname, resolve } from 'path';
+import { normalize, join, basename, dirname, extname, resolve } from 'path';
 import { randomUUID, createHash } from 'crypto';
 import type { Context } from 'hono';
 import { cleanupUploads } from './upload-cleanup';
@@ -103,6 +104,7 @@ import {
   toWorktreePath,
   readWorkingChanges,
   readWorkingFileDiff,
+  listCheckoutFiles,
   NotAGitCheckoutError,
 } from '@archon/git';
 import { readConversationCheckout } from './conversation-checkout';
@@ -403,6 +405,7 @@ import {
   envVarMutationResponseSchema,
   codebaseFilePathQuerySchema,
   codebaseFilesResponseSchema,
+  codebasePathsResponseSchema,
   codebaseFileResponseSchema,
   writeCodebaseFileBodySchema,
   writeCodebaseFileResponseSchema,
@@ -1237,6 +1240,23 @@ const listCodebaseFilesRoute = createRoute({
     },
     400: jsonError('Bad request'),
     404: jsonError('Not found'),
+    500: jsonError('Server error'),
+  },
+});
+
+const listCodebasePathsRoute = createRoute({
+  method: 'get',
+  path: '/api/codebases/{id}/paths',
+  tags: ['Codebases'],
+  summary: "Every file in a codebase's git checkout, minus what .gitignore names",
+  request: { params: codebaseIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: codebasePathsResponseSchema } },
+      description: 'File paths relative to the project root',
+    },
+    404: jsonError('Not found'),
+    409: jsonError('The project is not a git checkout'),
     500: jsonError('Server error'),
   },
 });
@@ -3479,19 +3499,13 @@ export function registerApiRoutes(
 
   /**
    * The content of each chat's newest message, but only where that message is
-   * an assistant reply that MIGHT hold an ask block — the agent's clickable
-   * multiple-choice question. Everything else maps to nothing.
+   * the agent's and holds an open question — an ask block, the agent's
+   * clickable multiple-choice question. Everything else maps to nothing.
    *
-   * The substring test here is a deliberate OVER-approximation and must stay
-   * one. What actually counts as an ask block — a top-level fence, of any
-   * length, not nested inside a longer one — is decided by the console's own
-   * parser (`experiments/console/primitives/ask.ts`), which is where the
-   * format is defined and where the card is rendered. The console cannot
-   * import server code and the server cannot import the console, so the rule
-   * lives in exactly one of them and this end only decides what is worth
-   * SENDING. Being broader than the real rule costs a few KB on a chat that
-   * turns out not to have one; being narrower would hide a question, so it is
-   * the one direction this may never drift in.
+   * `awaitsAnswer` (`@archon/awaiting`) is the one rule for that, shared with
+   * the console, which runs the same check on what arrives, and with the push
+   * notifier. Completion is left to the console: a closed chat still sends its
+   * question, and the console's own read of `completed` drops it.
    */
   async function lastMessageFacts(
     conversations: readonly import('@archon/core').Conversation[]
@@ -3499,7 +3513,9 @@ export function registerApiRoutes(
     const out = new Map<string, { askCandidate: string | null }>();
     const last = await messageDb.getLastMessagePerConversation(conversations.map(c => c.id));
     for (const [conversationId, message] of last) {
-      const isAsk = message.role === 'assistant' && message.content.includes('```ask');
+      const isAsk =
+        message.role === 'assistant' &&
+        awaitsAnswer({ completed: false, newestAgentMessage: message.content });
       out.set(conversationId, { askCandidate: isAsk ? message.content : null });
     }
     return out;
@@ -4600,6 +4616,23 @@ export function registerApiRoutes(
       }
       getLog().error({ err: error, codebaseId: id }, 'codebase_files.list_failed');
       return apiError(c, 500, 'Failed to list directory');
+    }
+  });
+
+  registerOpenApiRoute(listCodebasePathsRoute, async c => {
+    const id = c.req.param('id') ?? '';
+    try {
+      const root = await codebaseRoot(id);
+      if (root === null) {
+        return apiError(c, 404, 'Codebase not found');
+      }
+      return c.json(await listCheckoutFiles(root));
+    } catch (error) {
+      if (error instanceof NotAGitCheckoutError) {
+        return apiError(c, 409, 'File search needs a git checkout, and this project is not one');
+      }
+      getLog().error({ err: error, codebaseId: id }, 'codebase_paths.list_failed');
+      return apiError(c, 500, 'Failed to list files');
     }
   });
 
@@ -6889,6 +6922,33 @@ export function registerApiRoutes(
       }
     }
     const realFilePath = contained.realPath;
+
+    // A picture is sent as its bytes under the Files tab's image allow-list,
+    // so the run screen can show it; read as UTF-8 it would arrive corrupted.
+    const imageType = IMAGE_TYPES[extname(filename).slice(1).toLowerCase()];
+    if (imageType !== undefined) {
+      try {
+        const info = await stat(realFilePath);
+        if (info.size > MAX_IMAGE_BYTES) {
+          return apiError(c, 413, `Image is ${String(info.size)} bytes; the limit is 10 MB`);
+        }
+        const bytes = await readFile(realFilePath);
+        return new Response(new Uint8Array(bytes), {
+          status: 200,
+          headers: {
+            'Content-Type': imageType,
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Disposition': 'inline',
+          },
+        });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          return apiError(c, 404, 'Artifact file not found');
+        }
+        getLog().error({ err, runId, filename }, 'artifacts.read_failed');
+        return apiError(c, 500, 'Failed to read artifact file');
+      }
+    }
 
     let content: string;
     try {

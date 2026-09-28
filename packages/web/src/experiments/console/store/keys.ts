@@ -68,6 +68,8 @@ export const K = {
   // was already read. Both parts are encoded — a path may contain `:`.
   files: (projectId: string, path: string): string =>
     `files:${encodeURIComponent(projectId)}:${encodeURIComponent(path)}`,
+  /** Every file in the project's checkout, for a search box. */
+  projectPaths: (projectId: string): string => `paths:${encodeURIComponent(projectId)}`,
   fileContent: (projectId: string, path: string): string =>
     `file:${encodeURIComponent(projectId)}:${encodeURIComponent(path)}`,
   // Installation-wide settings surfaces (static keys — one row each).
@@ -96,4 +98,7 @@ export const K = {
   providerConnections: 'provider-connections' as const,
   userAiPrefs: 'user-ai-prefs' as const,
   piModels: 'pi-models' as const,
+  /** Web Push: whether the server can push, and what to be told about. */
+  pushKey: 'push-key' as const,
+  pushPrefs: 'push-prefs' as const,
 } as const;

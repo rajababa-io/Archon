@@ -54,7 +54,7 @@ export const conversationListResponseSchema = z
   .object({
     conversations: z.array(
       conversationSchema.extend({
-        // Listed rows carry the newest assistant message when it might hold an
+        // Listed rows carry the newest assistant message when it holds an open
         // ask block, so the rail can badge a chat that is waiting on an answer.
         // Only this route computes it; fetching one conversation does not.
         ask_candidate: z.string().nullable(),

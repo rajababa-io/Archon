@@ -145,7 +145,7 @@ export function ApprovalPanel({ run }: ApprovalPanelProps): ReactElement {
       )}
 
       {mode === null ? (
-        <div className="flex items-stretch gap-2">
+        <div data-approval-actions className="flex items-stretch gap-2">
           <input
             type="text"
             value={comment}

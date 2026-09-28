@@ -49,6 +49,13 @@
         "typescript": "^5.0.0",
       },
     },
+    "packages/awaiting": {
+      "name": "@archon/awaiting",
+      "version": "0.10.1",
+      "peerDependencies": {
+        "typescript": "^5.0.0",
+      },
+    },
     "packages/cli": {
       "name": "@archon/cli",
       "version": "0.10.1",
@@ -193,6 +200,7 @@
       "version": "0.10.1",
       "dependencies": {
         "@archon/adapters": "workspace:*",
+        "@archon/awaiting": "workspace:*",
         "@archon/core": "workspace:*",
         "@archon/git": "workspace:*",
         "@archon/paths": "workspace:*",
@@ -214,6 +222,7 @@
       "name": "@archon/web",
       "version": "0.10.1",
       "dependencies": {
+        "@archon/awaiting": "workspace:*",
         "@codemirror/lang-css": "^6.3.1",
         "@codemirror/lang-html": "^6.4.12",
         "@codemirror/lang-javascript": "^6.2.5",
@@ -313,6 +322,8 @@
     "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.93.0", "", { "dependencies": { "json-schema-to-ts": "^3.1.1" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-q9vaSZQVFx6B/gPxetGYfLXSJD5v0sOmh0OpZDq7yCrTSA+Rscvrtyol7JJTW40wEpQB4U1B4JXzxQitbQ3CAA=="],
 
     "@archon/adapters": ["@archon/adapters@workspace:packages/adapters"],
+
+    "@archon/awaiting": ["@archon/awaiting@workspace:packages/awaiting"],
 
     "@archon/cli": ["@archon/cli@workspace:packages/cli"],
 

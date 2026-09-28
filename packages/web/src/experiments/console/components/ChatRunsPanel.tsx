@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import * as skill from '../skills';
+import { awaitsApproval } from '@archon/awaiting';
 import type { Run } from '../primitives/run';
 import { statusDotClass, runStatusLabel } from '../lib/run-status';
 import { shortRunId, relativeTime, formatElapsed, elapsedSince } from '../lib/format';
@@ -22,12 +23,6 @@ interface ChatRunsPanelProps {
 
 /** Rows shown before the list truncates behind "Show all". */
 const COLLAPSED_ROWS = 5;
-/** Server-side page size. Deep history belongs on the runs view, not the chat. */
-const FETCH_LIMIT = 25;
-
-function needsApproval(run: Run): boolean {
-  return run.status === 'paused' && run.approval !== null && run.approval !== undefined;
-}
 
 /**
  * The single answer to "what has this chat started" — every run launched from
@@ -58,7 +53,7 @@ export function ChatRunsPanel({
   const [expanded, setExpanded] = useState(false);
   const { data, error } = useEntity<Awaited<ReturnType<typeof skill.listRuns>>>(
     K.chatRuns(conversationDbId),
-    () => skill.listRuns({ parentConversationId: conversationDbId, limit: FETCH_LIMIT })
+    () => skill.listChatRuns(conversationDbId)
   );
 
   // Render nothing until the first load settles, rather than flashing a state
@@ -70,8 +65,8 @@ export function ChatRunsPanel({
   // composer is permanent furniture that answers a question nobody asked.
   if (error === undefined && runs.length === 0) return null;
 
-  const approvals = runs.filter(needsApproval);
-  const listed = runs.filter(r => !needsApproval(r));
+  const approvals = runs.filter(awaitsApproval);
+  const listed = runs.filter(r => !awaitsApproval(r));
   const visible = expanded ? listed : listed.slice(0, COLLAPSED_ROWS);
 
   return (

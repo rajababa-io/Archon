@@ -73,11 +73,23 @@ export class WebAdapter implements IWebPlatformAdapter {
     { name: string; input: ToolInputSnapshot; startedAt: number }
   >();
 
+  /** Told each time a turn ends, after its messages are persisted. */
+  private turnEndedListener: ((conversationId: string) => void) | undefined;
+
   constructor(
     private transport: SSETransport,
     private persistence: MessagePersistence,
     private workflowBridge: WorkflowEventBridge
   ) {}
+
+  /**
+   * Hear about every turn that ends, whether or not a client is watching —
+   * the dashboard announcement below is skipped when nobody is, which is
+   * exactly when the push notifier most needs to know.
+   */
+  setTurnEndedListener(listener: (conversationId: string) => void): void {
+    this.turnEndedListener = listener;
+  }
 
   /**
    * Subscribe an SSE stream to a conversation. Existing subscribers keep
@@ -508,6 +520,7 @@ export class WebAdapter implements IWebPlatformAdapter {
     if (this.transport.hasActiveStream(DASHBOARD_STREAM)) {
       this.transport.emitWorkflowEvent(DASHBOARD_STREAM, lockEvent);
     }
+    if (!locked) this.turnEndedListener?.(conversationId);
   }
 
   /**

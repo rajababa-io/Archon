@@ -63,3 +63,7 @@ To customize any bundled workflow, copy it from `.archon/workflows/defaults/` in
 - [Global Workflows](/guides/global-workflows/) — User-level workflows that apply to every project
 - [Multi-Repo Projects](/guides/multi-repo-projects/) — Drive many service repos under one folder-project root
 - [Remotion Video Generation](/guides/remotion-workflow/) — End-to-end video creation with skills and bash render nodes
+
+## Using Archon
+
+- [Archon on Your Phone](/guides/mobile-app/) — Install the mobile app to a Home Screen and turn on push notifications

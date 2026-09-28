@@ -1,5 +1,6 @@
+import type { components } from '@/lib/api.generated';
 import { requestJson } from '../lib/http';
-import { toFileEntry, type FileEntry } from '../primitives/file-entry';
+import { joinPath, parentPath, toFileEntry, type FileEntry } from '../primitives/file-entry';
 
 interface RawListing {
   path: string;
@@ -38,6 +39,16 @@ export async function listFiles(projectId: string, path: string): Promise<FileEn
   return res.entries.map(entry => toFileEntry(entry, res.path));
 }
 
+export type ProjectPaths = components['schemas']['CodebasePathsResponse'];
+
+/**
+ * Every file in the project's git checkout that .gitignore does not name,
+ * relative to the project root. A 409 means the project is not a checkout.
+ */
+export async function listProjectPaths(projectId: string): Promise<ProjectPaths> {
+  return requestJson<ProjectPaths>(`/api/codebases/${encodeURIComponent(projectId)}/paths`);
+}
+
 /** One text file. The server refuses binaries and anything over its size ceiling. */
 export async function readFileContent(projectId: string, path: string): Promise<FileContent> {
   return requestJson<RawFile>(
@@ -72,4 +83,15 @@ export async function writeFileContent(
  */
 export function rawFileUrl(projectId: string, path: string): string {
   return `/api/codebases/${encodeURIComponent(projectId)}/raw?path=${encodeURIComponent(path)}`;
+}
+
+/**
+ * Where an image a markdown file names is loaded from. A relative source is a
+ * file in the repo beside the document, which the browser cannot fetch by that
+ * path, so it goes to the raw route; an absolute URL is left alone.
+ */
+export function repoImageUrl(projectId: string, documentPath: string, src: string): string {
+  if (/^[a-z]+:|^\/\//i.test(src)) return src;
+  const dir = parentPath(documentPath) ?? '';
+  return rawFileUrl(projectId, joinPath(dir, src.replace(/^\.\//, '')));
 }

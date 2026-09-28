@@ -9,14 +9,13 @@ import {
 import { Paperclip } from 'lucide-react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { AskQuestion, AskSpec } from '@archon/awaiting';
 import {
   composeSubmission,
   isComplete,
   setCustomAnswer,
   toggleChoice,
   type Answer,
-  type AskQuestion,
-  type AskSpec,
 } from '../primitives/ask';
 import {
   ACCEPTED_EXTENSIONS,
@@ -349,6 +348,8 @@ export function AskCard({ spec, onAnswer }: AskCardProps): ReactElement {
       }}
       // What the composer's Up looks for: the newest card that can still be answered.
       data-ask-live={readOnly ? undefined : 'true'}
+      // What the mobile shell's touch sizing hangs off; see mobile/mobile.css.
+      data-ask-card=""
       className="my-2 overflow-hidden rounded-lg border bg-surface outline-none focus-visible:border-accent-bright"
       style={{ borderColor: 'var(--border-bright)' }}
     >

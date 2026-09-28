@@ -63,11 +63,13 @@ export type { CheckoutStatus } from './branch';
 export {
   readWorkingChanges,
   readWorkingFileDiff,
+  listCheckoutFiles,
   NotAGitCheckoutError,
   MAX_CHANGED_FILES,
   MAX_DIFF_LINES,
+  MAX_LISTED_FILES,
 } from './changes';
-export type { ChangeStatus, ChangedFile, WorkingChanges, FileDiff } from './changes';
+export type { ChangeStatus, ChangedFile, WorkingChanges, FileDiff, CheckoutFiles } from './changes';
 
 // Forge detection
 export { detectForge } from './forge';

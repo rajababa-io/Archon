@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
-import { loadDraftText, saveDraftText } from './draft-store';
+import { chatDraftKey, loadDraftText, saveDraftText } from './draft-store';
 
 // No DOM here; a Map stands in for the browser's storage.
 const store = new Map<string, string>();
@@ -35,5 +35,15 @@ describe('draft store', () => {
     saveDraftText('p1:c1', '');
     expect(loadDraftText('p1:c1')).toBe('');
     expect(store.size).toBe(0);
+  });
+});
+
+describe('chatDraftKey', () => {
+  it('gives each project its own new-chat slot', () => {
+    expect(chatDraftKey('p1', null)).not.toBe(chatDraftKey('p2', null));
+  });
+
+  it('names one chat the same way wherever it is asked for', () => {
+    expect(chatDraftKey('p1', 'c1')).toBe('p1:c1');
   });
 });

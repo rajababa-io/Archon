@@ -16,19 +16,13 @@
  * phone, and an overflow container clips anything positioned inside it.
  */
 
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactElement,
-} from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import * as skill from '../skills';
 import type { ProjectDeploy } from '../skills/deploy';
 import { HttpError, errorDetail } from '../lib/http';
 import { useLiveChats } from '../lib/live-chats';
+import { useProjectDeployRefresh } from '../hooks/useProjectDeployRefresh';
 import { useNow } from '../lib/clock';
 import { shortSha } from '../lib/deploy-strip';
 import {
@@ -40,10 +34,9 @@ import {
   waitingFooter,
   type DeployConfirm,
 } from '../lib/deploy-row';
-import { invalidate, patch } from '../store/cache';
+import { patch } from '../store/cache';
 import { K } from '../store/keys';
 
-const POLL_MS = 30_000;
 const ERROR_MS = 8_000;
 const POPOVER_WIDTH = 430;
 const MARGIN = 8;
@@ -74,7 +67,7 @@ interface DeployRowProps {
 
 export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): ReactElement {
   const key = K.projectDeploy(projectId);
-  const { drain, deploy: healthDeploy } = useLiveChats();
+  const { drain } = useLiveChats();
   const counting =
     deploy.method === 'archon-host' &&
     deploy.status.phase === 'draining' &&
@@ -90,32 +83,7 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
   const [notice, setNotice] = useState<string | null>(null);
   const pillRef = useRef<HTMLButtonElement | null>(null);
 
-  const reload = useCallback((): void => {
-    invalidate(key);
-    invalidate(K.projectDeployLog(projectId));
-  }, [key, projectId]);
-
-  // Its own poll: the view reads the branch and the GitHub API, which is too
-  // much to ride every health read the stream triggers.
-  useEffect(() => {
-    const tick = (): void => {
-      if (document.visibilityState === 'visible') invalidate(key);
-    };
-    const id = setInterval(tick, POLL_MS);
-    return (): void => {
-      clearInterval(id);
-    };
-  }, [key]);
-
-  // The health poll sees a phase change first; re-read the row when it does,
-  // so the row leaves "Deploying" when the deploy does and not 30s later.
-  const healthPhase = healthDeploy?.phase;
-  const lastPhase = useRef(healthPhase);
-  useEffect(() => {
-    if (lastPhase.current === healthPhase) return;
-    lastPhase.current = healthPhase;
-    reload();
-  }, [healthPhase, reload]);
+  const reload = useProjectDeployRefresh(projectId);
 
   useEffect(() => {
     if (error === null) return;

@@ -4,7 +4,7 @@ import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { copyLabel, useCopy } from '../lib/clipboard';
 import { useClock } from '../lib/clock';
-import { splitReply } from '../primitives/ask';
+import { splitReply } from '@archon/awaiting';
 import { AskErrorCard } from './AskErrorCard';
 import { formatBytes } from '../primitives/file';
 import { progressNoteIds, type MessageGroup } from '../primitives/message-groups';
@@ -152,7 +152,11 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
       <div className="flex flex-col items-end gap-[var(--msg-gap)]">
         <header className="flex items-baseline justify-end">{meta}</header>
         {group.messages.map(message => (
-          <div key={message.id} className="flex w-full flex-col items-end gap-[var(--msg-gap)]">
+          <div
+            key={message.id}
+            data-message-id={message.id}
+            className="flex w-full flex-col items-end gap-[var(--msg-gap)]"
+          >
             <div
               // `whitespace-pre-wrap`: the bubble renders raw text, so without
               // it every newline, blank line and indent in a pasted block
@@ -210,6 +214,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
             copy(group.messages.map(m => m.content).join('\n\n'));
           }}
           aria-label="Copy message as markdown"
+          data-copy-message
           className={`ml-auto flex items-center gap-1.5 rounded-[var(--radius-control)] border border-border-bright px-[0.45rem] py-[0.1rem] text-mini transition-opacity focus:opacity-100 group-hover:opacity-100 ${
             copyState === 'idle' ? 'opacity-0' : 'opacity-100'
           } ${copyState === 'copied' ? 'text-success' : 'text-text-secondary hover:text-text-primary'}`}
@@ -226,7 +231,11 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
       {group.messages.map(message => {
         const content = message.content.trim();
         return (
-          <div key={message.id} className="flex flex-col gap-[var(--msg-gap)]">
+          <div
+            key={message.id}
+            data-message-id={message.id}
+            className="flex flex-col gap-[var(--msg-gap)]"
+          >
             {message.thinking !== null ? <ThinkingBlock text={message.thinking} /> : null}
             {notes.has(message.id) ? (
               <ProgressNote content={content} />

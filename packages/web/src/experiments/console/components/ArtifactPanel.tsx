@@ -193,10 +193,7 @@ function ArtifactViewer({ runId, path }: ViewerProps): ReactElement {
       <header className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-4.75 py-1.25">
         <span className="truncate font-mono text-body text-text-primary">{path}</span>
         <a
-          href={`/api/artifacts/${encodeURIComponent(runId)}/${path
-            .split('/')
-            .map(encodeURIComponent)
-            .join('/')}`}
+          href={skill.artifactUrl(runId, path)}
           target="_blank"
           rel="noreferrer"
           className="shrink-0 text-mini text-text-tertiary transition-colors hover:text-text-primary"

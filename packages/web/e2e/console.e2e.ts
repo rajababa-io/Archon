@@ -81,6 +81,9 @@ test('the project rail lists the project and its chats', async ({ page }) => {
   await expect(chats).toBeVisible();
   await expect(chats.getByText(CHAT_TITLE)).toBeVisible();
   await expect(chats.getByText(OTHER_CHAT_TITLE)).toBeVisible();
+
+  // A desktop browser is never offered the phone shell.
+  await expect(page.getByRole('region', { name: 'Mobile view' })).toHaveCount(0);
 });
 
 test('opening a chat shows its transcript', async ({ page }) => {
