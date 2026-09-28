@@ -44,6 +44,12 @@ export interface Run {
    * runMessageConversationId() for how CLI vs. web runs are picked (#2048).
    */
   workerPlatformId: string | null;
+  /**
+   * Platform id of the chat that launched this run — the rail's key for it.
+   * Null for runs with no originating chat (every CLI-launched run). See
+   * runOwnerChatId() for why this, not the worker id, owns the run.
+   */
+  parentPlatformId: string | null;
   workflow: string;
   origin: RunOrigin;
   status: RunStatus;
@@ -124,6 +130,8 @@ interface RawWorkflowRun {
   conversation_platform_id?: string | null;
   /** Worker conversation platform id — getRun response only, web runs only. */
   worker_platform_id?: string | null;
+  /** Launching chat's platform id — dashboard runs feed, web runs only. */
+  parent_platform_id?: string | null;
   status: string;
   outcome?: RunOutcome;
   started_at: string;
@@ -205,6 +213,22 @@ export function runMessageConversationId(
   return run.conversationPlatformId ?? run.workerPlatformId ?? null;
 }
 
+/**
+ * The chat that owns this run — the platform id the rail and status bar key
+ * a chat on. A different question from runMessageConversationId(): a
+ * chat-dispatched run's output lives in a hidden worker conversation that is
+ * never in the rail, so keying ownership on it marked no chat at all (#227).
+ * The launching chat wins; a CLI run has no parent and owns its own
+ * conversation; the worker id is the last resort.
+ */
+export function runOwnerChatId(run: {
+  parentPlatformId?: string | null;
+  conversationPlatformId?: string | null;
+  workerPlatformId?: string | null;
+}): string | null {
+  return run.parentPlatformId ?? run.conversationPlatformId ?? run.workerPlatformId ?? null;
+}
+
 export function toRun(raw: RawWorkflowRun): Run {
   const activeNodes = Array.isArray(raw.active_nodes)
     ? raw.active_nodes.filter(nodeId => typeof nodeId === 'string' && nodeId.length > 0)
@@ -264,6 +288,7 @@ export function toRun(raw: RawWorkflowRun): Run {
     parentConversationId: raw.parent_conversation_id ?? null,
     conversationPlatformId: raw.conversation_platform_id ?? null,
     workerPlatformId: raw.worker_platform_id ?? null,
+    parentPlatformId: raw.parent_platform_id ?? null,
     workflow: raw.workflow_name,
     origin: normalizeOrigin(raw.platform_type),
     status: normalizeStatus(raw.status),

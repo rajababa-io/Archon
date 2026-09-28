@@ -18,6 +18,7 @@ const baseRun: Omit<Run, 'id' | 'status' | 'workflow'> = {
   parentConversationId: CHAT_DB_ID,
   conversationPlatformId: null,
   workerPlatformId: null,
+  parentPlatformId: null,
   origin: 'web',
   outcome: null,
   startedAt: '2026-09-01T10:00:00.000Z',

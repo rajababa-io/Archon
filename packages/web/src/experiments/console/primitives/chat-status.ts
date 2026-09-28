@@ -66,7 +66,7 @@
  * unfinished rather than unread.
  */
 import { splitReply } from './ask';
-import { runMessageConversationId } from './run';
+import { runOwnerChatId } from './run';
 
 export type ChatStatus =
   | 'working'
@@ -335,17 +335,17 @@ function instant(raw: string | null): number | null {
  * make the mark mean "something is not finished" — which is what `idle`
  * already means.
  *
- * Which conversation a run belongs to is `runMessageConversationId`'s to
- * decide, and asking it is not optional here. This read `conversationPlatformId`
- * alone, which the runs FEED never carries — the dashboard query exposes a
- * chat-dispatched run's conversation as `worker_platform_id` (#2048). So the
- * set came back empty for exactly the runs it exists to find, and no chat has
- * ever gone amber.
+ * Which chat a run belongs to is `runOwnerChatId`'s to decide, and asking it
+ * is not optional here. This once read `conversationPlatformId` alone, which
+ * the runs FEED never carries for a chat-dispatched run; then the worker id,
+ * which names a hidden conversation no rail row carries (#227). Either way the
+ * set came back empty for exactly the runs it exists to find.
  */
 export function awaitingInputIds(
   runs: readonly {
     status: string;
     approval?: unknown;
+    parentPlatformId?: string | null;
     conversationPlatformId?: string | null;
     workerPlatformId?: string | null;
   }[]
@@ -354,7 +354,7 @@ export function awaitingInputIds(
   for (const r of runs) {
     if (r.status !== 'paused') continue;
     if (r.approval === null || r.approval === undefined) continue;
-    const id = runMessageConversationId(r);
+    const id = runOwnerChatId(r);
     if (id !== null && id !== '') out.add(id);
   }
   return out;
@@ -366,11 +366,12 @@ export function awaitingInputIds(
  * Status alone decides it: `running` is the engine's word for a run that is
  * moving, and a paused run is either `awaiting` (a gate asking you) or waiting
  * on something the chat cannot act on. Which chat owns a run is
- * `runMessageConversationId`'s call, for the reason `awaitingInputIds` gives.
+ * `runOwnerChatId`'s call, for the reason `awaitingInputIds` gives.
  */
 export function runningRunIds(
   runs: readonly {
     status: string;
+    parentPlatformId?: string | null;
     conversationPlatformId?: string | null;
     workerPlatformId?: string | null;
   }[]
@@ -378,7 +379,7 @@ export function runningRunIds(
   const out = new Set<string>();
   for (const r of runs) {
     if (r.status !== 'running') continue;
-    const id = runMessageConversationId(r);
+    const id = runOwnerChatId(r);
     if (id !== null && id !== '') out.add(id);
   }
   return out;

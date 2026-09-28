@@ -51,6 +51,7 @@ function buildDemoRuns(scope: Scope, projectName: string | null): Run[] {
     parentConversationId: null as string | null,
     conversationPlatformId: null as string | null,
     workerPlatformId: null as string | null,
+    parentPlatformId: null as string | null,
     outcome: null,
     workingPath: null,
     userMessage: '',

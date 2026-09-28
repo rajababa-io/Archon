@@ -1,5 +1,11 @@
 import { describe, test, expect } from 'bun:test';
-import { toRun, normalizeOrigin, runDetailPath, runMessageConversationId } from './run';
+import {
+  toRun,
+  normalizeOrigin,
+  runDetailPath,
+  runMessageConversationId,
+  runOwnerChatId,
+} from './run';
 import { runStatusLabel } from '../lib/run-status';
 
 type Raw = Parameters<typeof toRun>[0];
@@ -574,4 +580,35 @@ describe('toRun — durable wait', () => {
       expect(runStatusLabel(r)).toBe(waitCase.label);
     });
   }
+});
+
+describe('runOwnerChatId', () => {
+  const webRun = raw({
+    id: 'r1',
+    workflow_name: 'archon-deliver',
+    status: 'running',
+    parent_platform_id: 'web-1790553506639-pzz3ne',
+    worker_platform_id: 'web-worker-1790553506639-abc',
+  });
+
+  test('chat-dispatched run: the launching chat owns it (#227)', () => {
+    expect(runOwnerChatId(toRun(webRun))).toBe('web-1790553506639-pzz3ne');
+  });
+
+  test('the same run still reads its messages from the worker', () => {
+    expect(runMessageConversationId(toRun(webRun))).toBe('web-worker-1790553506639-abc');
+  });
+
+  test('CLI run: no parent, so its own conversation owns it', () => {
+    const r = toRun(
+      raw({ id: 'r1', workflow_name: 'plan', status: 'running', conversation_platform_id: 'cli-1' })
+    );
+    expect(runOwnerChatId(r)).toBe('cli-1');
+  });
+
+  test('no ids at all → null', () => {
+    expect(
+      runOwnerChatId(toRun(raw({ id: 'r1', workflow_name: 'plan', status: 'running' })))
+    ).toBeNull();
+  });
 });

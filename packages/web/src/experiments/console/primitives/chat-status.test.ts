@@ -198,6 +198,19 @@ describe('awaitingInputIds', () => {
     ]).toEqual(['cli-1']);
   });
 
+  test('a chat-dispatched run marks the chat that launched it, not the worker (#227)', () => {
+    expect([
+      ...awaitingInputIds([
+        {
+          status: 'paused',
+          approval: { message: 'ok?' },
+          parentPlatformId: 'web-1790553506639-pzz3ne',
+          workerPlatformId: 'web-worker-1790553506639-abc',
+        },
+      ]),
+    ]).toEqual(['web-1790553506639-pzz3ne']);
+  });
+
   test('a run with no conversation is skipped rather than crashing', () => {
     expect([
       ...awaitingInputIds([
@@ -220,6 +233,24 @@ describe('runningRunIds', () => {
   test('a chat-dispatched run is found by its worker id, as awaiting finds it', () => {
     expect([...runningRunIds([{ status: 'running', workerPlatformId: 'web-1' }])]).toEqual([
       'web-1',
+    ]);
+  });
+
+  test('a chat-dispatched run marks the chat that launched it, not the worker (#227)', () => {
+    expect([
+      ...runningRunIds([
+        {
+          status: 'running',
+          parentPlatformId: 'web-1790553506639-pzz3ne',
+          workerPlatformId: 'web-worker-1790553506639-abc',
+        },
+      ]),
+    ]).toEqual(['web-1790553506639-pzz3ne']);
+  });
+
+  test('a CLI run, with no parent, marks its own conversation', () => {
+    expect([...runningRunIds([{ status: 'running', conversationPlatformId: 'cli-1' }])]).toEqual([
+      'cli-1',
     ]);
   });
 
