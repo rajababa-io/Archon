@@ -22,7 +22,6 @@ import {
   SETTINGS_LINK,
   chatLink,
   decidePush,
-  resolveChatMode,
   runLink,
   type ChatRef,
   type PushNotifierDeps,
@@ -47,27 +46,6 @@ const ASK = [
   '{"questions":[{"title":"Ship it today?","options":[{"label":"Yes"}]}]}',
   '```',
 ].join('\n');
-
-describe('resolveChatMode', () => {
-  test('nothing set is default', () => {
-    expect(resolveChatMode(prefs(), 'web-1', 'p1')).toBe('default');
-  });
-
-  test('a muted project silences its chats', () => {
-    expect(resolveChatMode(prefs({ mutedProjects: ['p1'] }), 'web-1', 'p1')).toBe('muted');
-    expect(resolveChatMode(prefs({ mutedProjects: ['p1'] }), 'web-2', 'p2')).toBe('default');
-  });
-
-  test("a chat's own mode beats its project's mute", () => {
-    const p = prefs({ mutedProjects: ['p1'], conversations: { 'web-1': 'following' } });
-    expect(resolveChatMode(p, 'web-1', 'p1')).toBe('following');
-  });
-
-  test('a run with no chat still answers to its project', () => {
-    expect(resolveChatMode(prefs({ mutedProjects: ['p1'] }), null, 'p1')).toBe('muted');
-    expect(resolveChatMode(prefs(), null, null)).toBe('default');
-  });
-});
 
 describe('decidePush', () => {
   const question: PushTrigger = { kind: 'question', chat, question: 'Ship it today?' };
@@ -154,6 +132,38 @@ describe('decidePush', () => {
     const followed = { ...off, conversations: { 'web-1': 'following' as const } };
     expect(decidePush(question, followed, nobodyLooking)).not.toBeNull();
     expect(decidePush(finished, followed, nobodyLooking)).not.toBeNull();
+  });
+
+  test('each global trigger gates its own kind and no other', () => {
+    const gate: PushTrigger = {
+      kind: 'approval',
+      runId: 'run-9',
+      workflow: 'deliver',
+      chat,
+      message: 'Merge?',
+    };
+    const failed: PushTrigger = { ...finished, kind: 'run_failed', line: 'boom' };
+    const kinds = [question, gate, finished, failed];
+    const pushed = (triggers: NotifyPrefs['triggers']): boolean[] =>
+      kinds.map(t => decidePush(t, prefs({ triggers }), nobodyLooking) !== null);
+    expect(pushed({ awaiting: true, runFinished: false, runFailed: false })).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(pushed({ awaiting: false, runFinished: true, runFailed: false })).toEqual([
+      false,
+      false,
+      true,
+      false,
+    ]);
+    expect(pushed({ awaiting: false, runFinished: false, runFailed: true })).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ]);
   });
 
   test('a run links to its run screen, and says which way it ended', () => {

@@ -1,5 +1,6 @@
 import { useState, type ReactElement } from 'react';
 import { useNavigate } from 'react-router';
+import { awaitsApproval } from '@archon/awaiting';
 import { StatusStrip } from './StatusStrip';
 import { LiveDot } from './LiveDot';
 import { OriginBadge } from './OriginBadge';
@@ -277,7 +278,7 @@ export function ActiveRunCard({
             The context block shows the actual question the agent asked (pulled
             from the last text event), because the approval node's own
             `message` is usually just a pointer ("answer the questions above"). */}
-        {run.status === 'paused' && run.approval !== null && run.approval !== undefined ? (
+        {awaitsApproval(run) ? (
           inputPromoted ? (
             <div className="mt-2 flex items-center gap-2 rounded border border-warning/25 bg-warning/[0.05] px-3 py-1.25 text-body text-warning">
               <span aria-hidden className="leading-none">

@@ -8,3 +8,4 @@ export {
   type ReplyPart,
 } from './ask';
 export { awaitsAnswer, awaitsApproval } from './awaiting';
+export { resolveChatMode } from './notify';

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
+import { awaitsApproval } from '@archon/awaiting';
 import { EmptyState } from '../components/EmptyState';
 import { ActiveRunCard } from '../components/ActiveRunCard';
 import { RecentRunRow } from '../components/RecentRunRow';
@@ -376,11 +377,7 @@ export function RunsPage(): ReactElement {
   // Runs paused on a human gate (approval node / agent question). Derived from
   // the unfiltered set on purpose: a run that needs you should surface even
   // while the feed is filtered to `completed` or a search is active.
-  const pendingRuns = useMemo(
-    () =>
-      allRuns.filter(r => r.status === 'paused' && r.approval !== null && r.approval !== undefined),
-    [allRuns]
-  );
+  const pendingRuns = useMemo(() => allRuns.filter(awaitsApproval), [allRuns]);
 
   // Drop dismissed ids that are no longer pending so a run that pauses again
   // (a later approval node, or a repeating interactive loop gate) re-surfaces

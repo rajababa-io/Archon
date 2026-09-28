@@ -1,29 +1,19 @@
 import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router';
 import { Bell, BellOff, BellRing } from 'lucide-react';
-import type { PushPrefs } from '../../skills';
+import { resolveChatMode } from '@archon/awaiting';
+import type { PushPrefsChange } from '../../skills';
 import { SETTINGS_PATH } from '../lib/paths';
 import { usePushDevice, usePushPrefs } from '../lib/use-push';
 import { Sheet, SheetRow } from './Sheet';
 
-type ChatMode = 'default' | 'muted' | 'following';
+type ChatMode = Extract<PushPrefsChange, { scope: 'conversation' }>['mode'];
 
 const CHAT_MODES: readonly { mode: ChatMode; label: string; hint: string }[] = [
   { mode: 'default', label: 'Default', hint: 'When it needs you, and when its runs end' },
   { mode: 'following', label: 'Following', hint: 'Also every time it finishes a turn' },
   { mode: 'muted', label: 'Muted', hint: 'Nothing from this chat' },
 ];
-
-/** What a chat's bell shows: its own mode, or muted when its project is. */
-function chatBell(
-  prefs: PushPrefs | undefined,
-  conversationId: string,
-  projectId: string | null
-): { own: ChatMode; projectMuted: boolean } {
-  const own = prefs?.conversations[conversationId] ?? 'default';
-  const projectMuted = projectId !== null && (prefs?.mutedProjects.includes(projectId) ?? false);
-  return { own, projectMuted };
-}
 
 /** One line when push is not on for this device: the bell alone would reach nobody here. */
 function DeviceNote(): ReactElement | null {
@@ -49,14 +39,10 @@ export function ChatBell({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const { prefs, saving, failure, change } = usePushPrefs();
-  const { own, projectMuted } = chatBell(prefs, conversationId, projectId);
-  const silent = own === 'muted' || (own === 'default' && projectMuted);
-  const label =
-    own === 'following'
-      ? 'Notifications: following'
-      : silent
-        ? 'Notifications: muted'
-        : 'Notifications: default';
+  const own: ChatMode = prefs?.conversations[conversationId] ?? 'default';
+  const effective =
+    prefs === undefined ? 'default' : resolveChatMode(prefs, conversationId, projectId);
+  const label = `Notifications: ${effective}`;
 
   return (
     <>
@@ -69,9 +55,9 @@ export function ChatBell({
         disabled={prefs === undefined}
         className="mobile-tap flex shrink-0 items-center justify-center text-text-secondary disabled:opacity-45"
       >
-        {own === 'following' ? (
+        {effective === 'following' ? (
           <BellRing aria-hidden className="h-5 w-5 text-accent-bright" />
-        ) : silent ? (
+        ) : effective === 'muted' ? (
           <BellOff aria-hidden className="h-5 w-5" />
         ) : (
           <Bell aria-hidden className="h-5 w-5" />
@@ -97,7 +83,7 @@ export function ChatBell({
             <span className="block text-small text-text-tertiary">{m.hint}</span>
           </SheetRow>
         ))}
-        {projectMuted && own === 'default' ? (
+        {own === 'default' && effective === 'muted' ? (
           <p className="mobile-note">
             This chat&apos;s project is muted, so Default sends nothing.
           </p>

@@ -13,6 +13,7 @@
  * the paused ones — because `counts` covers everything else and the rail must
  * not pay for two hundred run records to draw a number.
  */
+import { awaitsApproval } from '@archon/awaiting';
 import { requestJson } from '../lib/http';
 import { askAwaitingIds } from '../primitives/chat-status';
 import { toConversationSummary } from '../primitives/conversation';
@@ -127,9 +128,7 @@ export async function getProjectCounts(projectId: string): Promise<ProjectCounts
   const paused = runsValue?.counts?.paused ?? 0;
   const pending = runsValue?.counts?.pending ?? 0;
 
-  const gatedRuns = (runsValue?.runs ?? [])
-    .map(toRun)
-    .filter(r => r.approval !== null && r.approval !== undefined).length;
+  const gatedRuns = (runsValue?.runs ?? []).map(toRun).filter(awaitsApproval).length;
   const unansweredQuestions = askAwaitingIds(chatSummaries).size;
 
   return {

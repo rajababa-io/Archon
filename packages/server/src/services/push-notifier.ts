@@ -23,8 +23,8 @@
  * `decidePush` is the whole policy and is pure; `PushNotifier` does the
  * lookups and the delivery around it.
  */
-import { awaitsAnswer, splitReply } from '@archon/awaiting';
-import type { NotifyMode, NotifyPrefs, PushSubscriptionRecord } from '@archon/core/db/push';
+import { awaitsAnswer, resolveChatMode, splitReply } from '@archon/awaiting';
+import type { NotifyPrefs, PushSubscriptionRecord } from '@archon/core/db/push';
 import type { WorkflowEmitterEvent } from '@archon/workflows/event-emitter';
 import { createLogger } from '@archon/paths';
 import type { ChatPresence } from './push-presence';
@@ -87,21 +87,6 @@ export type PushTrigger =
       projectId: string | null;
       line: string;
     };
-
-/**
- * A chat's effective mode, most specific first: the chat's own mode unless it
- * is `default`, then a project mute, then `default`.
- */
-export function resolveChatMode(
-  prefs: NotifyPrefs,
-  chatId: string | null,
-  projectId: string | null
-): NotifyMode {
-  const own = chatId === null ? undefined : prefs.conversations[chatId];
-  if (own !== undefined) return own;
-  if (projectId !== null && prefs.mutedProjects.includes(projectId)) return 'muted';
-  return 'default';
-}
 
 const MAX_LINE = 140;
 
