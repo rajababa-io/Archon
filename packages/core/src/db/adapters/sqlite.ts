@@ -1049,6 +1049,29 @@ export class SqliteAdapter implements IDatabase {
       CREATE INDEX IF NOT EXISTS idx_deploy_runs_codebase
         ON remote_agent_deploy_runs(codebase_id, created_at);
 
+      -- Web Push subscriptions and preferences. Mirrors
+      -- migrations/040_push_notifications.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_push_subscriptions (
+        id TEXT PRIMARY KEY,
+        endpoint TEXT NOT NULL UNIQUE,
+        p256dh TEXT NOT NULL,
+        auth TEXT NOT NULL,
+        user_agent TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_success_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS remote_agent_notify_prefs (
+        scope TEXT NOT NULL CHECK (scope IN ('global', 'project', 'conversation')),
+        scope_id TEXT NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'default' CHECK (mode IN ('default', 'muted', 'following')),
+        notify_awaiting INTEGER,
+        notify_run_finished INTEGER,
+        notify_run_failed INTEGER,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (scope, scope_id)
+      );
+
       -- Workflow events table
       CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),

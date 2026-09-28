@@ -140,6 +140,9 @@
       "src/db/project-deploy.integration.test.ts"
     ],
     [
+      "src/db/push.integration.test.ts"
+    ],
+    [
       "src/db/conversations.order.integration.test.ts"
     ],
     [

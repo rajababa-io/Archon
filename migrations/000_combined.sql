@@ -28,6 +28,8 @@
 --   12. remote_agent_project_deploy
 --   13. remote_agent_deploy_events
 --   14. remote_agent_deploy_runs
+--   15. remote_agent_push_subscriptions
+--   16. remote_agent_notify_prefs
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -809,6 +811,35 @@ CREATE TABLE IF NOT EXISTS remote_agent_deploy_runs (
 
 COMMENT ON TABLE remote_agent_deploy_runs IS
   'Workflow runs that were a project''s deploy, with the commit each was asked to ship. Live is the newest one whose run completed.';
+
+-- Web Push for the phone: browser subscriptions and what to be told about.
+-- See migrations/040_push_notifications.sql.
+CREATE TABLE IF NOT EXISTS remote_agent_push_subscriptions (
+  id UUID PRIMARY KEY,
+  endpoint TEXT NOT NULL UNIQUE,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  last_success_at TIMESTAMP WITH TIME ZONE
+);
+
+COMMENT ON TABLE remote_agent_push_subscriptions IS
+  'Browsers that asked for Web Push. Deleted when the push service answers 404 or 410.';
+
+CREATE TABLE IF NOT EXISTS remote_agent_notify_prefs (
+  scope VARCHAR(16) NOT NULL CHECK (scope IN ('global', 'project', 'conversation')),
+  scope_id TEXT NOT NULL,
+  mode VARCHAR(16) NOT NULL DEFAULT 'default' CHECK (mode IN ('default', 'muted', 'following')),
+  notify_awaiting BOOLEAN,
+  notify_run_finished BOOLEAN,
+  notify_run_failed BOOLEAN,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (scope, scope_id)
+);
+
+COMMENT ON TABLE remote_agent_notify_prefs IS
+  'Push preferences: per-chat default/muted/following, per-project mute, and the global triggers.';
 
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases

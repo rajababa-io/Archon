@@ -4446,6 +4446,260 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/push/vapid-key': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The VAPID public key to subscribe with, or why push is off */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushVapidKeyResponse'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/push/subscribe': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Store this browser's push subscription */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PushSubscribeBody'];
+        };
+      };
+      responses: {
+        /** @description Stored */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushOkResponse'];
+          };
+        };
+        /** @description Push is not configured on this server */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    /** Forget this browser's push subscription */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PushUnsubscribeBody'];
+        };
+      };
+      responses: {
+        /** @description Forgotten, or was never stored */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushOkResponse'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/push/prefs': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** What to be notified about */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushPrefs'];
+          };
+        };
+      };
+    };
+    /** Change the global triggers, a project mute, or a chat mode */
+    put: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PushPrefsChange'];
+        };
+      };
+      responses: {
+        /** @description The preferences after the change */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushPrefs'];
+          };
+        };
+      };
+    };
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/push/test': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Push a test notification to every subscribed browser */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description What the push services said */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushTestResponse'];
+          };
+        };
+        /** @description Push is not configured on this server */
+        503: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/push/presence': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Report the chat this console is showing, so it is not pushed about */
+    post: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody: {
+        content: {
+          'application/json': components['schemas']['PushPresenceBody'];
+        };
+      };
+      responses: {
+        /** @description Recorded */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushOkResponse'];
+          };
+        };
+      };
+    };
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6371,6 +6625,77 @@ export interface components {
       currentVersion: string;
       latestVersion: string;
       releaseUrl: string;
+    };
+    PushVapidKeyResponse:
+      | {
+          /** @enum {boolean} */
+          enabled: true;
+          publicKey: string;
+        }
+      | {
+          /** @enum {boolean} */
+          enabled: false;
+          missing: string[];
+          problem: string | null;
+        };
+    PushOkResponse: {
+      success: boolean;
+    };
+    PushSubscribeBody: {
+      /** Format: uri */
+      endpoint: string;
+      keys: {
+        p256dh: string;
+        auth: string;
+      };
+    };
+    PushUnsubscribeBody: {
+      endpoint: string;
+    };
+    PushPrefs: {
+      triggers: components['schemas']['PushTriggers'];
+      mutedProjects: string[];
+      conversations: {
+        [key: string]: 'muted' | 'following';
+      };
+    };
+    PushTriggers: {
+      awaiting: boolean;
+      runFinished: boolean;
+      runFailed: boolean;
+    };
+    PushPrefsChange:
+      | {
+          /** @enum {string} */
+          scope: 'global';
+          triggers: {
+            awaiting?: boolean;
+            runFinished?: boolean;
+            runFailed?: boolean;
+          };
+        }
+      | {
+          /** @enum {string} */
+          scope: 'project';
+          id: string;
+          /** @enum {string} */
+          mode: 'default' | 'muted';
+        }
+      | {
+          /** @enum {string} */
+          scope: 'conversation';
+          id: string;
+          /** @enum {string} */
+          mode: 'default' | 'muted' | 'following';
+        };
+    PushTestResponse: {
+      delivered: number;
+      failed: number;
+      removed: number;
+    };
+    PushPresenceBody: {
+      clientId: string;
+      conversationId: string | null;
     };
   };
   responses: never;

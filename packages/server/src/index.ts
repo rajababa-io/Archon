@@ -87,6 +87,8 @@ import {
   CONVERSATION_EVENT_NOTIFY_CHANNEL,
 } from '@archon/core/db/adapters/types';
 import { registerApiRoutes } from './routes/api';
+import { registerPushRoutes } from './routes/push';
+import { startPush } from './services/push-service';
 import {
   settleCiWatchesForHead,
   startCiWatchReconcileScheduler,
@@ -832,6 +834,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
         }
       : null;
   const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms, deployHost);
+  registerPushRoutes(app, startPush(webAdapter));
   // A turn that starts taking mid-turn input, or a steered message it read,
   // changes what the chat's queue shows — "send now" appears, a message leaves.
   lockManager.setQueueListener(apiRoutes.emitQueueChanged);

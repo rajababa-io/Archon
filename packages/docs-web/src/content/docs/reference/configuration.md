@@ -608,6 +608,9 @@ Signup uses email + password (no email verification by default). **Signup postur
 | `ARCHON_DRAIN_TOKEN` | Bearer token for the `/internal/drain` endpoints, which stop the server accepting new work and park what is still running, so a deploy can replace the container without losing a turn in flight. Unset: the endpoints are not registered. Never proxy `/internal/*`. | -- |
 | `ARCHON_CF_ACCESS_TEAM_DOMAIN` | Cloudflare Access team domain (`yourteam.cloudflareaccess.com`). With `ARCHON_CF_ACCESS_AUD`, lets the server verify that a console action came from a signed-in person. Set up deploys, Deploy on Merge, Deploy now and Cancel deploy are refused without it. | -- |
 | `ARCHON_CF_ACCESS_AUD` | Audience (AUD) tag of the Cloudflare Access application in front of Archon. | -- |
+| `ARCHON_VAPID_PUBLIC` | Web Push: the VAPID public key (uncompressed P-256, base64url) phones subscribe with. Push is off unless all three `ARCHON_VAPID_*` are set; the mobile Settings screen names any that are missing. Archon never generates keys — a new pair orphans every existing subscription. | -- |
+| `ARCHON_VAPID_PRIVATE` | Web Push: the matching VAPID private key (32 bytes, base64url). | -- |
+| `ARCHON_VAPID_SUBJECT` | Web Push: a `mailto:` or `https://` contact the push services can reach about this sender. | -- |
 
 ### Telemetry
 

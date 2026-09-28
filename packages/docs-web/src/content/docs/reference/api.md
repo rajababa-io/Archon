@@ -529,6 +529,24 @@ workflow's total node count. This state describes node lifecycle, not process-ow
 
 ---
 
+## Push
+
+Web Push for the mobile shell at `/m`. Push is off until `ARCHON_VAPID_PUBLIC`, `ARCHON_VAPID_PRIVATE` and `ARCHON_VAPID_SUBJECT` are set.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/push/vapid-key` | `{ enabled: true, publicKey }`, or `{ enabled: false, missing, problem }` naming what to set |
+| POST | `/api/push/subscribe` | Store a browser's `PushSubscription` (its `toJSON()`); 503 while push is off |
+| DELETE | `/api/push/subscribe` | Forget one, by `{ endpoint }` |
+| GET | `/api/push/prefs` | `{ triggers: { awaiting, runFinished, runFailed }, mutedProjects, conversations }` |
+| PUT | `/api/push/prefs` | One change: `{ scope: "global", triggers }`, `{ scope: "project", id, mode: "default" \| "muted" }`, or `{ scope: "conversation", id, mode: "default" \| "muted" \| "following" }` |
+| POST | `/api/push/test` | Push a test notification to every subscribed browser |
+| POST | `/api/push/presence` | `{ clientId, conversationId }` — the chat a console is showing (or `null`); no push is sent about a chat on screen |
+
+A push is sent when a chat starts waiting on you (an unanswered ask block, or a run it started paused on a gate), when a run finishes or fails, and — for a chat set to `following` — when it finishes a turn. A muted chat or project sends nothing; `following` overrides the global triggers for that chat. A subscription the push service answers 404 or 410 for is deleted.
+
+---
+
 ## Configuration
 
 | Method | Path | Description |
