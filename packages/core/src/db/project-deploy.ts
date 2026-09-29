@@ -14,6 +14,7 @@
  * What needs no database — the stored event kinds, the deploy pointer — is in
  * `project-deploy-rules.ts`, so a caller that mocks this module still gets it.
  */
+import { createHash } from 'node:crypto';
 import { createLogger } from '@archon/paths';
 
 import {
@@ -40,8 +41,11 @@ function getLog(): ReturnType<typeof createLogger> {
  *   project carries it; no route creates it.
  * - `workflow`: the project's own repository says how it deploys, as an Archon
  *   workflow (`workflow_name`). Archon only runs that workflow and tracks the run.
+ * - `remote-host`: another host pulls the branch and deploys itself (#220). It
+ *   asks Archon's policy before each deploy and reports what it did; Deploy now
+ *   is sent to `remote_url`. No route creates it.
  */
-export const DEPLOY_METHODS = ['archon-host', 'workflow'] as const;
+export const DEPLOY_METHODS = ['archon-host', 'workflow', 'remote-host'] as const;
 export type DeployMethod = (typeof DEPLOY_METHODS)[number];
 
 function isDeployMethod(value: string): value is DeployMethod {
@@ -61,7 +65,15 @@ export type WorkflowProjectDeploy = ProjectDeployBase & {
   method: 'workflow';
   workflowName: string;
 };
-export type ProjectDeploy = (ProjectDeployBase & { method: 'archon-host' }) | WorkflowProjectDeploy;
+export type RemoteHostProjectDeploy = ProjectDeployBase & {
+  method: 'remote-host';
+  /** Where Deploy now is sent. */
+  remoteUrl: string;
+};
+export type ProjectDeploy =
+  | (ProjectDeployBase & { method: 'archon-host' })
+  | WorkflowProjectDeploy
+  | RemoteHostProjectDeploy;
 
 interface ProjectDeployRow {
   codebase_id: string;
@@ -72,6 +84,7 @@ interface ProjectDeployRow {
   updated_at: string | Date;
   updated_by: string | null;
   workflow_name: string | null;
+  remote_url: string | null;
 }
 
 function iso(value: string | Date): string {
@@ -91,6 +104,14 @@ function toProjectDeploy(row: ProjectDeployRow): ProjectDeploy | null {
     updatedBy: row.updated_by,
   };
   if (row.method === 'archon-host') return { ...base, method: 'archon-host' };
+  if (row.method === 'remote-host') {
+    if (row.remote_url === null || row.remote_url === '') {
+      // Without an address, Deploy now has nowhere to go.
+      getLog().warn({ codebaseId: row.codebase_id }, 'deploy.remote_unaddressed');
+      return null;
+    }
+    return { ...base, method: 'remote-host', remoteUrl: row.remote_url };
+  }
   if (row.workflow_name === null || row.workflow_name === '') {
     // A workflow deploy that names no workflow has nothing to run.
     getLog().warn({ codebaseId: row.codebase_id }, 'deploy.workflow_unnamed');
@@ -99,7 +120,8 @@ function toProjectDeploy(row: ProjectDeployRow): ProjectDeploy | null {
   return { ...base, method: 'workflow', workflowName: row.workflow_name };
 }
 
-const SELECT = `SELECT codebase_id, method, branch, deploy_on_merge, updated_at, updated_by, workflow_name
+const SELECT = `SELECT codebase_id, method, branch, deploy_on_merge, updated_at, updated_by,
+    workflow_name, remote_url
   FROM remote_agent_project_deploy`;
 
 /** Null means the project has no deploy, or one this binary cannot drive. */
@@ -129,6 +151,29 @@ export async function findProjectDeployByMethod(
   }
   const row = res.rows[0];
   return row === undefined ? null : toProjectDeploy(row);
+}
+
+/** The stored form of a remote host's credential. The credential itself is never kept. */
+export function hashRemoteToken(token: string): string {
+  return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/**
+ * The remote-host deploy whose credential this is. The credential names the
+ * project, so the host asking never has to, and cannot ask about another.
+ */
+export async function findRemoteDeployByToken(
+  token: string
+): Promise<RemoteHostProjectDeploy | null> {
+  if (token === '') return null;
+  const res = await pool.query<ProjectDeployRow>(
+    `${SELECT} WHERE method = 'remote-host' AND remote_token_sha256 = $1`,
+    [hashRemoteToken(token)]
+  );
+  const row = res.rows[0];
+  if (row === undefined) return null;
+  const deploy = toProjectDeploy(row);
+  return deploy?.method === 'remote-host' ? deploy : null;
 }
 
 /**
@@ -245,17 +290,24 @@ export async function listDeployEvents(codebaseId: string, limit = 50): Promise<
 }
 
 /**
- * Whether a manual request's token was issued by the console for this commit.
+ * Whether a manual request's token was issued by the console for this commit
+ * of this project.
  *
  * The request file lives on a volume any process in the container can write, so
  * "manual" written into it proves nothing. What proves a person pressed Deploy
  * now is a `deploy_requested` row, which only the human-verified route inserts.
+ * The project is part of the question because two projects' hosts ask: a press
+ * for one must never let the other deploy.
  */
-export async function isIssuedManualRequest(requestId: string, sha: string): Promise<boolean> {
+export async function isIssuedManualRequest(
+  codebaseId: string,
+  requestId: string,
+  sha: string
+): Promise<boolean> {
   const res = await pool.query<{ id: string }>(
     `SELECT id FROM remote_agent_deploy_events
-      WHERE id = $1 AND kind = 'deploy_requested' AND sha = $2`,
-    [requestId, sha]
+      WHERE id = $1 AND codebase_id = $2 AND kind = 'deploy_requested' AND sha = $3`,
+    [requestId, codebaseId, sha]
   );
   return res.rows.length > 0;
 }
@@ -378,4 +430,73 @@ export async function listDeployNotStarted(
     reason: row.reason,
     at: iso(row.created_at),
   }));
+}
+
+// ─── Remote host reports ─────────────────────────────────────────────────────
+
+/** What a remote host can say it did with a deploy. */
+export const DEPLOY_REPORT_VERDICTS = ['held', 'ok', 'failed'] as const;
+export type DeployReportVerdict = (typeof DEPLOY_REPORT_VERDICTS)[number];
+
+export function isDeployReportVerdict(value: unknown): value is DeployReportVerdict {
+  return (DEPLOY_REPORT_VERDICTS as readonly unknown[]).includes(value);
+}
+
+export interface DeployReport {
+  verdict: DeployReportVerdict;
+  /** The commit the report is about. */
+  sha: string;
+  /** What the host was running once it had acted. */
+  liveSha: string;
+  reason: string | null;
+  at: string;
+}
+
+interface DeployReportRow {
+  verdict: string;
+  sha: string;
+  live_sha: string;
+  reason: string | null;
+  created_at: string | Date;
+}
+
+/** Record what a remote host says it did. The host is the only witness. */
+export async function recordDeployReport(
+  codebaseId: string,
+  report: Omit<DeployReport, 'at'>
+): Promise<void> {
+  const dialect = getDialect();
+  await pool.query(
+    `INSERT INTO remote_agent_deploy_reports (id, codebase_id, verdict, sha, live_sha, reason, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, ${dialect.now()})`,
+    [dialect.generateUuid(), codebaseId, report.verdict, report.sha, report.liveSha, report.reason]
+  );
+}
+
+/** This project's remote reports, newest first. Another project's never appear. */
+export async function listDeployReports(codebaseId: string, limit = 50): Promise<DeployReport[]> {
+  const res = await pool.query<DeployReportRow>(
+    `SELECT verdict, sha, live_sha, reason, created_at
+       FROM remote_agent_deploy_reports
+      WHERE codebase_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [codebaseId, limit]
+  );
+  const reports: DeployReport[] = [];
+  for (const row of res.rows) {
+    if (!isDeployReportVerdict(row.verdict)) {
+      // Written by a newer binary; skipped rather than guessed at.
+      getLog().warn({ codebaseId, verdict: row.verdict }, 'deploy.report_verdict_unknown');
+      continue;
+    }
+    reports.push({
+      verdict: row.verdict,
+      sha: row.sha,
+      liveSha: row.live_sha,
+      reason: row.reason,
+      at: iso(row.created_at),
+    });
+  }
+  return reports;
 }

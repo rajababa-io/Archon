@@ -1,5 +1,5 @@
 /**
- * A project's deploy controls (#211, #226): its Live commit, the Deploy on
+ * A project's deploy controls (#211, #226, #220): its Live commit, the Deploy on
  * Merge switch, what has merged but is not yet live, and the three actions —
  * or, for a project with no deploy, what Set up deploys starts filled with.
  *
@@ -65,7 +65,15 @@ export interface WorkflowDeploy extends DeployCommon {
   blocked: DeployBlocked | null;
 }
 
-export type ProjectDeploy = HostDeploy | WorkflowDeploy;
+/**
+ * A project that deploys itself on another host and asks this install first
+ * (#220). Its Live commit is what that host last reported running.
+ */
+export interface RemoteDeploy extends DeployCommon {
+  method: 'remote-host';
+}
+
+export type ProjectDeploy = HostDeploy | WorkflowDeploy | RemoteDeploy;
 
 /** What the Set up deploys picker starts filled with. */
 export interface DeploySetup {
@@ -177,6 +185,7 @@ export function parseProjectDeploy(raw: unknown): ProjectDeploy | null {
         : null,
     };
   }
+  if (raw.method === 'remote-host') return { ...common, method: 'remote-host' };
   if (raw.method !== 'archon-host') return null;
   const status = parseDeploy(raw.status);
   if (status === undefined) return null;

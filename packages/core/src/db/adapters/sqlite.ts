@@ -530,13 +530,19 @@ export class SqliteAdapter implements IDatabase {
     }
 
     // Project deploy columns. `workflow_name` arrived with workflow deploys (#226),
-    // after the table shipped in #211.
+    // and the remote-host columns with #220, after the table shipped in #211.
     try {
       const deployCols = this.prepareAll<{ name: string }>(
         "PRAGMA table_info('remote_agent_project_deploy')"
       );
       if (!deployCols.some(c => c.name === 'workflow_name')) {
         this.db.run('ALTER TABLE remote_agent_project_deploy ADD COLUMN workflow_name TEXT');
+      }
+      // The remote-host method's columns (#220).
+      for (const col of ['remote_url', 'remote_token_sha256']) {
+        if (!deployCols.some(c => c.name === col)) {
+          this.db.run(`ALTER TABLE remote_agent_project_deploy ADD COLUMN ${col} TEXT`);
+        }
       }
     } catch (e: unknown) {
       getLog().warn({ err: e as Error }, 'db.sqlite_migration_project_deploy_columns_failed');
@@ -1022,7 +1028,9 @@ export class SqliteAdapter implements IDatabase {
         deploy_on_merge INTEGER NOT NULL DEFAULT 0,
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_by TEXT,
-        workflow_name TEXT
+        workflow_name TEXT,
+        remote_url TEXT,
+        remote_token_sha256 TEXT
       );
 
       CREATE TABLE IF NOT EXISTS remote_agent_deploy_events (
@@ -1062,6 +1070,21 @@ export class SqliteAdapter implements IDatabase {
 
       CREATE INDEX IF NOT EXISTS idx_deploy_not_started_codebase
         ON remote_agent_deploy_not_started(codebase_id, created_at);
+
+      -- What a remote-host deploy reported doing (#220). Mirrors
+      -- migrations/043_project_deploy_remote.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_deploy_reports (
+        id TEXT PRIMARY KEY,
+        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        verdict TEXT NOT NULL,
+        sha TEXT NOT NULL,
+        live_sha TEXT NOT NULL,
+        reason TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_deploy_reports_codebase
+        ON remote_agent_deploy_reports(codebase_id, created_at);
 
       -- Web Push subscriptions and preferences. Mirrors
       -- migrations/040_push_notifications.sql.

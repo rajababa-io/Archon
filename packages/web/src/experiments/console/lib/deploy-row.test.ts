@@ -397,6 +397,33 @@ describe('parsing the GET answer', () => {
     });
   });
 
+  test('a remote-host deploy reads as a bar with no in-flight state (#220)', () => {
+    const answer = parseDeployAnswer({
+      deploy: {
+        method: 'remote-host',
+        deployOnMerge: false,
+        branch: 'main',
+        live: { sha: 'a'.repeat(40), deployedAt: null },
+        waiting: {
+          tipSha: 'c'.repeat(40),
+          prs: [{ number: 7, title: 'x', url: 'u' }],
+          more: false,
+        },
+        waitingReason: null,
+        cancellable: false,
+        canAct: true,
+      },
+    });
+    expect(answer?.kind).toBe('set-up');
+    const deploy = answer?.kind === 'set-up' ? answer.deploy : null;
+    expect(deploy?.method).toBe('remote-host');
+    const view = deploy === null ? null : deployRowView(deploy, undefined, Date.now());
+    expect(view).toMatchObject({
+      kind: 'idle',
+      right: { kind: 'waiting', label: '1 merged PR waiting' },
+    });
+  });
+
   test('a method this build does not know draws no bar', () => {
     expect(parseDeployAnswer({ deploy: { method: 'teleport', deployOnMerge: true } })).toBeNull();
   });

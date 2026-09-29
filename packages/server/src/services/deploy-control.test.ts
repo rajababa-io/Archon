@@ -5,7 +5,9 @@ import { join } from 'node:path';
 import { trackTempRoots } from '@archon/paths/test-utils';
 
 const mockFindByMethod = mock(async (_m: string): Promise<unknown> => null);
-const mockIsIssued = mock(async (_id: string, _sha: string): Promise<boolean> => false);
+const mockIsIssued = mock(
+  async (_codebaseId: string, _id: string, _sha: string): Promise<boolean> => false
+);
 const mockRecordEvent = mock(async (..._args: unknown[]): Promise<string> => 'event-id');
 mock.module('@archon/core/db/project-deploy', () => ({
   findProjectDeployByMethod: mockFindByMethod,
@@ -189,7 +191,7 @@ describe('decidePolicy', () => {
     mockFindByMethod.mockImplementation(async () => setting(false));
     mockIsIssued.mockImplementation(async () => true);
     expect(await decidePolicy({ source: 'manual', sha: TIP, request: ID })).toBe('run');
-    expect(mockIsIssued).toHaveBeenCalledWith(ID, TIP);
+    expect(mockIsIssued).toHaveBeenCalledWith('p', ID, TIP);
   });
 
   test('a manual request nobody pressed Deploy now for is held', async () => {

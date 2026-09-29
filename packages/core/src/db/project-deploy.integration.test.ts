@@ -85,11 +85,16 @@ describe('project deploy setting', () => {
 describe('manual requests', () => {
   test('only an id the console issued, for that commit, counts', async () => {
     const id = await deploy.recordDeployEvent('p1', 'deploy_requested', 'you', SHA);
-    expect(await deploy.isIssuedManualRequest(id, SHA)).toBe(true);
-    expect(await deploy.isIssuedManualRequest(id, 'd'.repeat(40))).toBe(false);
+    expect(await deploy.isIssuedManualRequest('p1', id, SHA)).toBe(true);
+    expect(await deploy.isIssuedManualRequest('p1', id, 'd'.repeat(40))).toBe(false);
 
     const toggle = await deploy.recordDeployEvent('p1', 'toggle_on', 'you', SHA);
-    expect(await deploy.isIssuedManualRequest(toggle, SHA)).toBe(false);
+    expect(await deploy.isIssuedManualRequest('p1', toggle, SHA)).toBe(false);
+  });
+
+  test("a press for one project never lets another project's host deploy", async () => {
+    const id = await deploy.recordDeployEvent('p1', 'deploy_requested', 'you', SHA);
+    expect(await deploy.isIssuedManualRequest('p4', id, SHA)).toBe(false);
   });
 });
 
@@ -189,5 +194,68 @@ describe('deploys that did not start', () => {
     ]);
     expect((await deploy.listDeployNotStarted('p4')).map(r => r.trigger)).toEqual(['o/vault#8']);
     expect(await deploy.listDeployNotStarted('p1')).toEqual([]);
+  });
+});
+
+describe('a remote-host deploy (#220)', () => {
+  const TOKEN = 'adina-credential';
+
+  test('is found by its credential, and only by it', async () => {
+    await db.query(
+      `INSERT INTO remote_agent_project_deploy
+         (codebase_id, method, branch, deploy_on_merge, remote_url, remote_token_sha256)
+       VALUES ('p4', 'remote-host', 'main', 1, 'http://adina:8080/archon/deploy', $1)`,
+      [deploy.hashRemoteToken(TOKEN)]
+    );
+    expect(await deploy.findRemoteDeployByToken(TOKEN)).toMatchObject({
+      codebaseId: 'p4',
+      method: 'remote-host',
+      branch: 'main',
+      deployOnMerge: true,
+      remoteUrl: 'http://adina:8080/archon/deploy',
+    });
+    expect(await deploy.findRemoteDeployByToken('someone-else')).toBeNull();
+    expect(await deploy.findRemoteDeployByToken('')).toBeNull();
+  });
+
+  test('one with no address reads as no deploy', async () => {
+    await db.query(
+      `UPDATE remote_agent_project_deploy SET remote_url = NULL WHERE codebase_id = 'p4'`,
+      []
+    );
+    expect(await deploy.getProjectDeploy('p4')).toBeNull();
+    expect(await deploy.findRemoteDeployByToken(TOKEN)).toBeNull();
+    await db.query(
+      `UPDATE remote_agent_project_deploy SET remote_url = 'http://adina:8080/archon/deploy' WHERE codebase_id = 'p4'`,
+      []
+    );
+  });
+
+  test("reports come back newest first, and only that project's", async () => {
+    await deploy.recordDeployReport('p4', {
+      verdict: 'held',
+      sha: SHA,
+      liveSha: 'a'.repeat(40),
+      reason: 'hold:toggle-off',
+    });
+    await db.query(
+      `INSERT INTO remote_agent_deploy_reports (id, codebase_id, verdict, sha, live_sha, created_at)
+       VALUES ('r-future', 'p4', 'teleported', $1, $1, datetime('now', '+1 minute'))`,
+      [SHA]
+    );
+    await db.query(
+      `INSERT INTO remote_agent_deploy_reports (id, codebase_id, verdict, sha, live_sha, created_at)
+       VALUES ('r-ok', 'p4', 'ok', $1, $1, datetime('now', '+2 minutes'))`,
+      [SHA]
+    );
+    const reports = await deploy.listDeployReports('p4');
+    // The verdict this binary does not know is skipped, not guessed at.
+    expect(reports.map(r => r.verdict)).toEqual(['ok', 'held']);
+    expect(reports[1]).toMatchObject({
+      sha: SHA,
+      liveSha: 'a'.repeat(40),
+      reason: 'hold:toggle-off',
+    });
+    expect(await deploy.listDeployReports('p1')).toEqual([]);
   });
 });

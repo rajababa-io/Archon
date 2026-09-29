@@ -112,6 +112,15 @@ forward them.
 | GET | `/internal/drain/park/{drainId}` | What one drain parked, and how much has resumed |
 | GET | `/internal/deploy-policy` | The host's question before acting on a deploy request: answers `run` or `hold:<reason>` as plain text |
 
+A `remote-host` project's host (see [Project deploy](#project-deploy)) presents its own
+credential instead of the drain token. These two are registered on every install and
+answer `401` to anything but a credential stored on a `remote-host` row:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/internal/remote-deploy/policy` (`source`, `sha`, `request` as for the host) | The same `run` / `hold:<reason>` answer, for the credential's own project |
+| POST | `/internal/remote-deploy/report` | `{"verdict": "held" \| "ok" \| "failed", "sha", "live", "reason"?}`: what the host did with `sha`, and the commit it was running afterwards. `204` |
+
 ```bash
 curl -X POST http://127.0.0.1:3090/internal/drain \
   -H "Authorization: Bearer $ARCHON_DRAIN_TOKEN" \
@@ -769,7 +778,7 @@ is live, the merged PRs not yet live, a **Deploy on Merge** switch, **Deploy now
 **Cancel deploy**. A project without one shows **Deploys: not set up** and a **Set up
 deploys** button.
 
-A project deploys one of two ways, named by its `method`:
+A project deploys one of three ways, named by its `method`:
 
 - `workflow` -- the project's own repository deploys it with an Archon workflow
   (usually `.archon/workflows/deploy.yaml`). Deploy now runs that workflow on a checkout
@@ -783,6 +792,16 @@ A project deploys one of two ways, named by its `method`:
   route creates it. Its branch must be the one merges land on (`dev` here), never the
   `deploy` pointer the host moves: a row naming `deploy` reports
   `waitingReason: "branch-is-deploy-pointer"` and Deploy now is refused.
+- `remote-host` -- another host pulls the branch and deploys itself, and asks this
+  install first. Before each deploy it calls `GET /internal/remote-deploy/policy`, and
+  afterwards it reports what it did to `POST /internal/remote-deploy/report`. What is
+  live is the commit its newest report says it was running; before its first report the
+  bar says `waitingReason: "live-unknown"`. Deploy now posts `{"sha", "request"}` to the
+  row's `remote_url`; the host then asks the policy as `manual` with that `request`, so
+  reaching that address can at most make the host ask. Cancel deploy is refused: the
+  host's deploy is not this install's to stop. No route creates the row; the host's
+  credential is stored only as its SHA-256 in `remote_token_sha256`, and it names the
+  project, so a host can ask and report about its own project and no other.
 
 | Method | Path | Who | Description |
 |--------|------|-----|-------------|

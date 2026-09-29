@@ -98,7 +98,7 @@ import {
 } from '@archon/core/services/ci-watch';
 import { registerGithubWebhookRoute, registerWebhookSourceRoutes } from './routes/webhooks';
 import { registerInternalDrainRoutes } from './routes/internal-drain';
-import { registerDeployPolicyRoute } from './routes/project-deploy';
+import { registerDeployPolicyRoute, registerRemoteDeployRoutes } from './routes/project-deploy';
 import { loadWebhookSourcePlugins } from './services/webhook-source-plugins';
 import { createServerResourceStartHost } from './services/resource-start-hosting';
 import { type DeployHost, deployMergedBranch } from './services/workflow-deploy';
@@ -931,6 +931,10 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
     });
     getLog().info('internal_git_credential_endpoint_registered');
   }
+
+  // A host that deploys a project itself asks here first (#220). Its credential
+  // is in that project's deploy row, so an install without one answers 401.
+  registerRemoteDeployRoutes(app);
 
   // Internal endpoint: drain control. Registered only when a token is configured,
   // so the default install gains no new surface. See ./routes/internal-drain.

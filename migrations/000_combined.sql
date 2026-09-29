@@ -31,6 +31,7 @@
 --   15. remote_agent_push_subscriptions
 --   16. remote_agent_notify_prefs
 --   17. remote_agent_deploy_not_started
+--   18. remote_agent_deploy_reports
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -869,6 +870,26 @@ CREATE TABLE IF NOT EXISTS remote_agent_console_view_prefs (
 COMMENT ON TABLE remote_agent_console_view_prefs IS
   'Last console tab per signed-in person: All projects (scope_id empty) and each project.';
 
+-- A project that deploys itself on another host and asks Archon first (#220).
+-- See migrations/043_project_deploy_remote.sql.
+ALTER TABLE remote_agent_project_deploy
+  ADD COLUMN IF NOT EXISTS remote_url TEXT;
+ALTER TABLE remote_agent_project_deploy
+  ADD COLUMN IF NOT EXISTS remote_token_sha256 VARCHAR(64);
+
+CREATE TABLE IF NOT EXISTS remote_agent_deploy_reports (
+  id UUID PRIMARY KEY,
+  codebase_id UUID NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+  verdict VARCHAR(16) NOT NULL,
+  sha VARCHAR(64) NOT NULL,
+  live_sha VARCHAR(64) NOT NULL,
+  reason TEXT,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE remote_agent_deploy_reports IS
+  'What a remote-host deploy reported doing: held, ok or failed, with the commit it was running afterwards.';
+
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases
 -- created the narrow CHECK; re-adding the named constraint converges them. Every
@@ -1038,6 +1059,12 @@ CREATE INDEX IF NOT EXISTS idx_deploy_not_started_codebase
   ON remote_agent_deploy_not_started(codebase_id, created_at);
 COMMENT ON COLUMN remote_agent_project_deploy.workflow_name IS
   'The workflow a workflow-method deploy runs, by name. NULL for archon-host, which runs none.';
+CREATE INDEX IF NOT EXISTS idx_deploy_reports_codebase
+  ON remote_agent_deploy_reports(codebase_id, created_at);
+COMMENT ON COLUMN remote_agent_project_deploy.remote_url IS
+  'Where Deploy now is sent for a remote-host deploy. NULL for every other method.';
+COMMENT ON COLUMN remote_agent_project_deploy.remote_token_sha256 IS
+  'SHA-256 (hex) of the credential a remote-host deploy presents. The credential is never stored.';
 
 -- Sessions
 CREATE INDEX IF NOT EXISTS idx_remote_agent_sessions_conversation

@@ -73,6 +73,9 @@
       "src/services/workflow-deploy.test.ts"
     ],
     [
+      "src/services/remote-deploy.test.ts"
+    ],
+    [
       "src/services/human-pass.test.ts"
     ],
     [

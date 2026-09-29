@@ -204,7 +204,7 @@ describe('SqliteAdapter upgrade path', () => {
 
     expect(columnsOf(path, 'remote_agent_workflow_runs')).toContain('outcome');
   });
-  test('a #211 deploy table gains workflow_name and keeps its archon-host row', async () => {
+  test('a #211 deploy table gains the workflow and remote-host columns and keeps its archon-host row', async () => {
     const path = await upgradeFixturePath();
     await new SqliteAdapter(path).close();
     const raw = new Database(path);
@@ -233,7 +233,12 @@ describe('SqliteAdapter upgrade path', () => {
     const upgraded = new SqliteAdapter(path);
     await upgraded.close();
 
-    expect(columnsOf(path, 'remote_agent_project_deploy')).toContain('workflow_name');
+    expect(columnsOf(path, 'remote_agent_project_deploy')).toEqual(
+      expect.arrayContaining(['workflow_name', 'remote_url', 'remote_token_sha256'])
+    );
+    expect(columnsOf(path, 'remote_agent_deploy_reports')).toEqual(
+      expect.arrayContaining(['verdict', 'sha', 'live_sha', 'reason'])
+    );
     expect(columnsOf(path, 'remote_agent_deploy_runs')).toEqual(
       expect.arrayContaining(['run_id', 'codebase_id', 'sha', 'created_at'])
     );
