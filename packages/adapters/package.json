@@ -19,6 +19,7 @@
     "build:github-source-plugin": "bun build ./src/forge/github/source-plugin.ts --target=bun --outfile=dist/github-source-plugin.mjs"
   },
   "dependencies": {
+    "@archon/awaiting": "workspace:*",
     "@archon/core": "workspace:*",
     "@archon/forge": "workspace:*",
     "@archon/git": "workspace:*",

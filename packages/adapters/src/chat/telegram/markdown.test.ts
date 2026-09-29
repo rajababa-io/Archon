@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 
+import { formatAskFence } from '@archon/awaiting';
+
 import { convertToTelegramMarkdown, escapeMarkdownV2, isAlreadyEscaped } from './markdown';
 
 describe('telegram-markdown', () => {
@@ -39,6 +41,28 @@ describe('telegram-markdown', () => {
         const result = convertToTelegramMarkdown(input);
         expect(result).toContain('```');
         expect(result).toContain('const x = 1');
+      });
+
+      // Telegram cannot draw an ask card, so the fence the ask tool emits must
+      // arrive as a code block with every question and option still readable
+      // (#77). Checked on the exact bytes the tool writes, not a hand copy.
+      test('an ask fence degrades to a readable code block', () => {
+        const input = formatAskFence({
+          questions: [
+            {
+              title: 'Ship PR 83 now?',
+              options: [
+                { label: 'Ship it', detail: 'CI green', recommended: true },
+                { label: 'Wait' },
+              ],
+            },
+          ],
+        });
+        const result = convertToTelegramMarkdown(input);
+        expect(result.startsWith('```')).toBe(true);
+        for (const text of ['Ship PR 83 now?', 'Ship it', 'CI green', 'Wait']) {
+          expect(result).toContain(text);
+        }
       });
     });
 

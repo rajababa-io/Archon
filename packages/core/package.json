@@ -34,6 +34,7 @@
     "build": "echo 'No build needed - Bun runs TypeScript directly'"
   },
   "dependencies": {
+    "@archon/awaiting": "workspace:*",
     "@archon/git": "workspace:*",
     "@archon/isolation": "workspace:*",
     "@archon/paths": "workspace:*",
@@ -288,6 +289,7 @@
       "src/orchestrator/handoff-tool.test.ts",
       "src/orchestrator/handoff.test.ts",
       "src/orchestrator/ready-to-close-tool.test.ts",
+      "src/orchestrator/ask-tool.test.ts",
       "src/orchestrator/watch-ci-tool.test.ts",
       "src/orchestrator/update-project-brief-tool.test.ts",
       "src/handlers/provider-commands.test.ts"

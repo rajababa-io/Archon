@@ -13,6 +13,7 @@ const SCHEMA: NativeToolInputSchema = defineNativeToolInputSchema({
     action: { kind: 'enum', values: ['list', 'get'], description: 'the action' },
     runId: { kind: 'string' },
     confirm: { kind: 'boolean', description: 'guard' },
+    items: { kind: 'array' },
   },
   required: ['action'],
 });
@@ -27,7 +28,7 @@ const CASES: { label: string; input: unknown; accept: boolean }[] = [
   { label: 'minimal valid input', input: { action: 'list' }, accept: true },
   {
     label: 'every declared field',
-    input: { action: 'get', runId: 'abc12345', confirm: true },
+    input: { action: 'get', runId: 'abc12345', confirm: true, items: [{ any: 'shape' }, 1] },
     accept: true,
   },
   { label: 'value outside the enum', input: { action: 'delete' }, accept: false },
@@ -35,6 +36,11 @@ const CASES: { label: string; input: unknown; accept: boolean }[] = [
   {
     label: 'wrong primitive for a boolean',
     input: { action: 'list', confirm: 'yes' },
+    accept: false,
+  },
+  {
+    label: 'JSON text where an array is declared',
+    input: { action: 'list', items: '[1]' },
     accept: false,
   },
   { label: 'array instead of object', input: [], accept: false },

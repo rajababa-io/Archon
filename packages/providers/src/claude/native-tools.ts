@@ -23,6 +23,8 @@ function zodFieldForProperty(prop: NativeToolProperty): ZodTypeAny {
       return z.enum([...prop.values]);
     case 'boolean':
       return z.boolean();
+    case 'array':
+      return z.array(z.unknown());
     default: {
       const unreachable: never = prop;
       throw new Error(`native tool schema: unhandled field kind ${JSON.stringify(unreachable)}`);
@@ -33,7 +35,8 @@ function zodFieldForProperty(prop: NativeToolProperty): ZodTypeAny {
 /**
  * Map a native tool's typed input shape to the Zod raw shape the Claude SDK's
  * `tool()` expects. Deliberately flat: a property is a string, a string enum,
- * or a boolean, and `required` decides whether it is optional.
+ * a boolean, or an array whose items the handler validates, and `required`
+ * decides whether it is optional.
  */
 export function nativeToolInputToZodShape(input: NativeToolInputSchema): ZodRawShape {
   const shape: ZodRawShape = {};
