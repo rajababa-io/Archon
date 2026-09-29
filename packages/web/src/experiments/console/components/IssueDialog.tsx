@@ -12,13 +12,26 @@ import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 
 interface IssueDialogProps {
-  projectId: string;
-  /** The board's copy. Renders immediately, so opening never starts blank. */
-  issue: GithubIssue;
-  /** Where the board put it, passed in so the dialog cannot disagree with it. */
-  placement: IssuePlacement;
+  /** Null for a chat with no project: there is no repository to read, and the dialog says so. */
+  projectId: string | null;
+  number: number;
+  /**
+   * The board's copy. Renders immediately, so opening from the board never
+   * starts blank. Absent when opened from a number alone — a chat title — and
+   * the header fills in when the read lands.
+   */
+  issue?: GithubIssue;
+  /**
+   * Where the board put it, passed in so the dialog cannot disagree with it.
+   * Absent off the board: the column depends on which runs are live, and a
+   * guess made without them would be a second, different answer.
+   */
+  placement?: IssuePlacement;
   onClose: () => void;
 }
+
+/** What a chat with no project reads as — a reason, like any other empty read. */
+const NO_PROJECT: IssueDetailResponse = { issue: null, repo: null, reason: 'no-project' };
 
 /**
  * One GitHub issue, read inside the console.
@@ -33,12 +46,35 @@ interface IssueDialogProps {
  * because there is no route behind them; the link to github.com is where
  * interacting starts.
  */
-export function IssueDialog({
-  projectId,
-  issue,
+export function IssueDialog(props: IssueDialogProps): ReactElement {
+  return props.projectId === null ? (
+    <IssueDialogView {...props} data={NO_PROJECT} loading={false} error={undefined} />
+  ) : (
+    <FetchedIssueDialog {...props} projectId={props.projectId} />
+  );
+}
+
+function FetchedIssueDialog(props: IssueDialogProps & { projectId: string }): ReactElement {
+  const { projectId, number } = props;
+  const { data, loading, error } = useEntity<IssueDetailResponse>(K.issue(projectId, number), () =>
+    skill.getIssue(projectId, number)
+  );
+  return <IssueDialogView {...props} data={data} loading={loading} error={error} />;
+}
+
+function IssueDialogView({
+  number,
+  issue: boardCopy,
   placement,
   onClose,
-}: IssueDialogProps): ReactElement {
+  data,
+  loading,
+  error,
+}: IssueDialogProps & {
+  data: IssueDetailResponse | undefined;
+  loading: boolean;
+  error: Error | undefined;
+}): ReactElement {
   const panelRef = useRef<HTMLDivElement>(null);
   const now = useNow();
 
@@ -58,14 +94,12 @@ export function IssueDialog({
     panelRef.current?.focus();
   }, []);
 
-  const { data, loading, error } = useEntity<IssueDetailResponse>(
-    K.issue(projectId, issue.number),
-    () => skill.getIssue(projectId, issue.number)
-  );
-
-  const col = ISSUE_COLUMNS.find(c => c.key === placement.column);
-  const type = issueType(issue);
   const detail = data?.issue ?? null;
+  const issue: GithubIssue | null = boardCopy ?? detail;
+  const col =
+    placement === undefined ? undefined : ISSUE_COLUMNS.find(c => c.key === placement.column);
+  const type = issue === null ? null : issueType(issue);
+  const title = issue?.title ?? `Issue #${String(number)}`;
 
   return (
     <div
@@ -77,7 +111,7 @@ export function IssueDialog({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={`Issue #${String(issue.number)}: ${issue.title}`}
+        aria-label={`Issue #${String(number)}: ${title}`}
         tabIndex={-1}
         onMouseDown={e => {
           e.stopPropagation();
@@ -91,11 +125,9 @@ export function IssueDialog({
 
         <header className="flex items-start gap-2.25 px-[17px] pb-1.75 pt-[12.5px]">
           <div className="min-w-0 flex-1">
-            <h2 className="text-large font-medium leading-[1.35] text-text-primary">
-              {issue.title}
-            </h2>
+            <h2 className="text-large font-medium leading-[1.35] text-text-primary">{title}</h2>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
-              {col !== undefined ? (
+              {col !== undefined && placement !== undefined ? (
                 <span
                   title={placement.reason}
                   className="inline-flex h-[19px] items-center gap-1.5 rounded-full border px-[9px] text-mini text-text-secondary"
@@ -109,9 +141,9 @@ export function IssueDialog({
                   {col.label}
                 </span>
               ) : null}
-              <span className="text-mini text-text-tertiary">#{issue.number}</span>
+              <span className="text-mini text-text-tertiary">#{number}</span>
               {type !== null ? <IssueTypeChip name={type.name} derived={type.derived} /> : null}
-              {issue.labels.map(l => (
+              {issue?.labels.map(l => (
                 <span
                   key={l.name}
                   className="inline-flex h-[17px] items-center rounded-full border px-[7px] text-mini"
@@ -120,22 +152,24 @@ export function IssueDialog({
                   {l.name}
                 </span>
               ))}
-              {issue.assignees.length > 0 ? (
+              {issue !== null && issue.assignees.length > 0 ? (
                 <span className="text-mini text-text-tertiary">
                   assigned to {issue.assignees.join(', ')}
                 </span>
               ) : null}
             </div>
           </div>
-          <a
-            href={issue.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open on github.com — the only place you can reply or change it"
-            className="rail-ibtn shrink-0"
-          >
-            <ExternalLink className="h-[13px] w-[13px]" />
-          </a>
+          {issue !== null ? (
+            <a
+              href={issue.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Open on github.com — the only place you can reply or change it"
+              className="rail-ibtn shrink-0"
+            >
+              <ExternalLink className="h-[13px] w-[13px]" />
+            </a>
+          ) : null}
           <button
             type="button"
             onClick={onClose}
@@ -158,7 +192,7 @@ export function IssueDialog({
           ) : detail === null ? (
             <Note>{loading ? 'Reading GitHub…' : 'Nothing came back for this issue.'}</Note>
           ) : (
-            <IssueThread detail={detail} url={issue.url} now={now} />
+            <IssueThread detail={detail} url={detail.url} now={now} />
           )}
         </div>
 
@@ -172,16 +206,18 @@ export function IssueDialog({
               ? 'read-only'
               : `${String(detail.comments.length + detail.moreComments)} comment${
                   detail.comments.length + detail.moreComments === 1 ? '' : 's'
-                } · read-only · updated ${relativeTime(issue.updatedAt, now)}`}
+                } · read-only · updated ${relativeTime((issue ?? detail).updatedAt, now)}`}
           </span>
-          <a
-            href={issue.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-auto text-small text-text-secondary underline underline-offset-2 transition-colors hover:text-accent-bright"
-          >
-            Open on github.com
-          </a>
+          {issue !== null ? (
+            <a
+              href={issue.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-auto text-small text-text-secondary underline underline-offset-2 transition-colors hover:text-accent-bright"
+            >
+              Open on github.com
+            </a>
+          ) : null}
         </footer>
       </div>
     </div>

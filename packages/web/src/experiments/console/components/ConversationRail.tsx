@@ -24,6 +24,8 @@ import {
 } from '../primitives/chat-status';
 import { groupChatsByStatus } from '../primitives/chat-groups';
 import { MenuCheckItem, MenuItem, RowMenu } from './RowMenu';
+import { IssueDialog } from './IssueDialog';
+import { titleParts } from '../lib/title-issues';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
 
 import { chooseNeighbourChat } from '../lib/last-chat';
@@ -182,6 +184,11 @@ export function ConversationRail({
     setMenuFor(null);
   }, []);
   const renameRef = useRef<HTMLInputElement>(null);
+  // Held here, not in the row: a dialog rendered inside the row would inherit
+  // its drag and context-menu handlers.
+  const [openIssue, setOpenIssue] = useState<{ projectId: string | null; number: number } | null>(
+    null
+  );
 
   /* ── drag to resize ─────────────────────────────────────────────────────
      The project rail's gesture, on the rail beside it: pointer-driven, clamped
@@ -484,19 +491,33 @@ export function ConversationRail({
             className="chat-rename"
           />
         ) : (
-          <button
-            type="button"
-            onClick={e => {
-              e.stopPropagation();
-              open(c.id, e.metaKey || e.ctrlKey || e.shiftKey);
-            }}
-            className="min-w-0 flex-1 text-left"
-          >
+          <div className="min-w-0 flex-1 text-left">
+            {/* The opener is empty and spans the card (rail.css,
+                      `.chat-open`), rather than wrapping the title: the title's
+                      leading #N are buttons of their own, and a button inside a
+                      button is invalid HTML whose inner click also opens the
+                      chat. */}
+            <button
+              type="button"
+              aria-label={conversationLabel(c)}
+              onClick={e => {
+                e.stopPropagation();
+                open(c.id, e.metaKey || e.ctrlKey || e.shiftKey);
+              }}
+              className="chat-open"
+            />
             {/* Two lines: the title wraps to two rather than being
                       truncated at a width the rail never had, and the
                       timestamp sits UNDER it instead of competing for the
                       same line. */}
-            <span className="rail-text">{conversationLabel(c)}</span>
+            <span className="rail-text">
+              <TitleWithIssues
+                title={conversationLabel(c)}
+                onOpenIssue={number => {
+                  setOpenIssue({ projectId: c.projectId ?? projectId, number });
+                }}
+              />
+            </span>
             {/* Always the timestamp, never the state.
                       The second line used to say the state in its own colour —
                       "needs you", "editing rail.css" — and between the dot,
@@ -526,7 +547,7 @@ export function ConversationRail({
                 {relativeTime(c.lastActivityAt)}
               </time>
             ) : null}
-          </button>
+          </div>
         )}
 
         <RowMenu
@@ -744,6 +765,55 @@ export function ConversationRail({
           }`}
         />
       </div>
+
+      {openIssue !== null ? (
+        <IssueDialog
+          projectId={openIssue.projectId}
+          number={openIssue.number}
+          onClose={() => {
+            setOpenIssue(null);
+          }}
+        />
+      ) : null}
     </aside>
+  );
+}
+
+/**
+ * A chat title with its leading issue numbers as buttons. A title with none
+ * renders as the bare string it always was.
+ */
+function TitleWithIssues({
+  title,
+  onOpenIssue,
+}: {
+  title: string;
+  onOpenIssue: (number: number) => void;
+}): ReactElement {
+  const parts = titleParts(title);
+  if (parts.every(p => p.kind === 'text')) return <>{title}</>;
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.kind === 'issue' ? (
+          <button
+            key={i}
+            type="button"
+            title={`Open issue ${p.text}`}
+            onClick={e => {
+              // The row's opener must not also fire: the number and the chat
+              // are two different places to go.
+              e.stopPropagation();
+              onOpenIssue(p.number);
+            }}
+            className="chat-issue"
+          >
+            {p.text}
+          </button>
+        ) : (
+          <Fragment key={i}>{p.text}</Fragment>
+        )
+      )}
+    </>
   );
 }

@@ -15,6 +15,8 @@
 /** Reasons the server decides for itself, before it ever calls GitHub. */
 const FIXED: Readonly<Record<string, string>> = {
   'no-repository': 'This project has no repository, so there is nothing to read.',
+  // Decided by the console, not the server: a chat with no project never asks.
+  'no-project': 'This chat belongs to no project, so there is no repository to read.',
   'not-github': 'This project’s remote is not GitHub.',
   'no-token': 'No GitHub token is configured on the server.',
   'app-not-installed':

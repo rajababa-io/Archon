@@ -97,7 +97,10 @@ test('opening a chat shows its transcript', async ({ page }) => {
   // Now open the OTHER chat from the rail. Its transcript replaces the first
   // one — a stream that rendered whatever it loaded once and never again would
   // pass the assertions above and fail these.
-  await page.getByLabel('Chats').getByText(OTHER_CHAT_TITLE).click();
+  await page
+    .getByLabel('Chats')
+    .getByRole('button', { name: OTHER_CHAT_TITLE, exact: true })
+    .click();
   await expect(page.getByText(OTHER_CHAT_TEXT)).toBeVisible();
   await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
 });
@@ -123,7 +126,10 @@ test('New chat puts the cursor in the message box', async ({ page }) => {
   const composer = page.getByPlaceholder('Message the agent…');
   // Focus elsewhere first: a composer that was already focused would pass
   // without New chat doing anything.
-  await page.getByLabel('Chats').getByText(OTHER_CHAT_TITLE).click();
+  await page
+    .getByLabel('Chats')
+    .getByRole('button', { name: OTHER_CHAT_TITLE, exact: true })
+    .click();
   await expect(composer).not.toBeFocused();
 
   await page.getByRole('button', { name: 'New chat' }).first().click();

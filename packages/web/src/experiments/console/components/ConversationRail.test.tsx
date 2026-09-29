@@ -109,3 +109,31 @@ describe('ConversationRail — status', () => {
     expect(html).not.toContain('chat-status is-ready');
   });
 });
+
+describe('ConversationRail — issue numbers in a title (#119)', () => {
+  const titled = (title: string): ConversationSummary => ({ ...chat('t'), title });
+
+  test('each leading #N is its own button; the +N count is not', () => {
+    const rows = [titled('#99 #100 +3 Console polish')];
+    const html = draw({ conversations: rows, statusSets: chatStatusSets(rows, NO_LIVE) });
+    expect(html.match(/class="chat-issue"/g)).toHaveLength(2);
+    expect(html).toContain('>#99</button>');
+    expect(html).toContain('>#100</button>');
+    expect(html).not.toContain('>+3</button>');
+    expect(html).toContain('+3 Console polish');
+  });
+
+  test('the title is never inside the button that opens the chat', () => {
+    // A button inside a button is invalid, and its click would open both.
+    const rows = [titled('#96 Ask card')];
+    const html = draw({ conversations: rows, statusSets: chatStatusSets(rows, NO_LIVE) });
+    expect(html).toContain('aria-label="#96 Ask card" class="chat-open"></button>');
+  });
+
+  test('a title with no leading number has no issue buttons', () => {
+    const rows = [titled('Fix the #3 regression')];
+    const html = draw({ conversations: rows, statusSets: chatStatusSets(rows, NO_LIVE) });
+    expect(html).not.toContain('chat-issue');
+    expect(html).toContain('<span class="rail-text">Fix the #3 regression</span>');
+  });
+});

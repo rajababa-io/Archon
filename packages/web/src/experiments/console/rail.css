@@ -637,13 +637,32 @@
 /* The whole card opens the chat, not just the text in it. The row highlights
    and shows a pointer everywhere, but the button only spans its own lines — the
    dot gutter, the padding and a one-line title's spare line were a third of
-   the card and ate the click. A cover on the button rather than a click
+   the card and ate the click. A button spanning the card rather than a click
    handler on the row: the row menu is portalled, and a React click from it
-   bubbles to the row, so picking "Close" would also open the chat. */
-.chatlist .rail-row > button::after {
-  content: '';
+   bubbles to the row, so picking "Close" would also open the chat. The button
+   is empty and the title a sibling beneath it, so the title's #N can be
+   buttons of their own — see `.chat-issue`. */
+.chatlist .chat-open {
   position: absolute;
   inset: 0;
+}
+.console-root .chatlist .chat-open:focus-visible {
+  outline-offset: -2px;
+}
+/* A leading #N in a chat title opens that issue. Above the opener,
+   or it would take the click; styled as the title's own text until
+   hovered, so a titled chat reads like any other. */
+.chatlist .chat-issue {
+  position: relative;
+  z-index: 1;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.chatlist .chat-issue:hover {
+  color: var(--accent-bright);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .chatlist .rail-row .rail-text {
   display: -webkit-box;
