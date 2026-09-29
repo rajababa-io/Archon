@@ -33,6 +33,7 @@ import {
   type Options,
   type HookCallback,
   type HookCallbackMatcher,
+  type SDKAssistantMessage,
   type SDKAssistantMessageError,
   type SDKResultMessage,
   type ModelUsage,
@@ -42,6 +43,7 @@ import type {
   IAgentProvider,
   SendQueryOptions,
   MessageChunk,
+  ProviderRefusal,
   TokenUsage,
   ProviderCapabilities,
   NodeConfig,
@@ -987,7 +989,11 @@ async function* streamClaudeMessages(
   // confirm it (#1797). Detection is two-signal: the typed wrapper `error`
   // field on a '<synthetic>' assistant message, then `is_error: true` on the
   // result. See ClaudeApiResultError.
-  let pendingSdkError: { code: SDKAssistantMessageError; text: string } | undefined;
+  // A refusal arrives the same way, told apart only by the message's structured
+  // `stop_details` (#241) — never by its prose.
+  let pendingSdkError:
+    | { code: SDKAssistantMessageError; text: string; refusal?: ProviderRefusal }
+    | undefined;
   /**
    * Usage of the most recent single request in this turn.
    *
@@ -1032,6 +1038,7 @@ async function* streamClaudeMessages(
           content: ContentBlock[];
           model?: string;
           usage?: Parameters<typeof normalizeClaudeUsage>[0];
+          stop_details?: SDKAssistantMessage['message']['stop_details'];
         };
         error?: SDKAssistantMessageError;
       };
@@ -1059,8 +1066,25 @@ async function* streamClaudeMessages(
           .filter(b => b.type === 'text' && b.text)
           .map(b => b.text)
           .join('\n');
-        pendingSdkError = { code: message.error, text };
-        getLog().warn({ errorCode: message.error, text }, 'claude.synthetic_error_message');
+        const stopDetails = message.message.stop_details;
+        pendingSdkError = {
+          code: message.error,
+          text,
+          ...(stopDetails?.type === 'refusal'
+            ? {
+                refusal: {
+                  // Typed as a closed union, but the wire carries categories the
+                  // type has not caught up with ('reasoning_extraction').
+                  category: stopDetails.category as string | null,
+                  explanation: stopDetails.explanation,
+                },
+              }
+            : {}),
+        };
+        getLog().warn(
+          { errorCode: message.error, text, refusal: pendingSdkError.refusal },
+          'claude.synthetic_error_message'
+        );
         // Withhold the error prose from the output stream — yielding it is
         // what poisons downstream $node.output. If the terminal result
         // contradicts (no is_error), the text is yielded late as a fail-safe.
@@ -1245,12 +1269,19 @@ async function* streamClaudeMessages(
       // errors that even set stop_reason: 'stop_sequence').
       const isSuccessWithErrorFlag = resultMsg.is_error && resultMsg.subtype === 'success';
 
+      // A refusal is the model declining this turn, not a broken call: the
+      // session holds everything up to it and resumes cleanly. It is reported
+      // as an error result carrying the session id rather than thrown, because
+      // a throw loses the id and the next turn starts with no memory (#241).
+      const refusal = isSuccessWithErrorFlag ? syntheticError?.refusal : undefined;
+
       // Disambiguate structurally: a preceding synthetic error message
       // (primary, typed signal), or the typed terminal_reason 'api_error'
       // (secondary — catches an error result with no preceding synthetic
       // message), marks a real failure. Throw so callers fail the node/turn
       // instead of consuming error prose as successful output.
       if (
+        refusal === undefined &&
         isSuccessWithErrorFlag &&
         (syntheticError !== undefined || resultMsg.terminal_reason === 'api_error')
       ) {
@@ -1291,7 +1322,12 @@ async function* streamClaudeMessages(
       // failure". Treat that pair as a clean success so downstream consumers
       // (which gate failure on isError) don't misclassify it.
       const isRealError = resultMsg.is_error && !isSuccessWithErrorFlag;
-      if (isRealError) {
+      if (refusal !== undefined) {
+        getLog().warn(
+          { sessionId: resultMsg.session_id, refusal, stopReason: resultMsg.stop_reason },
+          'claude.result_refusal'
+        );
+      } else if (isRealError) {
         getLog().error(
           {
             sessionId: resultMsg.session_id,
@@ -1320,6 +1356,14 @@ async function* streamClaudeMessages(
           : {}),
         ...(isRealError ? { isError: true, errorSubtype: resultMsg.subtype } : {}),
         ...(isRealError && sdkErrors?.length ? { errors: sdkErrors } : {}),
+        ...(refusal === undefined
+          ? {}
+          : {
+              isError: true,
+              errorSubtype: 'refusal',
+              refusal,
+              ...(refusal.explanation ? { errors: [refusal.explanation] } : {}),
+            }),
         ...(resultMsg.total_cost_usd !== undefined ? { cost: resultMsg.total_cost_usd } : {}),
         ...(resultMsg.stop_reason != null ? { stopReason: resultMsg.stop_reason } : {}),
         ...(resultMsg.num_turns !== undefined ? { numTurns: resultMsg.num_turns } : {}),

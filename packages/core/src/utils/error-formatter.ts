@@ -8,6 +8,19 @@ import { TerminalStatusWriteError } from '@archon/workflows/terminal-status-writ
 import { spellWorkflowCommand, type WorkflowCommandSurface } from '@archon/workflows/deps';
 import { TierResolutionError } from '@archon/workflows/model-validation';
 import { WorkflowAdoptionError } from '../operations/workflow-adoption';
+import type { ProviderRefusal } from '@archon/providers/types';
+
+/**
+ * The message for a turn the provider's model refused (#241). Kept apart from
+ * classifyAndFormatError on purpose: a refusal is not an error in Archon or
+ * the session, and must not read like one — nor send the user to /reset, which
+ * would throw away a conversation that is still intact.
+ */
+export function formatProviderRefusal(refusal: ProviderRefusal): string {
+  const category = refusal.category ? ` (${refusal.category})` : '';
+  const explanation = refusal.explanation ? `\n\n> ${refusal.explanation}` : '';
+  return `🚫 The AI provider blocked this reply${category}.${explanation}\n\nThe conversation is kept — rephrase and send again, or switch model.`;
+}
 
 /**
  * Classify an error and return a user-friendly message

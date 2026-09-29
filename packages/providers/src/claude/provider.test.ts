@@ -3269,6 +3269,72 @@ describe('API error surfaced as text (#1797)', () => {
     expect(mockQuery).toHaveBeenCalledTimes(4);
   }, 5_000);
 
+  // Shape captured from a real refusal (claude CLI 2.1.283, 2026-09-28): the
+  // synthetic message carries `stop_details.type: 'refusal'` beside the same
+  // catch-all 'invalid_request' code a genuine client error uses (#241).
+  test('a refusal yields an error result that keeps the session, with category and explanation', async () => {
+    const text =
+      "API Error: Opus's safeguards flagged this message. Try rephrasing in a new session.";
+    mockQuery.mockImplementation(async function* () {
+      yield {
+        ...syntheticAssistantMessage('invalid_request', text),
+        message: {
+          model: '<synthetic>',
+          stop_reason: 'refusal',
+          stop_details: {
+            type: 'refusal',
+            category: 'reasoning_extraction',
+            explanation: 'Blocked under the reverse-engineering terms.',
+          },
+          content: [{ type: 'text', text }],
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      };
+      yield { ...apiErrorResult(text), stop_reason: 'refusal', total_cost_usd: 0.59 };
+    });
+
+    const { chunks, error } = await collect(client.sendQuery('test', '/workspace'));
+
+    expect(error).toBeUndefined();
+    expect(mockQuery).toHaveBeenCalledTimes(1);
+    // The SDK's prose is still withheld — it is not the model's reply.
+    expect(chunks.filter(c => c.type === 'assistant')).toHaveLength(0);
+    const results = chunks.filter(c => c.type === 'result');
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({
+      sessionId: 'sid-api-err',
+      isError: true,
+      errorSubtype: 'refusal',
+      refusal: {
+        category: 'reasoning_extraction',
+        explanation: 'Blocked under the reverse-engineering terms.',
+      },
+      errors: ['Blocked under the reverse-engineering terms.'],
+      cost: 0.59,
+    });
+  });
+
+  test('the same catch-all code without refusal stop_details still throws', async () => {
+    const text = 'Invalid request: prompt too long';
+    mockQuery.mockImplementation(async function* () {
+      yield {
+        ...syntheticAssistantMessage('invalid_request', text),
+        message: {
+          model: '<synthetic>',
+          stop_reason: 'stop_sequence',
+          stop_details: null,
+          content: [{ type: 'text', text }],
+          usage: { input_tokens: 0, output_tokens: 0 },
+        },
+      };
+      yield apiErrorResult(text);
+    });
+
+    const { chunks, error } = await collect(client.sendQuery('test', '/workspace'));
+    expect(error?.message).toContain('Claude API error (invalid_request)');
+    expect(chunks.filter(c => c.type === 'result')).toHaveLength(0);
+  });
+
   test('other catch-all-coded api errors stay non-retryable', async () => {
     // Guards the narrowness of the #1341 fallback: a genuine client error that
     // also lands on a catch-all code must NOT be retried.
