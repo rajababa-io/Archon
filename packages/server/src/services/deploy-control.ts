@@ -21,12 +21,14 @@ import { createLogger } from '@archon/paths';
 import type { Codebase } from '@archon/core';
 import * as projectDeployDb from '@archon/core/db/project-deploy';
 import type { ProjectDeploy } from '@archon/core/db/project-deploy';
+import { namesDeployPointer } from '@archon/core/db/project-deploy-rules';
 import {
   type DeployAttempt,
   type DeployStatus,
   getDeployStatus,
   parseAttempts,
 } from './deploy-status';
+import type { DeployLogKind } from './deploy-log-kinds';
 import { githubGraphQl, isIssueReadFailure, resolveIssueSource } from '../routes/github-issues';
 
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -256,8 +258,9 @@ export async function getProjectDeployView(
     readHistory(dir),
     getDeployStatus(dir),
   ]);
-  const { waiting, reason } =
-    liveSha === null
+  const { waiting, reason } = namesDeployPointer(setting)
+    ? { waiting: null, reason: 'branch-is-deploy-pointer' }
+    : liveSha === null
       ? { waiting: null, reason: 'live-unknown' }
       : await readWaiting(codebase, setting.branch, liveSha);
   return {
@@ -276,18 +279,7 @@ export async function getProjectDeployView(
 
 export interface DeployLogEntry {
   at: string;
-  kind:
-    | 'toggle_on'
-    | 'toggle_off'
-    | 'deploy_requested'
-    | 'deploy_cancelled'
-    /** A workflow deploy's run began. */
-    | 'started'
-    | 'held'
-    | 'ok'
-    | 'failed'
-    | 'refused'
-    | 'killed';
+  kind: DeployLogKind;
   actor: string | null;
   sha: string | null;
   detail: string | null;
@@ -354,6 +346,15 @@ export async function deployNow(
   ) => Promise<{ code: number; stderr: string }> = runScript
 ): Promise<DeployNowResult> {
   if (!SHA.test(expectSha)) return { ok: false, status: 409, error: 'Not a commit SHA.' };
+  if (namesDeployPointer(setting)) {
+    // Its tip is what is already deployed, not what has merged; shipping it
+    // would look like a deploy and change nothing.
+    return {
+      ok: false,
+      status: 409,
+      error: `This deploy follows ${setting.branch}, the pointer deploys move. It must follow the branch merges land on.`,
+    };
+  }
   const status = await getDeployStatus();
   if (status.phase !== 'idle') {
     return { ok: false, status: 409, error: 'A deploy is already requested or running.' };

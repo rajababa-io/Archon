@@ -173,3 +173,21 @@ describe('deploy runs', () => {
     expect(await deploy.listDeployRuns('p1')).toEqual([]);
   });
 });
+
+describe('deploys that did not start', () => {
+  test("a project reads its own not-started deploys with the reason, and never another's", async () => {
+    await deploy.recordDeployNotStarted('p3', SHA, 'o/atlas#7', 'The deploy workflow is missing.');
+    await deploy.recordDeployNotStarted('p4', SHA, 'o/vault#8', 'A deploy is already running.');
+
+    expect(await deploy.listDeployNotStarted('p3')).toEqual([
+      {
+        sha: SHA,
+        trigger: 'o/atlas#7',
+        reason: 'The deploy workflow is missing.',
+        at: expect.any(String),
+      },
+    ]);
+    expect((await deploy.listDeployNotStarted('p4')).map(r => r.trigger)).toEqual(['o/vault#8']);
+    expect(await deploy.listDeployNotStarted('p1')).toEqual([]);
+  });
+});

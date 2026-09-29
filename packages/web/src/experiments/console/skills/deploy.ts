@@ -9,7 +9,11 @@
  * does not pin: a malformed answer yields no deploy bar rather than a crash.
  * The embedded `status` IS pinned — it is the health route's deploy block —
  * so it is parsed by that module's parser rather than a second copy.
+ *
+ * The log route is the exception: it is an OpenAPI route, so its entry shape
+ * comes from the generated types and the server's one list of kinds (#235).
  */
+import type { components } from '@/lib/api.generated';
 import { requestJson } from '../lib/http';
 import { parseDeploy, type DeployStatus } from './activeChats';
 
@@ -75,38 +79,28 @@ export type DeployAnswer =
   | { kind: 'set-up'; deploy: ProjectDeploy }
   | { kind: 'not-set-up'; setup: DeploySetup; canAct: boolean };
 
-export type DeployLogKind =
-  | 'toggle_on'
-  | 'toggle_off'
-  | 'deploy_requested'
-  | 'deploy_cancelled'
-  | 'started'
-  | 'held'
-  | 'ok'
-  | 'failed'
-  | 'refused'
-  | 'killed';
+export type DeployLogEntry = components['schemas']['DeployLogEntry'];
+export type DeployLogKind = DeployLogEntry['kind'];
 
-export interface DeployLogEntry {
-  at: string;
-  kind: DeployLogKind;
-  actor: string | null;
-  sha: string | null;
-  detail: string | null;
-}
-
-const LOG_KINDS: readonly DeployLogKind[] = [
-  'toggle_on',
-  'toggle_off',
-  'deploy_requested',
-  'deploy_cancelled',
-  'started',
-  'held',
-  'ok',
-  'failed',
-  'refused',
-  'killed',
-];
+/**
+ * The generated union at runtime, for the parser's filter. A `Record` over it
+ * fails type-check the moment the server adds a kind this build has not
+ * listed, instead of the parser silently dropping those entries.
+ */
+const LOG_KIND: Record<DeployLogKind, true> = {
+  toggle_on: true,
+  toggle_off: true,
+  deploy_requested: true,
+  deploy_cancelled: true,
+  started: true,
+  not_started: true,
+  held: true,
+  ok: true,
+  failed: true,
+  refused: true,
+  killed: true,
+};
+const LOG_KINDS = Object.keys(LOG_KIND) as DeployLogKind[];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;

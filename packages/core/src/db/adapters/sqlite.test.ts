@@ -250,6 +250,23 @@ describe('SqliteAdapter upgrade path', () => {
       check.close();
     }
   });
+  test('a database from before #236 gains the deploy-not-started table', async () => {
+    const path = await upgradeFixturePath();
+    await new SqliteAdapter(path).close();
+    const raw = new Database(path);
+    try {
+      raw.run('DROP TABLE remote_agent_deploy_not_started');
+    } finally {
+      raw.close();
+    }
+
+    const upgraded = new SqliteAdapter(path);
+    await upgraded.close();
+
+    expect(columnsOf(path, 'remote_agent_deploy_not_started')).toEqual(
+      expect.arrayContaining(['id', 'codebase_id', 'sha', 'trigger_ref', 'reason', 'created_at'])
+    );
+  });
 });
 
 describe('SqliteAdapter', () => {

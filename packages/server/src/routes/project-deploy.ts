@@ -21,19 +21,23 @@
  * check runs before anything else in each handler, so a refused request changes
  * nothing and reads nothing.
  *
- * `app.get` rather than registerOpenApiRoute, the same call the issue routes
- * make: the console reads these through its own typed wrapper, and the shape
- * includes the deploy status the health schema already pins.
+ * `app.get` rather than registerOpenApiRoute for all but the log, the same
+ * call the issue routes make: the console reads these through its own typed
+ * wrapper, and the shape includes the deploy status the health schema already
+ * pins. The log is an OpenAPI route so its entry kinds reach the console's
+ * generated types from the one list the server builds them from (#235).
  */
 
 import type { Context } from 'hono';
-import type { OpenAPIHono } from '@hono/zod-openapi';
+import { createRoute, type OpenAPIHono } from '@hono/zod-openapi';
 import * as codebaseDb from '@archon/core/db/codebases';
 import * as projectDeployDb from '@archon/core/db/project-deploy';
 import type { ProjectDeploy } from '@archon/core/db/project-deploy';
 import type { Codebase } from '@archon/core';
 import { createLogger } from '@archon/paths';
 import { isAuthorizedDrainRequest } from './internal-drain';
+import { errorSchema } from './schemas/common.schemas';
+import { deployLogResponseSchema, projectIdParamsSchema } from './schemas/deploy.schemas';
 import { checkHumanPass, HUMAN_PASS_HEADER, humanPassRefusal } from '../services/human-pass';
 import {
   cancelDeploy,
@@ -57,6 +61,21 @@ function getLog(): ReturnType<typeof createLogger> {
   if (!cachedLog) cachedLog = createLogger('project-deploy');
   return cachedLog;
 }
+
+const deployLogRoute = createRoute({
+  method: 'get',
+  path: '/api/projects/{projectId}/deploy/log',
+  tags: ['Deploy'],
+  summary: "A project's deploy log: console actions, deploy starts and verdicts, newest first",
+  request: { params: projectIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: deployLogResponseSchema } },
+      description: 'OK',
+    },
+    404: { content: { 'application/json': { schema: errorSchema } }, description: 'No project' },
+  },
+});
 
 /** What is running, for the Deploy now confirm: chats mid-turn and workflow runs. */
 export type RunningCounter = () => Promise<{ chats: number; workflows: number }>;
@@ -202,18 +221,18 @@ export function registerProjectDeployRoutes(
     return c.json({ cancelled: result.how });
   });
 
-  app.get('/api/projects/:projectId/deploy/log', async c => {
-    const found = await loadProject(c.req.param('projectId'));
+  app.openapi(deployLogRoute, async c => {
+    const found = await loadProject(c.req.valid('param').projectId);
     if (found === null) return c.json({ error: 'Project not found' }, 404);
     const { codebase, setting } = found;
-    if (setting === null) return c.json({ entries: [] });
+    if (setting === null) return c.json({ entries: [] }, 200);
     // The host's deploy-history is this install's, so only the archon-host
     // project reads it; a workflow project's log is its own runs.
     const entries =
       setting.method === 'workflow'
         ? await getWorkflowDeployLog(codebase.id)
         : await getDeployLog(codebase.id);
-    return c.json({ entries });
+    return c.json({ entries }, 200);
   });
 }
 

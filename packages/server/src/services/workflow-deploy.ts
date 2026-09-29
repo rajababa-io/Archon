@@ -371,10 +371,17 @@ export async function deployMergedBranch(
   for (const setting of settings) {
     const codebase = await codebaseDb.getCodebase(setting.codebaseId);
     if (codebase === null || !isMergedRepo(codebase, signal)) continue;
+    const trigger = `${signal.repo.owner}/${signal.repo.name}#${String(signal.pr)}`;
     // A merge has no person behind it. The deploy runs as whoever last set the
     // switch, which is the person who decided merges should ship on their own.
     if (setting.updatedBy === null) {
       getLog().warn({ codebaseId: codebase.id }, 'deploy.merge_without_owner');
+      await recordNotStarted(
+        codebase.id,
+        signal.sha,
+        trigger,
+        'Deploy on Merge has no owner to run the deploy as. Turn it off and on again.'
+      );
       continue;
     }
     const result = await startWorkflowDeploy(
@@ -383,11 +390,8 @@ export async function deployMergedBranch(
         setting,
         sha: signal.sha,
         runAsUserId: await userForEmail(setting.updatedBy),
-        actor: {
-          source: 'github',
-          id: `${signal.repo.owner}/${signal.repo.name}#${String(signal.pr)}`,
-        },
-        deliveryKey: `${signal.repo.owner}/${signal.repo.name}#${String(signal.pr)}`,
+        actor: { source: 'github', id: trigger },
+        deliveryKey: trigger,
       },
       host
     );
@@ -396,6 +400,7 @@ export async function deployMergedBranch(
         { codebaseId: codebase.id, pr: signal.pr, sha: signal.sha, error: result.error },
         'deploy.merge_not_started'
       );
+      await recordNotStarted(codebase.id, signal.sha, trigger, result.error);
       notStarted.push(codebase.id);
     }
   }
@@ -403,6 +408,24 @@ export async function deployMergedBranch(
     throw new Error(
       `Merge of ${signal.repo.owner}/${signal.repo.name}#${String(signal.pr)} did not start the deploy of project(s) ${notStarted.join(', ')}`
     );
+  }
+}
+
+/**
+ * Put a merge that did not deploy into that project's log (#236). A failure to
+ * record is logged and does not stop the caller: the merge still counts as not
+ * started, so a redelivery can try again.
+ */
+async function recordNotStarted(
+  codebaseId: string,
+  sha: string,
+  trigger: string,
+  reason: string
+): Promise<void> {
+  try {
+    await projectDeployDb.recordDeployNotStarted(codebaseId, sha, trigger, reason);
+  } catch (err) {
+    getLog().error({ err, codebaseId, trigger }, 'deploy.not_started_record_failed');
   }
 }
 
@@ -440,14 +463,18 @@ const VERDICT: Partial<Record<DeployRun['status'], DeployLogEntry['kind']>> = {
   cancelled: 'killed',
 };
 
-/** The console's actions merged with each deploy run's start and verdict, newest first. */
+/**
+ * The console's actions merged with each deploy run's start and verdict, and
+ * each merge that did not start one, newest first.
+ */
 export async function getWorkflowDeployLog(
   codebaseId: string,
   limit = 50
 ): Promise<DeployLogEntry[]> {
-  const [events, runs] = await Promise.all([
+  const [events, runs, notStarted] = await Promise.all([
     projectDeployDb.listDeployEvents(codebaseId, limit),
     projectDeployDb.listDeployRuns(codebaseId, limit),
+    projectDeployDb.listDeployNotStarted(codebaseId, limit),
   ]);
   const entries: DeployLogEntry[] = events.map(e => ({
     at: e.at,
@@ -456,6 +483,15 @@ export async function getWorkflowDeployLog(
     sha: e.sha,
     detail: null,
   }));
+  for (const miss of notStarted) {
+    entries.push({
+      at: miss.at,
+      kind: 'not_started',
+      actor: miss.trigger,
+      sha: miss.sha,
+      detail: miss.reason,
+    });
+  }
   for (const run of runs) {
     entries.push({ at: run.at, kind: 'started', actor: null, sha: run.sha, detail: run.runId });
     const verdict = VERDICT[run.status];

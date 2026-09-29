@@ -1049,6 +1049,20 @@ export class SqliteAdapter implements IDatabase {
       CREATE INDEX IF NOT EXISTS idx_deploy_runs_codebase
         ON remote_agent_deploy_runs(codebase_id, created_at);
 
+      -- Merges that should have started a project's deploy and did not (#236).
+      -- Mirrors migrations/041_deploy_not_started.sql.
+      CREATE TABLE IF NOT EXISTS remote_agent_deploy_not_started (
+        id TEXT PRIMARY KEY,
+        codebase_id TEXT NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+        sha TEXT NOT NULL,
+        trigger_ref TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_deploy_not_started_codebase
+        ON remote_agent_deploy_not_started(codebase_id, created_at);
+
       -- Web Push subscriptions and preferences. Mirrors
       -- migrations/040_push_notifications.sql.
       CREATE TABLE IF NOT EXISTS remote_agent_push_subscriptions (

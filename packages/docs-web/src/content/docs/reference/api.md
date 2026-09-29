@@ -769,7 +769,9 @@ A project deploys one of two ways, named by its `method`:
   Merges arrive through the GitHub webhook at `/webhooks/github`, so only repositories
   whose webhook points at this install deploy on merge.
 - `archon-host` -- this install deploying itself through the host's request file. No
-  route creates it.
+  route creates it. Its branch must be the one merges land on (`dev` here), never the
+  `deploy` pointer the host moves: a row naming `deploy` reports
+  `waitingReason: "branch-is-deploy-pointer"` and Deploy now is refused.
 
 | Method | Path | Who | Description |
 |--------|------|-----|-------------|
@@ -778,7 +780,7 @@ A project deploys one of two ways, named by its `method`:
 | PATCH | `/api/projects/{projectId}/deploy` | person | `{"deployOnMerge": true \| false}` |
 | POST | `/api/projects/{projectId}/deploy` | person | Deploy now: `{"sha": "<the waiting tip>"}`; `409` if a deploy is already running, the branch has moved, or (for `workflow`) the workflow is missing |
 | DELETE | `/api/projects/{projectId}/deploy` | person | Cancel deploy: for `archon-host`, `409` once the swap has started; for `workflow`, cancels this project's running deploy run |
-| GET | `/api/projects/{projectId}/deploy/log` | any | Toggle flips, Deploy now, Cancel, and how each deploy went, newest first |
+| GET | `/api/projects/{projectId}/deploy/log` | any | Toggle flips, Deploy now, Cancel, and how each deploy went, newest first. A merge that should have started a `workflow` deploy and did not is a `not_started` entry, with the merged PR as `actor` and the reason as `detail` |
 
 **Person** means a request carrying a Cloudflare Access login pass
 (`Cf-Access-Jwt-Assertion`) that verifies against `ARCHON_CF_ACCESS_TEAM_DOMAIN` and
