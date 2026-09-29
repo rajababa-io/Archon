@@ -30,6 +30,7 @@ import type { Session } from '../schemas/session';
 import type { WorkflowDefinition } from '@archon/workflows/schemas/workflow';
 import type { WorkflowRun } from '@archon/workflows/schemas/workflow-run';
 import { toBranchName } from '@archon/git';
+import { splitReply } from '@archon/awaiting';
 import type { IAgentProvider, ProviderCapabilities } from '@archon/providers/types';
 import type * as Git from '@archon/git';
 import type * as ConfigLoader from '../config/config-loader';
@@ -8205,6 +8206,48 @@ describe('mark_ready_to_close', () => {
     expect(await turn('web')).toContain('watch_ci');
     expect(await turn('slack')).not.toContain('watch_ci');
   });
+
+  // #77: the `ask` tool's fence has to reach the reader through the same send
+  // the agent's own text takes, in both streaming modes, or a tool-asked
+  // question would not be the card a hand-typed one is.
+  test.each(['stream', 'batch'] as const)(
+    'an ask call puts its fence into the %s reply, after the text before it',
+    async mode => {
+      const results: string[] = [];
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'One question.' };
+        yield { type: 'tool', toolName: 'mcp__archon__ask', toolInput: {} };
+        const call = mockSendQuery.mock.calls.at(-1) as unknown[] | undefined;
+        const tool = (
+          call?.[3] as {
+            nativeTools?: {
+              name: string;
+              handler: (input: Record<string, unknown>) => Promise<string>;
+            }[];
+          }
+        ).nativeTools?.find(t => t.name === 'ask');
+        if (tool) {
+          results.push(
+            await tool.handler({ questions: [{ title: 'Ship it?', options: [{ label: 'Yes' }] }] })
+          );
+        }
+        yield { type: 'tool_result', toolName: 'mcp__archon__ask', toolOutput: results[0] ?? '' };
+        yield { type: 'result', sessionId: 'session-1' };
+      });
+      const platform = makePlatform();
+      platform.getStreamingMode.mockImplementation(() => mode);
+
+      await handleMessage(platform, 'conv-1', 'ask me');
+
+      expect(results[0]).toContain('shown as cards');
+      const sent = platform.sendMessage.mock.calls
+        .map(c => c[1])
+        .filter(t => t.includes('One question.') || t.includes('```ask'))
+        .join('');
+      expect(sent.indexOf('One question.')).toBeLessThan(sent.indexOf('```ask'));
+      expect(splitReply(sent).map(p => p.kind)).toEqual(['markdown', 'ask']);
+    }
+  );
 
   test('watch_ci is not offered when nothing could fire it', async () => {
     // No GitHub adapter means no webhook and no sweep: a watch opened here

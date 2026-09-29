@@ -13,6 +13,8 @@ function typeBoxFieldForProperty(prop: NativeToolProperty): TSchema {
       return StringEnum([...prop.values]);
     case 'boolean':
       return Type.Boolean();
+    case 'array':
+      return Type.Array(Type.Unknown());
     default: {
       const unreachable: never = prop;
       throw new Error(`native tool schema: unhandled field kind ${JSON.stringify(unreachable)}`);
@@ -22,8 +24,9 @@ function typeBoxFieldForProperty(prop: NativeToolProperty): TSchema {
 
 /**
  * Map a native tool's typed input shape to the TypeBox object Pi's `defineTool`
- * expects. Deliberately flat: a property is a string, a string enum, or a
- * boolean, and `required` decides whether it is optional.
+ * expects. Deliberately flat: a property is a string, a string enum, a
+ * boolean, or an array whose items the handler validates, and `required`
+ * decides whether it is optional.
  */
 export function nativeToolInputToTypeBox(input: NativeToolInputSchema): TObject {
   const shape: Record<string, TSchema> = {};

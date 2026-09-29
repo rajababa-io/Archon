@@ -49,6 +49,7 @@ import { getAgentProvider } from '../services/provider-admission';
 import { buildManageRunTool } from './manage-run-tool';
 import { buildProjectBriefTool } from './update-project-brief-tool';
 import { buildReadyToCloseTool } from './ready-to-close-tool';
+import { buildAskTool, withToolReplies } from './ask-tool';
 import { buildWatchCiTool } from './watch-ci-tool';
 import { openCiWatch } from '../db/ci-watches';
 import { isCiWatchActive } from '../services/ci-watch';
@@ -3027,6 +3028,11 @@ export async function handleMessage(
     // object because a `let` assigned only from a callback narrows to `null`.
     const gateResolution: { resolved: ResolvedGate | null } = { resolved: null };
 
+    // Text the `ask` tool puts into the reply. Filled by its handler mid-turn
+    // and released into the provider stream by `withToolReplies`, so the fence
+    // travels the path the agent's own text does (#77).
+    const toolReplies: string[] = [];
+
     // Project-scoped chats get the `manage_run` tool so the agent can see and
     // launch this project's workflow runs. Only when a codebase is scoped and
     // the provider supports in-process native tools (Claude, Pi). The explicit
@@ -3171,6 +3177,13 @@ export async function handleMessage(
             await db.setConversationReady(conversation.id, ready);
           },
         }),
+        // Questions asked through a typed call, checked before the reader sees
+        // them, instead of an ask fence typed from memory.
+        buildAskTool({
+          emit: (text): void => {
+            toolReplies.push(text);
+          },
+        }),
         ...(platform.getPlatformType() === 'web' && isCiWatchActive()
           ? [
               buildWatchCiTool({
@@ -3215,7 +3228,8 @@ export async function handleMessage(
           conversation,
           issueContext,
           requestOptions,
-          userId
+          userId,
+          toolReplies
         );
       } else {
         reply = await handleBatchMode(
@@ -3232,7 +3246,8 @@ export async function handleMessage(
           conversation,
           issueContext,
           requestOptions,
-          userId
+          userId,
+          toolReplies
         );
       }
     } finally {
@@ -3322,7 +3337,8 @@ async function handleStreamMode(
   conversation: Conversation,
   issueContext?: string,
   requestOptions?: SendQueryOptions,
-  userId?: string
+  userId?: string,
+  toolReplies: string[] = []
 ): Promise<string | undefined> {
   const turnStartedAt = Date.now();
   const allMessages: string[] = [];
@@ -3355,11 +3371,14 @@ async function handleStreamMode(
   };
 
   try {
-    for await (const msg of aiClient.sendQuery(
-      fullPrompt,
-      cwd,
-      session.assistant_session_id ?? undefined,
-      requestOptions
+    for await (const msg of withToolReplies(
+      aiClient.sendQuery(
+        fullPrompt,
+        cwd,
+        session.assistant_session_id ?? undefined,
+        requestOptions
+      ),
+      toolReplies
     )) {
       if (msg.type === 'hook_response' && msg.hookEvent === 'Stop') {
         hold.stopHookDone();
@@ -3618,7 +3637,8 @@ async function handleBatchMode(
   conversation: Conversation,
   issueContext?: string,
   requestOptions?: SendQueryOptions,
-  userId?: string
+  userId?: string,
+  toolReplies: string[] = []
 ): Promise<string | undefined> {
   const turnStartedAt = Date.now();
   const allChunks: { type: string; content: string }[] = [];
@@ -3633,11 +3653,9 @@ async function handleBatchMode(
   // only finds a draft a Stop hook sent back, to cut it from the reply (#190).
   const hold = new StopHookHold();
 
-  for await (const msg of aiClient.sendQuery(
-    fullPrompt,
-    cwd,
-    session.assistant_session_id ?? undefined,
-    requestOptions
+  for await (const msg of withToolReplies(
+    aiClient.sendQuery(fullPrompt, cwd, session.assistant_session_id ?? undefined, requestOptions),
+    toolReplies
   )) {
     if (msg.type === 'hook_response' && msg.hookEvent === 'Stop') {
       hold.stopHookDone();

@@ -102,7 +102,7 @@ function hint(present: Record<string, unknown>, correct: string): string {
 }
 
 /**
- * Validate parsed JSON as an {@link AskSpec}.
+ * Read the body of an ask fence as an {@link AskSpec}.
  *
  * Every rejection carries a located reason ("question 2, option 1: ..."), and
  * never throws. A malformed block must never blank a reply — the text is the
@@ -116,6 +116,19 @@ export function parseAskSpec(raw: string): AskParse {
   } catch (err) {
     return fail(`not valid JSON: ${err instanceof Error ? err.message : String(err)}`);
   }
+  return validateAskSpec(value);
+}
+
+/**
+ * Validate an already-parsed value as an {@link AskSpec}.
+ *
+ * The one validator of the shape, split from {@link parseAskSpec} only so the
+ * server's `ask` tool — whose arguments arrive already parsed — rejects a spec
+ * with exactly the reason the console would have shown for the same block.
+ * The spec it returns is normalised (unknown keys dropped), which is what the
+ * tool writes back out as the fence.
+ */
+export function validateAskSpec(value: unknown): AskParse {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return fail('the block must be a JSON object with a `questions` array');
   }
@@ -168,6 +181,17 @@ export function parseAskSpec(raw: string): AskParse {
   }
 
   return { ok: true, spec: { questions: parsed } };
+}
+
+/**
+ * Write a spec out as the fence {@link splitReply} reads back — the inverse of
+ * this file's parser, kept beside it so the two cannot disagree about the tag
+ * or the body. The server's `ask` tool emits this, which is why a tool-asked
+ * question and a hand-typed one are the same bytes to every reader, including
+ * one that only knows how to show a code block.
+ */
+export function formatAskFence(spec: AskSpec): string {
+  return '```ask\n' + JSON.stringify(spec, null, 2) + '\n```';
 }
 
 /**

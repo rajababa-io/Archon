@@ -588,15 +588,21 @@ export interface AgentRequestOptions {
  * provider converters switch on; each variant maps to exactly one SDK schema
  * form. `values` is a non-empty tuple, so an enum with no options is a compile
  * error rather than a provider-side runtime throw.
+ *
+ * `array` declares only that the value is a JSON array. Its items are left to
+ * the handler on purpose: a tool whose payload already has a validator (the
+ * ask tool's `questions`, validated by `@archon/awaiting`) would otherwise
+ * restate that shape here, and the two would drift.
  */
 export type NativeToolProperty =
   | { kind: 'string'; description?: string }
   | { kind: 'enum'; values: readonly [string, ...string[]]; description?: string }
-  | { kind: 'boolean'; description?: string };
+  | { kind: 'boolean'; description?: string }
+  | { kind: 'array'; description?: string };
 
 /**
  * The closed input shape a native tool may declare: a flat object of string /
- * string-enum / boolean properties, plus the names of the required ones. Every
+ * string-enum / boolean / array properties, plus the names of the required ones. Every
  * provider maps this to its SDK's schema form, so the supported subset lives
  * here once instead of being re-derived by each converter.
  */

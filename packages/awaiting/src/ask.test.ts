@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test';
-import { parseAskSpec, splitReply, type AskSpec } from './ask';
+import { formatAskFence, parseAskSpec, splitReply, validateAskSpec, type AskSpec } from './ask';
 
 const SPEC = {
   questions: [
@@ -224,5 +224,18 @@ describe('parseAskSpec — multi', () => {
     expect(on.questions[0]?.multi).toBe(true);
     const off = ok('{"questions":[{"title":"t","options":[{"label":"a"}]}]}');
     expect('multi' in (off.questions[0] ?? {})).toBe(false);
+  });
+});
+
+describe('formatAskFence', () => {
+  test('is read back by splitReply as the spec it was written from', () => {
+    const spec = ok(JSON.stringify(SPEC));
+    expect(splitReply(formatAskFence(spec))).toEqual([{ kind: 'ask', spec }]);
+  });
+
+  test('validateAskSpec gives an already-parsed value the same verdict as the text', () => {
+    expect(validateAskSpec(SPEC)).toEqual(parseAskSpec(JSON.stringify(SPEC)));
+    const wrong = { questions: [{ question: 'q?', options: [{ label: 'a' }] }] };
+    expect(validateAskSpec(wrong)).toEqual(parseAskSpec(JSON.stringify(wrong)));
   });
 });
