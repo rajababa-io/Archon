@@ -258,7 +258,7 @@ describe('parsing', () => {
   test('a merge that did not deploy keeps its reason and the merge that asked', () => {
     const entry = {
       at: '2026-09-27T12:00:00Z',
-      kind: 'not_started',
+      kind: 'not_started' as const,
       actor: 'rajababa-io/atlas#12',
       sha: LIVE,
       detail: 'This project has no workflow named "deploy".',
