@@ -19,10 +19,10 @@ interface ChatSwitcherProps {
  * project's heading opens that project.
  */
 export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
-  const { chats: all, error, reach, statuses, projectLabel } = chats;
+  const { chats: all, error, reach, statuses, statusSets, projectLabel } = chats;
   const groups = useMemo(
-    () => switcherGroups(all ?? [], statuses, projectLabel),
-    [all, statuses, projectLabel]
+    () => switcherGroups(all ?? [], statuses, statusSets.unread, projectLabel),
+    [all, statuses, statusSets.unread, projectLabel]
   );
 
   // Out of reach, the list is the saved copies, and the banner says why.
@@ -51,11 +51,12 @@ export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): Re
             </Link>
           </h2>
           <ul>
-            {group.rows.map(({ chat, status }) => (
+            {group.rows.map(({ chat, status, unread }) => (
               <li key={chat.id}>
                 <ChatRow
                   chat={chat}
                   status={status}
+                  unread={unread}
                   current={chat.id === activeId}
                   onPick={onPick}
                 />

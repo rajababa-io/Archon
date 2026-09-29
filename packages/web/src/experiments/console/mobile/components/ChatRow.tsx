@@ -8,13 +8,21 @@ import { chatPath } from '../lib/paths';
 interface ChatRowProps {
   chat: ConversationSummary;
   status: ChatStatus;
+  /** Moved since you last read it: the title goes bold, the status is untouched (#5). */
+  unread?: boolean;
   /** This is the chat on screen. */
   current?: boolean;
   onPick?: () => void;
 }
 
 /** One chat in a list: its status, its title, and when it last moved. */
-export function ChatRow({ chat, status, current = false, onPick }: ChatRowProps): ReactElement {
+export function ChatRow({
+  chat,
+  status,
+  unread = false,
+  current = false,
+  onPick,
+}: ChatRowProps): ReactElement {
   return (
     <Link
       to={chatPath(chat.id)}
@@ -26,7 +34,9 @@ export function ChatRow({ chat, status, current = false, onPick }: ChatRowProps)
         <i />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-body text-text-primary">
+        <span
+          className={`block truncate text-body text-text-primary${unread ? ' font-semibold' : ''}`}
+        >
           {chat.title ?? 'Untitled chat'}
         </span>
         <span className="block text-small text-text-secondary">

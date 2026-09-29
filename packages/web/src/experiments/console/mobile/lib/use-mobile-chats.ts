@@ -128,7 +128,7 @@ export function useMobileChats(): MobileChats {
     reach,
     statusSets,
     statuses,
-    needsYou: wantingCount(statuses),
+    needsYou: wantingCount(statuses, statusSets.unread),
     liveTools: live.tools,
     ciWaitingSince: live.ciWaitingSince,
     projectLabel: label,

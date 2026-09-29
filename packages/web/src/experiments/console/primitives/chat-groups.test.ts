@@ -39,15 +39,12 @@ describe('groupChatsByStatus', () => {
     ]);
   });
 
-  test('unread needs you; CI waits and running workflows are working', () => {
+  test('CI waits and running workflows are working', () => {
     const groups = groupChatsByStatus(
-      [chat('u'), chat('ci'), chat('wf')],
-      statuses({ u: 'unread', ci: 'waiting', wf: 'running' })
+      [chat('ci'), chat('wf')],
+      statuses({ ci: 'waiting', wf: 'running' })
     );
-    expect(groups.map(g => [g.key, g.chats.map(c => c.id)])).toEqual([
-      ['needs-you', ['u']],
-      ['working', ['ci', 'wf']],
-    ]);
+    expect(groups.map(g => [g.key, g.chats.map(c => c.id)])).toEqual([['working', ['ci', 'wf']]]);
   });
 
   test('a closed chat gets its own group, not Idle', () => {

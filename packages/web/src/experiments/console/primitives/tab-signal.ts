@@ -24,20 +24,24 @@ export function chatStatuses(
 }
 
 /**
- * How many chats want you: the rail's amber — awaiting and unread.
+ * How many chats want you: the ones awaiting you, and the ones you have not
+ * read.
  *
- * Those are the two states that ask a person to come and look. A turn that
+ * Those are the two things that ask a person to come and look. A turn that
  * ends while you are away leaves its chat unread, so this rising is how "done"
- * reaches a tab you are not looking at. Ready and done are green: nothing to
- * come back for.
+ * reaches a tab you are not looking at. Unread is a set beside the statuses
+ * rather than one of them (#5), so a chat that is both counts once.
  *
  * Working is deliberately not counted, and nothing in the tab says a chat is
  * merely working: from another tab the only question worth answering is
  * whether something needs you.
  */
-export function wantingCount(statuses: ReadonlyMap<string, ChatStatus>): number {
+export function wantingCount(
+  statuses: ReadonlyMap<string, ChatStatus>,
+  unread: ReadonlySet<string>
+): number {
   let n = 0;
-  for (const s of statuses.values()) if (s === 'awaiting' || s === 'unread') n += 1;
+  for (const [id, s] of statuses) if (s === 'awaiting' || unread.has(id)) n += 1;
   return n;
 }
 

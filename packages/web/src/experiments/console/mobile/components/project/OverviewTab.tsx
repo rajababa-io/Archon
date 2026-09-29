@@ -45,8 +45,8 @@ export function OverviewTab({
     [feed?.runs]
   );
   const rows = useMemo(
-    () => projectChatRows(chats.chats ?? [], chats.statuses, projectId),
-    [chats.chats, chats.statuses, projectId]
+    () => projectChatRows(chats.chats ?? [], chats.statuses, chats.statusSets.unread, projectId),
+    [chats.chats, chats.statuses, chats.statusSets.unread, projectId]
   );
   const awaiting = rows.filter(r => r.status === 'awaiting');
   const recent = [...rows]
@@ -73,9 +73,9 @@ export function OverviewTab({
             ) : null}
             {awaiting.length > 0 ? (
               <ul>
-                {awaiting.map(({ chat, status }) => (
+                {awaiting.map(({ chat, status, unread }) => (
                   <li key={chat.id}>
-                    <ChatRow chat={chat} status={status} />
+                    <ChatRow chat={chat} status={status} unread={unread} />
                   </li>
                 ))}
               </ul>
@@ -89,9 +89,9 @@ export function OverviewTab({
           <p className="px-4 text-body text-text-tertiary">No open chats.</p>
         ) : (
           <ul>
-            {recent.map(({ chat, status }) => (
+            {recent.map(({ chat, status, unread }) => (
               <li key={chat.id}>
-                <ChatRow chat={chat} status={status} />
+                <ChatRow chat={chat} status={status} unread={unread} />
               </li>
             ))}
           </ul>

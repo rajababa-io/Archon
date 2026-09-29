@@ -50,7 +50,7 @@ describe('switcherGroups', () => {
       ['asking', 'awaiting'],
       ['working', 'working'],
     ]);
-    expect(ids(switcherGroups(chats, statuses, label))).toEqual([
+    expect(ids(switcherGroups(chats, statuses, new Set(), label))).toEqual([
       ['a', ['asking', 'working', 'new-idle', 'old-idle']],
     ]);
   });
@@ -64,7 +64,7 @@ describe('switcherGroups', () => {
       ['x', 'idle'],
       ['y', 'awaiting'],
     ]);
-    expect(ids(switcherGroups(chats, statuses, label))).toEqual([
+    expect(ids(switcherGroups(chats, statuses, new Set(), label))).toEqual([
       ['b', ['y']],
       ['a', ['x']],
     ]);
@@ -75,9 +75,36 @@ describe('switcherGroups', () => {
       found('y', 'b', '2026-09-01T00:00:00Z'),
       found('x', 'a', '2026-09-01T00:00:00Z'),
     ];
-    expect(ids(switcherGroups(chats, new Map(), label))).toEqual([
+    expect(ids(switcherGroups(chats, new Map(), new Set(), label))).toEqual([
       ['a', ['x']],
       ['b', ['y']],
+    ]);
+  });
+
+  // #5: unread is not a status, so it cannot outrank one — it leads its peers.
+  test('an unread chat leads its status peers, and never jumps a more urgent status', () => {
+    const chats = [
+      found('new-idle', 'a', '2026-09-20T00:00:00Z'),
+      found('old-unread', 'a', '2026-09-01T00:00:00Z'),
+      found('working', 'a', '2026-08-01T00:00:00Z'),
+    ];
+    const statuses = new Map<string, ChatStatus>([['working', 'working']]);
+    const rows = switcherGroups(chats, statuses, new Set(['old-unread']), label)[0]?.rows ?? [];
+    expect(rows.map(r => [r.chat.id, r.unread])).toEqual([
+      ['working', false],
+      ['old-unread', true],
+      ['new-idle', false],
+    ]);
+  });
+
+  test('an unread chat breaks a tie between equally urgent projects', () => {
+    const chats = [
+      found('x', 'a', '2026-09-01T00:00:00Z'),
+      found('y', 'b', '2026-09-01T00:00:00Z'),
+    ];
+    expect(ids(switcherGroups(chats, new Map(), new Set(['y']), label))).toEqual([
+      ['b', ['y']],
+      ['a', ['x']],
     ]);
   });
 
@@ -87,7 +114,7 @@ describe('switcherGroups', () => {
       found('closed', 'a', '2026-09-02T00:00:00Z', true),
       found('also-closed', 'b', '2026-09-02T00:00:00Z', true),
     ];
-    expect(ids(switcherGroups(chats, new Map(), label))).toEqual([['a', ['open']]]);
+    expect(ids(switcherGroups(chats, new Map(), new Set(), label))).toEqual([['a', ['open']]]);
   });
 });
 
@@ -101,7 +128,9 @@ describe('projectChatRows', () => {
       found('elsewhere', 'b', '2026-09-28T12:00:00Z'),
     ];
     const statuses = new Map<string, ChatStatus>([['asks', 'awaiting']]);
-    expect(projectChatRows(chats, statuses, 'a').map(r => [r.chat.id, r.status])).toEqual([
+    expect(
+      projectChatRows(chats, statuses, new Set(), 'a').map(r => [r.chat.id, r.status])
+    ).toEqual([
       ['asks', 'awaiting'],
       ['new', 'idle'],
       ['old', 'idle'],

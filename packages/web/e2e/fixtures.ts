@@ -80,8 +80,8 @@ function chatRow(
 
 export const CHATS: RawConversation[] = [
   chatRow(CHAT_ID, CHAT_DB_ID, CHAT_TITLE, '2026-09-26T11:00:00.000Z'),
-  // Unread — it moved after it was last read — so the two chats differ in
-  // status, and an order by status differs from an order by recency.
+  // Unread — it moved after it was last read. Both chats are idle, so the
+  // switcher's unread-first tiebreak is what puts this older chat on top.
   chatRow(
     OTHER_CHAT_ID,
     '00000000-0000-4000-8000-000000000002',

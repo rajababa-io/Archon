@@ -94,7 +94,7 @@ interface ConversationRailProps {
    * neighbour because only the rail knows the displayed order.
    */
   onComplete: (id: string, completed: boolean, next: string | null) => void;
-  /** Put an idle chat back to unread, so it shows amber until you read it again. */
+  /** Put an idle chat back to unread, so its title is bold until you read it again. */
   onMarkUnread: (id: string) => void;
   /**
    * Persist an arrangement: `ids` is the rail as displayed, top first.
@@ -455,6 +455,7 @@ export function ConversationRail({
   const renderRow = (c: ConversationSummary, index: number): ReactElement => {
     const isActive = c.id === activeConvId;
     const status = chatStatus(c.id, statusSets);
+    const unread = statusSets.unread.has(c.id);
     const shift = dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
     return (
       <div
@@ -464,7 +465,7 @@ export function ConversationRail({
           else rowRefs.current.set(c.id, el);
         }}
         aria-current={isActive}
-        className={`rail-row group${dragId === c.id ? ' opacity-40' : ''}${
+        className={`rail-row group${unread ? ' is-unread' : ''}${dragId === c.id ? ' opacity-40' : ''}${
           selection.ids.has(c.id) ? ' is-selected' : ''
         }`}
         style={{
@@ -648,7 +649,9 @@ export function ConversationRail({
           />
           <MenuItem
             label="Mark unread"
-            disabled={!canMarkUnread(status, c.lastActivityAt !== null)}
+            disabled={
+              !canMarkUnread(status, statusSets.unread.has(c.id), c.lastActivityAt !== null)
+            }
             onSelect={() => {
               onMarkUnread(c.id);
               setMenuFor(null);

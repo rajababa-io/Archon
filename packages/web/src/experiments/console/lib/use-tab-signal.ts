@@ -44,21 +44,22 @@ export function useTabSignal(): void {
   const live = useLiveChats();
 
   const chats = useMemo(() => (all?.chats ?? []).map(f => f.chat), [all]);
-  const statuses = useMemo<ReadonlyMap<string, ChatStatus>>(
+  const sets = useMemo(
     () =>
-      chatStatuses(
-        chats,
-        chatStatusSets(chats, {
-          working: live.ids,
-          runAwaiting: awaitingInputIds(runFeed?.runs ?? []),
-          running: runningRunIds(runFeed?.runs ?? []),
-          waiting: live.ciWaiting,
-        })
-      ),
+      chatStatusSets(chats, {
+        working: live.ids,
+        runAwaiting: awaitingInputIds(runFeed?.runs ?? []),
+        running: runningRunIds(runFeed?.runs ?? []),
+        waiting: live.ciWaiting,
+      }),
     [chats, live.ids, live.ciWaiting, runFeed?.runs]
   );
+  const statuses = useMemo<ReadonlyMap<string, ChatStatus>>(
+    () => chatStatuses(chats, sets),
+    [chats, sets]
+  );
 
-  useFaviconBadge(badgeText(wantingCount(statuses)));
+  useFaviconBadge(badgeText(wantingCount(statuses, sets.unread)));
 
   const foundRef = useRef(all?.chats ?? []);
   foundRef.current = all?.chats ?? [];
