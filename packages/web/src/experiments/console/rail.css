@@ -716,6 +716,45 @@
 .chat-stamp-project {
   text-transform: none;
 }
+/* A chat picked for a bulk action (#263). A tint and an accent edge, not the
+   open chat's hover grey: the open chat and the selection are different sets,
+   and a selected row has to read as selected even when it is also open. */
+.chatlist .rail-row.is-selected {
+  background: color-mix(in oklch, var(--accent), transparent 84%);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent), transparent 45%);
+}
+/* The bar a selection earns, pinned under the list so it never scrolls away
+   from the rows it acts on. */
+.chat-bulk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-mini);
+  color: var(--text-secondary);
+}
+.chat-bulk-count {
+  margin-right: auto;
+  font-variant-numeric: tabular-nums;
+}
+.chat-bulk-action {
+  padding: 3px 8px;
+  border-radius: var(--radius-control, 6px);
+  border: 1px solid var(--border-bright);
+  color: var(--text-primary);
+  transition:
+    background-color 0.11s,
+    border-color 0.11s;
+}
+.chat-bulk-action:hover {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+}
+.chat-bulk-action.is-quiet {
+  border-color: transparent;
+  color: var(--text-tertiary);
+}
 /* A dashed row, not a button in a header. It sits where a new chat will
    appear, so the affordance is in the place the result shows up. */
 .newchat {

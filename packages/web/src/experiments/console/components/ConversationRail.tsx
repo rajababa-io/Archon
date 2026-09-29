@@ -29,6 +29,12 @@ import { titleParts } from '../lib/title-issues';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
 
 import { chooseNeighbourChat } from '../lib/last-chat';
+import {
+  EMPTY_SELECTION,
+  selectRange,
+  toggleChat,
+  type ChatSelection,
+} from '../lib/chat-selection';
 import { NEW_CHAT_KEY_LABEL } from '../lib/new-chat-key';
 import {
   applyChatOrder,
@@ -393,17 +399,57 @@ export function ConversationRail({
   };
 
   /**
-   * Opening a chat is one click, always.
-   *
-   * Multi-select is gone: the design's row menu acts on the chat it belongs
-   * to, and the only thing selection bought was bulk filing and bulk recolor
-   * — neither of which still exists. `additive` stays in the signature because
-   * a modifier-click still means "not the ordinary case" and callers pass it;
-   * it simply no longer builds a set.
+   * Chats picked for a bulk action (#263). ⌘/Ctrl-click toggles one,
+   * shift-click takes a run, Esc or a plain click lets go. The row menu still
+   * acts on its own chat; a selection only drives the bar under the list.
    */
-  const open = (id: string, _additive: boolean): void => {
+  const [selection, setSelection] = useState<ChatSelection>(EMPTY_SELECTION);
+  const clearSelection = useCallback((): void => {
+    setSelection(EMPTY_SELECTION);
+  }, []);
+  // Rows that leave the list — closed by the bar, filtered by a scope switch,
+  // closed elsewhere — are no longer selectable, so they must not be acted on.
+  const selected = ordered.filter(c => selection.ids.has(c.id));
+  const toClose = selected.filter(c => !c.completed);
+  const toReopen = selected.filter(c => c.completed);
+
+  useEffect(() => {
+    clearSelection();
+  }, [scope, projectId, clearSelection]);
+
+  useEffect(() => {
+    if (selection.ids.size === 0) return;
+    const onKey = (e: globalThis.KeyboardEvent): void => {
+      if (e.key === 'Escape') clearSelection();
+    };
+    window.addEventListener('keydown', onKey);
+    return (): void => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [selection.ids.size, clearSelection]);
+
+  const open = (id: string, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }): void => {
     setMenuFor(null);
+    if (e.shiftKey) {
+      setSelection(s => selectRange(s, ordered, id, activeConvId));
+      return;
+    }
+    if (e.metaKey || e.ctrlKey) {
+      setSelection(s => toggleChat(s, id));
+      return;
+    }
+    clearSelection();
     onSelect(id);
+  };
+
+  const setCompletedForSelection = (chats: ConversationSummary[], completed: boolean): void => {
+    const ids = chats.map(c => c.id);
+    const next =
+      activeConvId !== null && ids.includes(activeConvId)
+        ? chooseNeighbourChat(ordered, activeConvId, ids)
+        : null;
+    for (const id of ids) onComplete(id, completed, id === activeConvId ? next : null);
+    clearSelection();
   };
 
   const renderRow = (c: ConversationSummary, index: number): ReactElement => {
@@ -418,7 +464,9 @@ export function ConversationRail({
           else rowRefs.current.set(c.id, el);
         }}
         aria-current={isActive}
-        className={`rail-row group${dragId === c.id ? ' opacity-40' : ''}`}
+        className={`rail-row group${dragId === c.id ? ' opacity-40' : ''}${
+          selection.ids.has(c.id) ? ' is-selected' : ''
+        }`}
         style={{
           // A transform, never a layout change: the geometry captured at
           // drag start has to stay true for the whole gesture.
@@ -500,9 +548,14 @@ export function ConversationRail({
             <button
               type="button"
               aria-label={conversationLabel(c)}
+              onMouseDown={e => {
+                // Shift-click would otherwise also highlight the text between
+                // the two rows.
+                if (e.shiftKey) e.preventDefault();
+              }}
               onClick={e => {
                 e.stopPropagation();
-                open(c.id, e.metaKey || e.ctrlKey || e.shiftKey);
+                open(c.id, e);
               }}
               className="chat-open"
             />
@@ -744,6 +797,47 @@ export function ConversationRail({
           </p>
         ) : null}
       </div>
+
+      {selected.length > 0 ? (
+        <div className="chat-bulk" role="toolbar" aria-label="Selected chats">
+          <span className="chat-bulk-count">{selected.length} selected</span>
+          {toClose.length > 0 ? (
+            <button
+              type="button"
+              className="chat-bulk-action"
+              onClick={e => {
+                e.stopPropagation();
+                setCompletedForSelection(toClose, true);
+              }}
+            >
+              Close
+            </button>
+          ) : null}
+          {toReopen.length > 0 ? (
+            <button
+              type="button"
+              className="chat-bulk-action"
+              onClick={e => {
+                e.stopPropagation();
+                setCompletedForSelection(toReopen, false);
+              }}
+            >
+              Reopen
+            </button>
+          ) : null}
+          <button
+            type="button"
+            title="Clear selection (Esc)"
+            className="chat-bulk-action is-quiet"
+            onClick={e => {
+              e.stopPropagation();
+              clearSelection();
+            }}
+          >
+            Clear
+          </button>
+        </div>
+      ) : null}
 
       {/* Resize handle, straddling the rail's own border — the project rail's
           handle, in the same place relative to its pane, so the gesture is one
