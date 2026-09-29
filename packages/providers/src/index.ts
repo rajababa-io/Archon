@@ -15,6 +15,7 @@ export type {
   ProviderInfo,
   ModelSuggestion,
   MessageChunk,
+  ProviderRefusal,
   TokenUsage,
   CredentialKind,
   CredentialSpec,

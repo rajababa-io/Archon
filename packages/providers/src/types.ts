@@ -246,6 +246,17 @@ export interface ResolvedModel {
 }
 
 /**
+ * The provider's model declined to answer the turn — a policy decision by the
+ * provider, not a fault in the session. Both fields are the provider's own
+ * words, for display only: `category` is an open string (new categories ship
+ * ahead of any SDK type) and `explanation` is unstable prose, never parsed.
+ */
+export interface ProviderRefusal {
+  category: string | null;
+  explanation: string | null;
+}
+
+/**
  * Message chunk from AI assistant.
  * Discriminated union with per-type required fields for type safety.
  */
@@ -270,6 +281,12 @@ export type MessageChunk =
       errorSubtype?: string;
       /** SDK-provided error detail strings. Populated when isError is true. */
       errors?: string[];
+      /**
+       * Set, with `isError: true` and `errorSubtype: 'refusal'`, when the model
+       * refused the turn. The session itself is intact, so `sessionId` is still
+       * the one to resume — a refusal must not cost the conversation its memory.
+       */
+      refusal?: ProviderRefusal;
       cost?: number;
       /**
        * How full the context was when the turn ended: gross input on the LAST

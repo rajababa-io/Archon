@@ -5261,6 +5261,63 @@ describe('stale session ID clearing on error_during_execution', () => {
     expect(mockUpdateSession).toHaveBeenCalledWith('session-1', null);
   });
 
+  // A refusal is the provider declining one turn, not a broken session (#241):
+  // the chat says so in the provider's own words and the next turn resumes the
+  // session the refused turn ran in.
+  describe.each(['stream', 'batch'] as const)('provider refusal in %s mode (#241)', mode => {
+    afterEach(() => {
+      mockGetActiveSession.mockImplementation(() => Promise.resolve(null));
+    });
+
+    test('says the provider blocked it, and the next turn resumes the same session', async () => {
+      // A one-row session store, so turn 2 reads what turn 1 persisted.
+      let stored: Session | null = null;
+      mockGetActiveSession.mockImplementation(() => Promise.resolve(stored));
+      mockTransitionSession.mockImplementation(() => {
+        stored = makeSession({ id: 'session-1', assistant_session_id: null });
+        return Promise.resolve(stored);
+      });
+      mockUpdateSession.mockImplementation((_id, assistantSessionId) => {
+        if (stored) stored = { ...stored, assistant_session_id: assistantSessionId };
+        return Promise.resolve();
+      });
+
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield {
+          type: 'result',
+          isError: true,
+          errorSubtype: 'refusal',
+          sessionId: 'sid-refused-turn',
+          refusal: { category: 'reasoning_extraction', explanation: 'Blocked by policy X.' },
+          errors: ['Blocked by policy X.'],
+        };
+      });
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'still here' };
+        yield { type: 'result', sessionId: 'sid-refused-turn' };
+      });
+
+      const platform = makePlatform();
+      (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue(mode);
+      await handleMessage(platform, 'conv-1', 'first');
+
+      const texts = (platform.sendMessage as ReturnType<typeof mock>).mock.calls.map(
+        c => c[1] as string
+      );
+      const notice = texts.find(t => t.includes('blocked this reply'));
+      expect(notice).toBeDefined();
+      expect(notice).toContain('reasoning_extraction');
+      expect(notice).toContain('Blocked by policy X.');
+      expect(texts.some(t => t.includes('Session error') || t.includes('/reset'))).toBe(false);
+      expect(mockUpdateSession).toHaveBeenCalledWith('session-1', 'sid-refused-turn');
+      expect(mockUpdateSession).not.toHaveBeenCalledWith('session-1', null);
+
+      await handleMessage(platform, 'conv-1', 'huh?');
+      const lastCall = mockSendQuery.mock.calls[mockSendQuery.mock.calls.length - 1];
+      expect(lastCall[2]).toBe('sid-refused-turn');
+    });
+  });
+
   describe('Stop hook sends a reply back (#190)', () => {
     const sentTexts = (platform: IPlatformAdapter): string[] =>
       (platform.sendMessage as ReturnType<typeof mock>).mock.calls.map(c => c[1] as string);

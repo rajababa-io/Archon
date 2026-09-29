@@ -38,7 +38,7 @@ import {
   type ChatProviderCommandListing,
 } from '../handlers/provider-commands';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
-import { classifyAndFormatError } from '../utils/error-formatter';
+import { classifyAndFormatError, formatProviderRefusal } from '../utils/error-formatter';
 import { toError } from '../utils/error';
 import { DeployParkAbort } from '../utils/conversation-lock';
 import { quoteCommandArg } from '../utils/command-args';
@@ -3468,7 +3468,9 @@ async function handleStreamMode(
           const syntheticError = new Error(errorDetail || 'AI result error');
           await platform.sendMessage(
             conversationId,
-            classifyAndFormatError(syntheticError, platform)
+            msg.refusal
+              ? formatProviderRefusal(msg.refusal)
+              : classifyAndFormatError(syntheticError, platform)
           );
           if (newSessionId) {
             await tryPersistSessionId(session.id, newSessionId);
@@ -3744,7 +3746,9 @@ async function handleBatchMode(
         const syntheticError = new Error(errorDetail || 'AI result error');
         await platform.sendMessage(
           conversationId,
-          classifyAndFormatError(syntheticError, platform)
+          msg.refusal
+            ? formatProviderRefusal(msg.refusal)
+            : classifyAndFormatError(syntheticError, platform)
         );
         if (newSessionId) {
           await tryPersistSessionId(session.id, newSessionId);
