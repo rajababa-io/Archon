@@ -39,10 +39,8 @@ export function ProjectPalette({ open, onClose }: ProjectPaletteProps): ReactEle
   const [index, setIndex] = useState(0);
 
   const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
-  // Subscribed only while open, so each opening rereads it — see the key.
-  const { data: allChats } = useEntity(open ? K.allConversations : 'noop:palette-closed', () =>
-    open ? skill.listAllConversations() : Promise.resolve({ chats: [], truncated: false })
-  );
+  // The list the tab badge already keeps live at the console root.
+  const { data: allChats } = useEntity(K.allConversations, () => skill.listAllConversations());
 
   // Reset query + selection each time the palette opens. Focus is called
   // synchronously — the input ref is committed by React before useEffect

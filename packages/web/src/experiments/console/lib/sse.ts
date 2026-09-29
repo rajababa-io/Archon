@@ -218,6 +218,35 @@ function dashboardStreamTargetKeys(): Record<DashboardTarget, string> {
   };
 }
 
+/**
+ * What one coalesced flush of conversation events invalidates.
+ *
+ * A known codebase narrows the `conversations` family to that project's lists;
+ * an unknown one (a chat with no codebase, or two projects inside one window)
+ * falls back to the family prefix, which fans out to every `conversations:*`
+ * key. A narrowed flush also names the every-project list: the tab badge reads
+ * it on every page, and the project's own key does not reach it (#269).
+ */
+export function conversationFlushKeys(
+  pending: Iterable<string>,
+  dirtyProject: string | null | undefined
+): string[] {
+  const targetKeys = dashboardStreamTargetKeys();
+  const narrowed = typeof dirtyProject === 'string' && dirtyProject !== '';
+  const keys = new Set<string>();
+  for (const type of pending) {
+    for (const target of DASHBOARD_EVENT_TARGETS.get(type) ?? []) {
+      if (target === 'conversations' && narrowed) {
+        keys.add(K.conversations(dirtyProject));
+        keys.add(K.allConversations);
+      } else {
+        keys.add(targetKeys[target]);
+      }
+    }
+  }
+  return [...keys];
+}
+
 /** The cache keys {@link useDashboardSSE} keeps live. */
 export function dashboardStreamKeys(): string[] {
   return liveKeys(DASHBOARD_EVENT_TARGETS, dashboardStreamTargetKeys());
@@ -268,16 +297,10 @@ export function useDashboardSSE(): void {
 
     /**
      * Invalidate what this event type changes, read from the same table the
-     * reconnect key list is derived from. An override substitutes a narrower
-     * key for a family — the conversation events know which project moved.
+     * reconnect key list is derived from.
      */
-    const invalidateTargets = (
-      type: string,
-      override?: Partial<Record<DashboardTarget, string>>
-    ): void => {
-      for (const target of DASHBOARD_EVENT_TARGETS.get(type) ?? []) {
-        invalidate(override?.[target] ?? targetKeys[target]);
-      }
+    const invalidateTargets = (type: string): void => {
+      for (const target of DASHBOARD_EVENT_TARGETS.get(type) ?? []) invalidate(targetKeys[target]);
     };
 
     // Activity on a busy chat fires one notification per message, so the
@@ -293,15 +316,7 @@ export function useDashboardSSE(): void {
       if (convTimer !== null) return;
       convTimer = setTimeout(() => {
         convTimer = null;
-        // A known codebase invalidates just that project's lists; an unknown one
-        // (a chat with no codebase) falls back to the family prefix, which fans
-        // out to every `conversations:*` key including the `:archived-count`
-        // variants.
-        const narrowed =
-          typeof convDirty === 'string' && convDirty !== ''
-            ? { conversations: K.conversations(convDirty) }
-            : undefined;
-        for (const type of convPending) invalidateTargets(type, narrowed);
+        for (const key of conversationFlushKeys(convPending, convDirty)) invalidate(key);
         convPending.clear();
         convDirty = undefined;
       }, 120);
