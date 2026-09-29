@@ -41,10 +41,9 @@ function Section({
 /**
  * Where a project is, and what to do about it.
  *
- * Ported from the prototype, with its ordering: the thing only YOU can clear
- * comes first, then what is executing, then what is open.
+ * The thing only YOU can clear comes first, whatever kind of thing it is.
  *
- * Below that it reads runs, chats, issues — the same order as the project's
+ * Below that it reads chats, runs, issues — the same order as the project's
  * tabs and the rail's count columns. Three places showing the same three
  * things in three different orders is three things to learn instead of one.
  *
@@ -142,26 +141,8 @@ export function OverviewPage(): ReactElement {
           )}
         </Section>
 
-        {/* 2 — what is executing, not that something started two hours ago. */}
-        {inFlight.length > 0 ? (
-          <Section label="In flight">
-            <div className="flex flex-col gap-x-2 gap-y-1.25">
-              {inFlight.map(r => (
-                <ActiveRunCard
-                  key={r.id}
-                  run={r}
-                  showProject={false}
-                  selected={false}
-                  stalled={stalled.has(r.id)}
-                />
-              ))}
-            </div>
-          </Section>
-        ) : (
-          <></>
-        )}
-
-        {/* 3 — the chats, because the overview is also where you resume. */}
+        {/* 3 — the chats, because the overview is also where you resume. Above the
+            runs, as everywhere in the console: chat first, then run. */}
         <Section
           label="Chats"
           action={
@@ -200,6 +181,25 @@ export function OverviewPage(): ReactElement {
             </div>
           )}
         </Section>
+
+        {/* 4 — what is executing, not that something started two hours ago. */}
+        {inFlight.length > 0 ? (
+          <Section label="In flight">
+            <div className="flex flex-col gap-x-2 gap-y-1.25">
+              {inFlight.map(r => (
+                <ActiveRunCard
+                  key={r.id}
+                  run={r}
+                  showProject={false}
+                  selected={false}
+                  stalled={stalled.has(r.id)}
+                />
+              ))}
+            </div>
+          </Section>
+        ) : (
+          <></>
+        )}
 
         {/* The deploy's own history — who pressed what, and how each deploy
             ended. Only for a project that deploys. */}
@@ -252,7 +252,7 @@ export function OverviewPage(): ReactElement {
           <></>
         )}
 
-        {/* 4 — state, by type. */}
+        {/* 5 — state, by type. */}
         <Section
           label="Backlog"
           action={

@@ -49,6 +49,10 @@ function ProjectCountCellsImpl({ projectId }: { projectId: string }): ReactEleme
 
   return (
     <span className="rail-hide rail-counts">
+      <Cell
+        value={chats}
+        title={chats === null ? 'Chats' : `${chats} open chat${chats === 1 ? '' : 's'}`}
+      />
       {/* Amber wins over blue: waiting on YOU outranks the machine being busy. */}
       <Cell
         value={runs}
@@ -65,10 +69,6 @@ function ProjectCountCellsImpl({ projectId }: { projectId: string }): ReactEleme
                   .filter(Boolean)
                   .join(', ') || `${runs} in play`
         }
-      />
-      <Cell
-        value={chats}
-        title={chats === null ? 'Chats' : `${chats} open chat${chats === 1 ? '' : 's'}`}
       />
       <Cell
         value={data?.issues ?? null}
@@ -140,6 +140,7 @@ export function ProjectCountTotals({
 
   return (
     <span className="rail-hide rail-counts">
+      <Cell value={t.chats} title={`${t.chats} open chat${s(t.chats)} across all projects`} />
       <Cell
         value={t.runs}
         tone={t.awaiting > 0 ? 'attention' : t.running > 0 ? 'running' : undefined}
@@ -155,7 +156,6 @@ export function ProjectCountTotals({
                 .join(', ')
         }
       />
-      <Cell value={t.chats} title={`${t.chats} open chat${s(t.chats)} across all projects`} />
       <Cell
         value={t.issues}
         title={
@@ -176,13 +176,13 @@ export function ProjectCountHeader(): ReactElement {
   const ico = 'h-[11px] w-[11px]';
   return (
     <span aria-hidden className="rail-hide rail-counts">
-      {/* Runs, chats, issues — the same order as the project's own tabs, so the
+      {/* Chats, runs, issues — the same order as the project's own tabs, so the
           columns and the tabs teach each other instead of being learned twice. */}
-      <span className="cell" title="Runs in play">
-        <Play className={ico} />
-      </span>
       <span className="cell" title="Chats">
         <MessageCircle className={ico} />
+      </span>
+      <span className="cell" title="Runs in play">
+        <Play className={ico} />
       </span>
       <span className="cell" title="Open issues">
         <CircleDot className={ico} />

@@ -64,13 +64,6 @@ export function OverviewTab({
           <p className="px-4 text-body text-text-secondary">Nothing is waiting on you.</p>
         ) : (
           <>
-            {pausedRuns.length > 0 ? (
-              <div className="flex flex-col gap-2 px-4">
-                {pausedRuns.map(run => (
-                  <RunRow key={run.id} run={run} />
-                ))}
-              </div>
-            ) : null}
             {awaiting.length > 0 ? (
               <ul>
                 {awaiting.map(({ chat, status, unread }) => (
@@ -79,6 +72,13 @@ export function OverviewTab({
                   </li>
                 ))}
               </ul>
+            ) : null}
+            {pausedRuns.length > 0 ? (
+              <div className="flex flex-col gap-2 px-4">
+                {pausedRuns.map(run => (
+                  <RunRow key={run.id} run={run} />
+                ))}
+              </div>
             ) : null}
           </>
         )}

@@ -19,8 +19,10 @@ const TABS: readonly {
   // Overview first: it is the screen that answers "what should I do next",
   // and the tabs read left to right from orientation to detail.
   { key: 'overview', label: 'Overview', suffix: '/overview' },
-  { key: 'runs', label: 'Runs', suffix: '' },
+  // Chat before Runs: chat is where the work is done, runs are what a chat
+  // starts.
   { key: 'chat', label: 'Chat', suffix: '/chat' },
+  { key: 'runs', label: 'Runs', suffix: '' },
   { key: 'issues', label: 'Issues', suffix: '/issues' },
   // Files last: it is the surface you go to deliberately, not the one you
   // land on to find out what happened.
@@ -32,7 +34,7 @@ const TABS: readonly {
  * every project, in the project's own order. Drawn by the same `ViewTab`, so
  * the two rows cannot come to look different.
  */
-const ALL_PROJECTS_TABS = TABS.filter(t => t.key === 'runs' || t.key === 'chat');
+const ALL_PROJECTS_TABS = TABS.filter(t => t.key === 'chat' || t.key === 'runs');
 
 /** One tab: label, its count, and the underline when it is the page. */
 function ViewTab({
@@ -118,11 +120,11 @@ export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): Re
 }
 
 /**
- * Runs | Chat across every project. Picking one records it the way a project's
+ * Chat | Runs across every project. Picking one records it the way a project's
  * tab does, so All projects reopens on it.
  *
- * The counts mean what a project's mean: runs in play (running, paused or
- * queued, not the lifetime total) and open chats. The chat count reads the
+ * The counts mean what a project's mean: open chats and runs in play
+ * (running, paused or queued, not the lifetime total). The chat count reads the
  * Chat tab's own open list, so the number and the rail beneath it are one
  * answer rather than two that can drift.
  */

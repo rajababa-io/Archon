@@ -17,7 +17,7 @@ function seed(projectId: string, counts: Partial<ProjectCounts>): void {
   } satisfies ProjectCounts);
 }
 
-/** The digits a row draws, in column order: runs, chats, issues. */
+/** The digits a row draws, in column order: chats, runs, issues. */
 function cells(markup: string): string[] {
   return [...markup.matchAll(/<span[^>]*class="cell[^"]*"[^>]*>(.*?)<\/span>/g)].map(m => m[1]);
 }
@@ -34,13 +34,13 @@ describe('ProjectCountCells', () => {
     seed('pcc-vault', { chats: 2, runs: 1, running: 1, issues: 12 });
 
     expect(cells(renderToStaticMarkup(<ProjectCountCells projectId="pcc-archon" />))).toEqual([
-      '3',
       '15',
+      '3',
       '28',
     ]);
     expect(cells(renderToStaticMarkup(<ProjectCountCells projectId="pcc-vault" />))).toEqual([
-      '1',
       '2',
+      '1',
       '12',
     ]);
   });
@@ -95,11 +95,11 @@ describe('sumProjectCounts', () => {
 });
 
 describe('ProjectCountTotals', () => {
-  test('renders the totals of the per-project entries, in runs/chats/issues order', () => {
+  test('renders the totals of the per-project entries, in chats/runs/issues order', () => {
     seed('pct-a', { runs: 1, running: 1, chats: 3, issues: 4 });
     seed('pct-b', { chats: 3, issues: null });
     const markup = renderToStaticMarkup(<ProjectCountTotals projectIds={['pct-a', 'pct-b']} />);
-    expect(cells(markup)).toEqual(['1', '6', '4']);
+    expect(cells(markup)).toEqual(['6', '1', '4']);
     expect(markup).toContain('1 project could not report');
     expect(markup).toContain('cell live');
   });

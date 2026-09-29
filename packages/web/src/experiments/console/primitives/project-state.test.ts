@@ -39,7 +39,7 @@ describe('projectState', () => {
   test('why carries the arithmetic, needs-you first', () => {
     const s = projectState({ running: 2, awaiting: 1, workingChats: 1, openIssues: 3, chats: 4 });
     expect(s.why).toBe(
-      '1 thing waiting on you · 2 runs executing · 1 chat working · 3 open issues · 4 chats'
+      '1 thing waiting on you · 1 chat working · 2 runs executing · 3 open issues · 4 chats'
     );
   });
 

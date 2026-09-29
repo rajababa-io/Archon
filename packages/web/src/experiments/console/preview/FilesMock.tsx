@@ -653,7 +653,7 @@ const OPTIONS: readonly {
 
 /** The tab strip with Files added, so the mock answers "where does it live". */
 function MockTabs(): ReactElement {
-  const tabs = ['Overview', 'Runs', 'Chat', 'Issues', 'Files'];
+  const tabs = ['Overview', 'Chat', 'Runs', 'Issues', 'Files'];
   return (
     <div className="flex items-center gap-1 rounded-lg border border-border bg-surface px-2 py-1.5">
       {tabs.map(label => {

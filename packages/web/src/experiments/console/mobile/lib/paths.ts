@@ -5,8 +5,8 @@
 
 export const PROJECT_TABS = [
   { key: 'overview', label: 'Overview' },
-  { key: 'runs', label: 'Runs' },
   { key: 'chats', label: 'Chats' },
+  { key: 'runs', label: 'Runs' },
   { key: 'issues', label: 'Issues' },
   { key: 'files', label: 'Files' },
 ] as const;
