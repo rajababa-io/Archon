@@ -273,7 +273,7 @@ export async function onConversationClosed(
     return;
   }
 
-  // Live work is the only lock — the same rule the merged cleanup sweep follows.
+  // Live work is the only lock — the same run rule the cleanup sweeps follow.
   // Historical conversations referencing this env are data, not locks. This must
   // read before the null-out below: a top-level run attaches to its env ONLY
   // through this conversation's reference, so clearing first would erase the
@@ -447,11 +447,13 @@ export async function cleanupToMakeRoom(
 /**
  * Returns the reason the environment cannot be removed, or null if it is safe to remove.
  * Checks uncommitted changes first (avoids a DB query when changes are present),
- * then live work: a workflow run that can still claim the environment.
+ * then live work: a workflow run that can still claim the environment, or an open
+ * chat still working in it.
  */
 type RemovalBlocker =
   | { reason: 'uncommitted_changes'; display: string }
-  | { reason: 'live_run'; display: string; runId: string; runStatus: string };
+  | { reason: 'live_run'; display: string; runId: string; runStatus: string }
+  | { reason: 'open_chat'; display: string; conversationId: string };
 
 async function getRemovalBlocker(env: {
   id: string;
@@ -472,7 +474,40 @@ async function getRemovalBlocker(env: {
       runStatus: liveRun.status,
     };
   }
+  // An open chat is live work too. Its fresh worktree reads as merged until its
+  // first commit, so the merge verdict alone would delete it mid-conversation
+  // (#240). A run's own conversation never counts here — see getOpenChatOwningEnv.
+  const openChat = await isolationEnvDb.getOpenChatOwningEnv(env.id);
+  if (openChat) {
+    return {
+      reason: 'open_chat',
+      display: `chat ${openChat.id.slice(0, 8)} is still open`,
+      conversationId: openChat.id,
+    };
+  }
   return null;
+}
+
+/** Logs why the scheduled sweep kept an environment it would otherwise remove. */
+function logRemovalBlocker(
+  envId: string,
+  blocker: RemovalBlocker,
+  sweep: 'merged' | 'stale'
+): void {
+  switch (blocker.reason) {
+    case 'live_run':
+      getLog().info(
+        { envId, runId: blocker.runId, runStatus: blocker.runStatus },
+        `skip_${sweep}_live_run`
+      );
+      return;
+    case 'open_chat':
+      getLog().info({ envId, conversationId: blocker.conversationId }, `skip_${sweep}_open_chat`);
+      return;
+    case 'uncommitted_changes':
+      getLog().warn({ envId }, `skip_${sweep}_uncommitted_changes`);
+      return;
+  }
 }
 
 /**
@@ -641,14 +676,7 @@ export async function runScheduledCleanup(): Promise<CleanupReport> {
           const blocker = await getRemovalBlocker(env);
           if (blocker) {
             report.skipped.push({ id: env.id, reason: `merged but ${blocker.display}` });
-            if (blocker.reason === 'live_run') {
-              getLog().info(
-                { envId: env.id, runId: blocker.runId, runStatus: blocker.runStatus },
-                'skip_merged_live_run'
-              );
-            } else {
-              getLog().warn({ envId: env.id }, 'skip_merged_uncommitted_changes');
-            }
+            logRemovalBlocker(env.id, blocker, 'merged');
             continue;
           }
 
@@ -685,14 +713,7 @@ export async function runScheduledCleanup(): Promise<CleanupReport> {
           const blocker = await getRemovalBlocker(env);
           if (blocker) {
             report.skipped.push({ id: env.id, reason: `stale but ${blocker.display}` });
-            if (blocker.reason === 'live_run') {
-              getLog().info(
-                { envId: env.id, runId: blocker.runId, runStatus: blocker.runStatus },
-                'skip_stale_live_run'
-              );
-            } else {
-              getLog().warn({ envId: env.id }, 'skip_stale_uncommitted_changes');
-            }
+            logRemovalBlocker(env.id, blocker, 'stale');
             continue;
           }
 

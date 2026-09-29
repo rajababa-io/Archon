@@ -287,10 +287,10 @@ const UNCLAIMABLE_WORKFLOW_STATUSES = TERMINAL_WORKFLOW_STATUSES.filter(
 );
 
 /**
- * Find a workflow run that still owns an environment — the one signal that pins an
- * env for cleanup. Historical conversation rows are data, not locks: every
- * CLI-launched run leaves one behind, so counting references pinned every
- * environment forever (#2868).
+ * Find a workflow run that still owns an environment — one of the two signals that
+ * pin an env for cleanup (the other is {@link getOpenChatOwningEnv}). Historical
+ * conversation rows are data, not locks: every CLI-launched run leaves one behind,
+ * so counting references pinned every environment forever (#2868).
  *
  * "Owns" means the run can still act on the estate: it is running, pending or
  * paused, or it failed and remains resumable. See UNCLAIMABLE_WORKFLOW_STATUSES.
@@ -324,6 +324,40 @@ export async function getLiveRunOwningEnv(
      ORDER BY r.started_at DESC
      LIMIT 1`,
     [envId, ...UNCLAIMABLE_WORKFLOW_STATUSES]
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * Find an open chat that is still working in an environment — the other signal
+ * that pins an env for cleanup. A chat's fresh worktree sits at its base tip, so
+ * every merge check calls it merged; without this pin the sweep deletes it
+ * mid-conversation (#240).
+ *
+ * Only a chat pins, never a run's conversation, so #2868 stays fixed:
+ * - open: not completed (`completed_at`) and not deleted (`deleted_at`) — the
+ *   operator's own close is what releases it, never an idle timer
+ * - visible: a hidden row is a workflow worker, owned by its run
+ * - runless: a conversation that any run was launched in (a CLI run's row) is
+ *   that run's, and getLiveRunOwningEnv already decides it
+ */
+export async function getOpenChatOwningEnv(envId: string): Promise<{ id: string } | null> {
+  // Postgres types conversations.isolation_env_id as UUID; compare as text so the
+  // parameter binds the same way on both backends (see getLiveRunOwningEnv).
+  const envMatch =
+    getDatabaseType() === 'postgresql' ? 'c.isolation_env_id::text' : 'c.isolation_env_id';
+  const result = await pool.query<{ id: string }>(
+    `SELECT c.id
+     FROM remote_agent_conversations c
+     WHERE ${envMatch} = $1
+       AND c.completed_at IS NULL
+       AND c.deleted_at IS NULL
+       AND (c.hidden IS NULL OR c.hidden = false)
+       AND NOT EXISTS (
+         SELECT 1 FROM remote_agent_workflow_runs r WHERE r.conversation_id = c.id
+       )
+     LIMIT 1`,
+    [envId]
   );
   return result.rows[0] ?? null;
 }
