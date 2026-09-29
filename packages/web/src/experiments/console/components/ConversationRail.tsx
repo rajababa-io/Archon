@@ -492,7 +492,7 @@ export function ConversationRail({
           />
         ) : (
           <div className="min-w-0 flex-1 text-left">
-            {/* The opener is empty and its cover spans the card (rail.css,
+            {/* The opener is empty and spans the card (rail.css,
                       `.chat-open`), rather than wrapping the title: the title's
                       leading #N are buttons of their own, and a button inside a
                       button is invalid HTML whose inner click also opens the
