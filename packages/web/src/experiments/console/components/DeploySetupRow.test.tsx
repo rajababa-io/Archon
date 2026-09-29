@@ -64,21 +64,20 @@ describe('saveDeploySetup', () => {
     return calls;
   }
 
-  test("PUTs the project's deploy once, with the branch trimmed", async () => {
+  const INPUT = { branch: 'main', productionBranch: 'production', workflowName: 'deploy' };
+
+  test("PUTs the project's deploy once, with both branches", async () => {
     const calls = answer(200, { ok: true });
-    expect(await saveDeploySetup('p1', '  main ', 'deploy')).toBeNull();
+    expect(await saveDeploySetup('p1', INPUT)).toBeNull();
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toContain('/api/projects/p1/deploy');
     expect(calls[0].method).toBe('PUT');
-    expect(JSON.parse(calls[0].body ?? 'null')).toEqual({
-      branch: 'main',
-      workflowName: 'deploy',
-    });
+    expect(JSON.parse(calls[0].body ?? 'null')).toEqual(INPUT);
   });
 
   test("a refusal comes back as the server's own words", async () => {
     answer(403, { error: 'Only a person signed in through Cloudflare Access can do this.' });
-    expect(await saveDeploySetup('p1', 'main', 'deploy')).toBe(
+    expect(await saveDeploySetup('p1', INPUT)).toBe(
       'Only a person signed in through Cloudflare Access can do this.'
     );
   });

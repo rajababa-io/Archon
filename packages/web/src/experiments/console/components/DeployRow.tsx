@@ -12,6 +12,9 @@
  * the server is the switch, which flips on click and flips back if the PATCH
  * is refused, because a switch that lags a round trip reads as unpressed.
  *
+ * The branches sit after Live — `main → production` when production runs from
+ * its own branch — with a gear that opens the deploy's settings (#266).
+ *
  * The waiting list portals out of the row: the row scrolls sideways on a
  * phone, and an overflow container clips anything positioned inside it.
  */
@@ -19,7 +22,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
 import * as skill from '../skills';
-import type { ProjectDeploy } from '../skills/deploy';
+import type { DeploySettingsInput, ProjectDeploy } from '../skills/deploy';
 import { HttpError, errorDetail } from '../lib/http';
 import { useLiveChats } from '../lib/live-chats';
 import { useProjectDeployRefresh } from '../hooks/useProjectDeployRefresh';
@@ -27,6 +30,7 @@ import { useNow } from '../lib/clock';
 import { shortSha } from '../lib/deploy-strip';
 import {
   PERSON_ONLY_TITLE,
+  deployBranchesLabel,
   deployConfirm,
   deployRowView,
   liveMissingLabel,
@@ -34,8 +38,9 @@ import {
   waitingFooter,
   type DeployConfirm,
 } from '../lib/deploy-row';
-import { patch } from '../store/cache';
+import { invalidate, patch } from '../store/cache';
 import { K } from '../store/keys';
+import { DeploySettingsDialog } from './DeploySettingsDialog';
 
 const ERROR_MS = 8_000;
 const POPOVER_WIDTH = 430;
@@ -53,6 +58,45 @@ function actionError(err: unknown): string {
   return err instanceof HttpError && err.serverError !== undefined
     ? err.serverError
     : errorDetail(err);
+}
+
+/** Change the deploy's branches or workflow. Resolves to why the server refused, or null. */
+export async function saveDeploySettings(
+  projectId: string,
+  input: DeploySettingsInput
+): Promise<string | null> {
+  try {
+    await skill.updateDeploySettings(projectId, input);
+  } catch (err) {
+    return actionError(err);
+  }
+  invalidate(K.projectDeploy(projectId));
+  return null;
+}
+
+/** For a deploy whose method is not a workflow, what its settings cannot change and why. */
+const METHOD_NOTE: Record<Exclude<ProjectDeploy['method'], 'workflow'>, string> = {
+  'archon-host': 'This install deploys itself; Live is the build it is running.',
+  'remote-host': 'Its own host deploys it; Live is what that host last reported.',
+};
+
+function GearIcon(): ReactElement {
+  return (
+    <svg
+      aria-hidden
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
 }
 
 function Sep(): ReactElement {
@@ -81,6 +125,7 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
   const [popoverOpen, setPopoverOpen] = useState(false);
   const [confirm, setConfirm] = useState<DeployConfirm | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const pillRef = useRef<HTMLButtonElement | null>(null);
 
   const reload = useProjectDeployRefresh(projectId);
@@ -167,6 +212,24 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
             {view.live.sha ?? liveMissingLabel(deploy)}
             {view.live.ago !== null ? ` · ${view.live.ago}` : ''}
           </span>
+        </span>
+        <Sep />
+        <span className="inline-flex shrink-0 items-center gap-1.5">
+          <span data-testid="deploy-branches" className="font-mono text-small text-text-secondary">
+            {deployBranchesLabel(deploy)}
+          </span>
+          <button
+            type="button"
+            aria-label="Deploy settings"
+            disabled={!deploy.canAct}
+            title={deploy.canAct ? 'Deploy settings' : PERSON_ONLY_TITLE}
+            onClick={() => {
+              setSettingsOpen(true);
+            }}
+            className="inline-flex rounded p-0.5 text-text-tertiary hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <GearIcon />
+          </button>
         </span>
         <Sep />
 
@@ -310,6 +373,24 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
           onDeploy={startDeploy}
           onClose={() => {
             setPopoverOpen(false);
+          }}
+        />
+      ) : null}
+
+      {settingsOpen ? (
+        <DeploySettingsDialog
+          projectId={projectId}
+          title="Deploy settings"
+          initial={{
+            branch: deploy.branch,
+            productionBranch: deploy.method === 'workflow' ? (deploy.productionBranch ?? '') : '',
+            workflowName: deploy.method === 'workflow' ? deploy.workflowName : '',
+          }}
+          workflows={deploy.method === 'workflow' ? deploy.workflows : null}
+          methodNote={deploy.method === 'workflow' ? undefined : METHOD_NOTE[deploy.method]}
+          onSave={input => saveDeploySettings(projectId, input)}
+          onClose={() => {
+            setSettingsOpen(false);
           }}
         />
       ) : null}

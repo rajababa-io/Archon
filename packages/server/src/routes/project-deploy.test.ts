@@ -35,6 +35,7 @@ const SETTING = {
   codebaseId: PROJECT,
   method: 'archon-host',
   branch: 'dev',
+  productionBranch: null,
   deployOnMerge: false,
   updatedAt: '2026-09-27T00:00:00Z',
   updatedBy: null,
@@ -48,16 +49,26 @@ const mockSetDeployOnMerge = mock(async (_id: string, on: boolean, _actor: strin
   before: !on,
   after: { ...SETTING, deployOnMerge: on },
 }));
+type SetUpArgs = { branch: string; productionBranch: string | null; workflowName: string };
 const mockSetUp = mock(
-  async (codebaseId: string, branch: string, workflowName: string, actor: string) =>
+  async (codebaseId: string, setup: SetUpArgs, actor: string) =>
     ({
       codebaseId,
       method: 'workflow',
-      branch,
-      workflowName,
+      ...setup,
       deployOnMerge: false,
       updatedBy: actor,
     }) as unknown
+);
+const mockUpdateSettings = mock(
+  async (
+    _id: string,
+    change: Omit<SetUpArgs, 'workflowName'> & { workflowName: string | null },
+    _actor: string
+  ): Promise<unknown> => ({
+    ...WORKFLOW_SETTING,
+    ...change,
+  })
 );
 const REMOTE_SETTING = {
   ...SETTING,
@@ -74,6 +85,7 @@ mock.module('@archon/core/db/project-deploy', () => ({
   getProjectDeploy: mockGetProjectDeploy,
   setDeployOnMerge: mockSetDeployOnMerge,
   setUpWorkflowDeploy: mockSetUp,
+  updateDeploySettings: mockUpdateSettings,
   findRemoteDeployByToken: mockFindRemote,
   recordDeployReport: mockRecordReport,
   isDeployReportVerdict: (v: unknown) => v === 'held' || v === 'ok' || v === 'failed',
@@ -115,7 +127,16 @@ const mockCancelDeploy = mock(
 );
 const mockDecidePolicy = mock(async (_q: unknown): Promise<string> => 'run');
 const mockDecideFor = mock(async (_s: unknown, _q: unknown): Promise<string> => 'run');
+const mockResetWaiting = mock(() => undefined);
+const mockReadBranches = mock(
+  async (_c: unknown): Promise<unknown> => ({
+    branches: { branches: ['main', 'production'], defaultBranch: 'main', complete: true },
+    reason: null,
+  })
+);
 mock.module('../services/deploy-control', () => ({
+  readRemoteBranches: mockReadBranches,
+  resetWaitingCache: mockResetWaiting,
   deployNow: mockDeployNow,
   cancelDeploy: mockCancelDeploy,
   decidePolicy: mockDecidePolicy,
@@ -207,6 +228,8 @@ beforeEach(() => {
   mockDeployNow.mockClear();
   mockCancelDeploy.mockClear();
   mockSetUp.mockClear();
+  mockUpdateSettings.mockClear();
+  mockResetWaiting.mockClear();
   mockDeployWorkflowNow.mockClear();
   mockCancelWorkflowDeploy.mockClear();
   mockDeployRemoteNow.mockClear();
@@ -225,16 +248,20 @@ function app(): OpenAPIHono {
 const url = `/api/projects/${PROJECT}/deploy`;
 const TIP = 'c'.repeat(40);
 
-type Call = [method: string, body?: unknown];
+type Call = [method: string, body?: unknown, path?: string];
 const ACTIONS: Call[] = [
   ['PATCH', { deployOnMerge: true }],
   ['POST', { sha: TIP }],
   ['DELETE'],
   ['PUT', { branch: 'main', workflowName: 'deploy' }],
+  ['PATCH', { branch: 'main', productionBranch: 'production' }, `${url}/settings`],
 ];
 
-async function call([method, body]: Call, headers: Record<string, string>): Promise<Response> {
-  return app().request(url, {
+async function call(
+  [method, body, path]: Call,
+  headers: Record<string, string>
+): Promise<Response> {
+  return app().request(path ?? url, {
     method,
     headers: { 'content-type': 'application/json', ...headers },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -246,21 +273,22 @@ function nothingChanged(): void {
   expect(mockDeployNow).not.toHaveBeenCalled();
   expect(mockCancelDeploy).not.toHaveBeenCalled();
   expect(mockSetUp).not.toHaveBeenCalled();
+  expect(mockUpdateSettings).not.toHaveBeenCalled();
   expect(mockDeployWorkflowNow).not.toHaveBeenCalled();
   expect(mockCancelWorkflowDeploy).not.toHaveBeenCalled();
   expect(mockDeployRemoteNow).not.toHaveBeenCalled();
 }
 
-describe('an agent cannot set up deploys, flip the toggle, Deploy now, or Cancel deploy', () => {
+describe('an agent cannot set up deploys, flip the toggle, Deploy now, Cancel deploy, or change settings', () => {
   for (const action of ACTIONS) {
-    test(`${action[0]} with no Access pass is refused`, async () => {
+    test(`${action[0]} ${action[2] ?? url} with no Access pass is refused`, async () => {
       const res = await call(action, { 'X-Archon-User': 'ameet' });
       expect(res.status).toBe(403);
       expect(((await res.json()) as { reason: string }).reason).toBe('no-pass');
       nothingChanged();
     });
 
-    test(`${action[0]} with a pass the agent signed itself is refused`, async () => {
+    test(`${action[0]} ${action[2] ?? url} with a pass the agent signed itself is refused`, async () => {
       const forged = await pass(agentKey.privateKey);
       const res = await call(action, { 'Cf-Access-Jwt-Assertion': forged });
       expect(res.status).toBe(403);
@@ -347,7 +375,11 @@ describe('Set up deploys', () => {
     const res = await setUp({ branch: ' main ', workflowName: 'deploy' });
     expect(res.status).toBe(201);
     expect(mockSetUp).toHaveBeenCalledTimes(1);
-    expect(mockSetUp).toHaveBeenCalledWith(PROJECT, 'main', 'deploy', 'you@example.com');
+    expect(mockSetUp).toHaveBeenCalledWith(
+      PROJECT,
+      { branch: 'main', productionBranch: null, workflowName: 'deploy' },
+      'you@example.com'
+    );
     const body = (await res.json()) as { deploy: { deployOnMerge: boolean } };
     expect(body.deploy.deployOnMerge).toBe(false);
   });
@@ -364,10 +396,114 @@ describe('Set up deploys', () => {
     expect(mockSetUp).not.toHaveBeenCalled();
   });
 
+  test('records the production branch the person picked (#266)', async () => {
+    const res = await setUp({
+      branch: 'main',
+      productionBranch: 'production',
+      workflowName: 'deploy',
+    });
+    expect(res.status).toBe(201);
+    expect(mockSetUp.mock.calls[0]?.[1]).toEqual({
+      branch: 'main',
+      productionBranch: 'production',
+      workflowName: 'deploy',
+    });
+  });
+
+  test('refuses a production branch that is the working branch', async () => {
+    const res = await setUp({ branch: 'main', productionBranch: 'main', workflowName: 'deploy' });
+    expect(res.status).toBe(400);
+    expect(mockSetUp).not.toHaveBeenCalled();
+  });
+
   test('refuses a project that already has a deploy', async () => {
     mockSetUp.mockImplementationOnce(async () => null);
     const res = await setUp({ branch: 'main', workflowName: 'deploy' });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("the deploy bar's settings (#266)", () => {
+  const settingsUrl = `${url}/settings`;
+  async function change(body: unknown): Promise<Response> {
+    return call(['PATCH', body, settingsUrl], {
+      'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey),
+    });
+  }
+  afterAll(() => {
+    mockGetProjectDeploy.mockImplementation(async () => SETTING);
+  });
+
+  test("changes a workflow project's branches and workflow, and the next read is fresh", async () => {
+    mockGetProjectDeploy.mockImplementation(async () => WORKFLOW_SETTING);
+    const res = await change({
+      branch: 'main',
+      productionBranch: 'production',
+      workflowName: 'build',
+    });
+    expect(res.status).toBe(200);
+    expect(mockUpdateSettings).toHaveBeenCalledWith(
+      PROJECT,
+      { branch: 'main', productionBranch: 'production', workflowName: 'build' },
+      'you@example.com'
+    );
+    expect(mockResetWaiting).toHaveBeenCalled();
+  });
+
+  test('an empty production branch clears it', async () => {
+    mockGetProjectDeploy.mockImplementation(async () => WORKFLOW_SETTING);
+    await change({ branch: 'main', productionBranch: '', workflowName: 'deploy' });
+    expect(mockUpdateSettings.mock.calls[0]?.[1]).toMatchObject({ productionBranch: null });
+  });
+
+  test('refuses a workflow the project does not have', async () => {
+    mockGetProjectDeploy.mockImplementation(async () => WORKFLOW_SETTING);
+    const res = await change({ branch: 'main', workflowName: 'ship' });
+    expect(res.status).toBe(400);
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
+  });
+
+  test('refuses a production branch that is the working branch', async () => {
+    mockGetProjectDeploy.mockImplementation(async () => WORKFLOW_SETTING);
+    const res = await change({ branch: 'main', productionBranch: 'main', workflowName: 'deploy' });
+    expect(res.status).toBe(400);
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
+  });
+
+  test('the host deploy takes a new branch but no production branch, and never its own pointer', async () => {
+    mockGetProjectDeploy.mockImplementation(async () => SETTING);
+    expect((await change({ branch: 'main', productionBranch: 'deploy' })).status).toBe(400);
+    expect((await change({ branch: 'deploy' })).status).toBe(400);
+    expect(mockUpdateSettings).not.toHaveBeenCalled();
+    expect((await change({ branch: 'main' })).status).toBe(200);
+    expect(mockUpdateSettings.mock.calls[0]?.[1]).toEqual({
+      branch: 'main',
+      productionBranch: null,
+      workflowName: null,
+    });
+  });
+});
+
+describe('the branch pickers (#267)', () => {
+  test("lists the repository's branches, default first", async () => {
+    const res = await app().request(`${url}/branches`);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      branches: ['main', 'production'],
+      defaultBranch: 'main',
+      complete: true,
+      reason: null,
+    });
+  });
+
+  test('a repository it cannot read answers an empty list and why', async () => {
+    mockReadBranches.mockImplementationOnce(async () => ({ branches: null, reason: 'no-token' }));
+    expect(await (await app().request(`${url}/branches`)).json()).toEqual({
+      branches: [],
+      defaultBranch: null,
+      complete: false,
+      reason: 'no-token',
+    });
   });
 });
 

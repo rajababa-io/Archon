@@ -100,7 +100,11 @@ describe('manual requests', () => {
 
 describe('setting up a workflow deploy', () => {
   test('creates exactly one row, with Deploy on Merge off and who set it up', async () => {
-    const created = await deploy.setUpWorkflowDeploy('p3', 'main', 'deploy', 'you@example.com');
+    const created = await deploy.setUpWorkflowDeploy(
+      'p3',
+      { branch: 'main', productionBranch: null, workflowName: 'deploy' },
+      'you@example.com'
+    );
     expect(created).toMatchObject({
       codebaseId: 'p3',
       method: 'workflow',
@@ -117,14 +121,65 @@ describe('setting up a workflow deploy', () => {
   });
 
   test('never replaces a deploy the project already has', async () => {
-    expect(await deploy.setUpWorkflowDeploy('p3', 'dev', 'other', 'someone')).toBeNull();
+    expect(
+      await deploy.setUpWorkflowDeploy(
+        'p3',
+        { branch: 'dev', productionBranch: null, workflowName: 'other' },
+        'someone'
+      )
+    ).toBeNull();
     expect(await deploy.getProjectDeploy('p3')).toMatchObject({
       branch: 'main',
       workflowName: 'deploy',
     });
     // Including the archon-host row, which set-up must never turn into a workflow.
-    expect(await deploy.setUpWorkflowDeploy('p1', 'dev', 'deploy', 'someone')).toBeNull();
+    expect(
+      await deploy.setUpWorkflowDeploy(
+        'p1',
+        { branch: 'dev', productionBranch: null, workflowName: 'deploy' },
+        'someone'
+      )
+    ).toBeNull();
     expect((await deploy.getProjectDeploy('p1'))?.method).toBe('archon-host');
+  });
+
+  test('a production branch round-trips, and settings change it without touching the switch', async () => {
+    // p3 was set up above with none.
+    expect((await deploy.getProjectDeploy('p3'))?.productionBranch).toBeNull();
+    const after = await deploy.updateDeploySettings(
+      'p3',
+      { branch: 'main', productionBranch: 'production', workflowName: null },
+      'you@example.com'
+    );
+    expect(after).toMatchObject({
+      branch: 'main',
+      productionBranch: 'production',
+      workflowName: 'deploy',
+      deployOnMerge: false,
+    });
+    const cleared = await deploy.updateDeploySettings(
+      'p3',
+      { branch: 'trunk', productionBranch: null, workflowName: 'ship' },
+      'you@example.com'
+    );
+    expect(cleared).toMatchObject({
+      branch: 'trunk',
+      productionBranch: null,
+      workflowName: 'ship',
+    });
+    expect(
+      await deploy.updateDeploySettings(
+        'p2',
+        { branch: 'main', productionBranch: null, workflowName: null },
+        'you'
+      )
+    ).toBeNull();
+    // Put p3 back for the tests after this one.
+    await deploy.updateDeploySettings(
+      'p3',
+      { branch: 'main', productionBranch: null, workflowName: 'deploy' },
+      'you@example.com'
+    );
   });
 
   test('a workflow row that names no workflow reads as no deploy', async () => {

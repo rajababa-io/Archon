@@ -783,8 +783,12 @@ A project deploys one of three ways, named by its `method`:
 - `workflow` -- the project's own repository deploys it with an Archon workflow
   (usually `.archon/workflows/deploy.yaml`). Deploy now runs that workflow on a checkout
   cut from the branch tip; with Deploy on Merge on, a pull request merged into the branch
-  does the same. What is live is the commit of the newest deploy run that completed.
-  Starting a run needs `ARCHON_TRIGGER_HOST` on the server (see
+  does the same. What is live is the commit of the newest deploy run that completed --
+  unless the deploy names a **production branch**: a project that deploys by merging
+  into that branch, through its own CI rather than Archon, reads what is live as that
+  branch's tip, and what is waiting as the merged PRs on the working branch that the tip
+  does not yet contain. The bar then reads `main → production`, and a production branch
+  GitHub does not have reports `waitingReason: "no-production-branch"`. Starting a run needs `ARCHON_TRIGGER_HOST` on the server (see
   [workflow triggers](/guides/workflow-triggers/)); without it Deploy now is refused.
   Merges arrive through the GitHub webhook at `/webhooks/github`, so only repositories
   whose webhook points at this install deploy on merge.
@@ -806,8 +810,10 @@ A project deploys one of three ways, named by its `method`:
 | Method | Path | Who | Description |
 |--------|------|-----|-------------|
 | GET | `/api/projects/{projectId}/deploy` | any | The deploy bar and whether this request could act (`canAct`). With no deploy: `{"deploy": null, "setup": {"branch", "workflows", "workflow"}, "canAct"}`, the picker's defaults |
-| PUT | `/api/projects/{projectId}/deploy` | person | Set up deploys: `{"branch": "main", "workflowName": "deploy"}`. Creates a `workflow` deploy with Deploy on Merge off and deploys nothing; `400` for a workflow the project does not have, `409` if it already has a deploy |
+| PUT | `/api/projects/{projectId}/deploy` | person | Set up deploys: `{"branch": "main", "productionBranch"?: "production", "workflowName": "deploy"}`. Creates a `workflow` deploy with Deploy on Merge off and deploys nothing; `400` for a workflow the project does not have or a production branch equal to `branch`, `409` if it already has a deploy |
 | PATCH | `/api/projects/{projectId}/deploy` | person | `{"deployOnMerge": true \| false}` |
+| PATCH | `/api/projects/{projectId}/deploy/settings` | person | The bar's settings: `{"branch", "productionBranch", "workflowName"}`; an empty `productionBranch` clears it. Only a `workflow` deploy takes a production branch or a workflow; an `archon-host` deploy is refused its own `deploy` pointer |
+| GET | `/api/projects/{projectId}/deploy/branches` | any | `{"branches", "defaultBranch", "complete", "reason"}`: the GitHub repository's branches, default first, for the pickers. `complete` is false past the first 100; `reason` says why the list is empty when GitHub could not be read |
 | POST | `/api/projects/{projectId}/deploy` | person | Deploy now: `{"sha": "<the waiting tip>"}`; `409` if a deploy is already running, the branch has moved, or (for `workflow`) the workflow is missing |
 | DELETE | `/api/projects/{projectId}/deploy` | person | Cancel deploy: for `archon-host`, `409` once the swap has started; for `workflow`, cancels this project's running deploy run |
 | GET | `/api/projects/{projectId}/deploy/log` | any | Toggle flips, Deploy now, Cancel, and how each deploy went, newest first. A merge that should have started a `workflow` deploy and did not is a `not_started` entry, with the merged PR as `actor` and the reason as `detail` |

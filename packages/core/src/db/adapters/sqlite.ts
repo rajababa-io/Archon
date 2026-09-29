@@ -530,7 +530,8 @@ export class SqliteAdapter implements IDatabase {
     }
 
     // Project deploy columns. `workflow_name` arrived with workflow deploys (#226),
-    // and the remote-host columns with #220, after the table shipped in #211.
+    // the remote-host columns with #220, and `production_branch` with #265, after
+    // the table shipped in #211.
     try {
       const deployCols = this.prepareAll<{ name: string }>(
         "PRAGMA table_info('remote_agent_project_deploy')"
@@ -538,8 +539,8 @@ export class SqliteAdapter implements IDatabase {
       if (!deployCols.some(c => c.name === 'workflow_name')) {
         this.db.run('ALTER TABLE remote_agent_project_deploy ADD COLUMN workflow_name TEXT');
       }
-      // The remote-host method's columns (#220).
-      for (const col of ['remote_url', 'remote_token_sha256']) {
+      // The remote-host method's columns (#220), and the production branch (#265).
+      for (const col of ['remote_url', 'remote_token_sha256', 'production_branch']) {
         if (!deployCols.some(c => c.name === col)) {
           this.db.run(`ALTER TABLE remote_agent_project_deploy ADD COLUMN ${col} TEXT`);
         }
@@ -1030,7 +1031,8 @@ export class SqliteAdapter implements IDatabase {
         updated_by TEXT,
         workflow_name TEXT,
         remote_url TEXT,
-        remote_token_sha256 TEXT
+        remote_token_sha256 TEXT,
+        production_branch TEXT
       );
 
       CREATE TABLE IF NOT EXISTS remote_agent_deploy_events (

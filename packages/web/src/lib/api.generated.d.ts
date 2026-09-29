@@ -3957,6 +3957,53 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/projects/{projectId}/deploy/branches': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** The branches on a project's GitHub repository, default branch first */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['DeployBranchesResponse'];
+          };
+        };
+        /** @description No project */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/config': {
     parameters: {
       query?: never;
@@ -6540,6 +6587,12 @@ export interface components {
       actor: string | null;
       sha: string | null;
       detail: string | null;
+    };
+    DeployBranchesResponse: {
+      branches: string[];
+      defaultBranch: string | null;
+      complete: boolean;
+      reason: string | null;
     };
     ConfigResponse: {
       config: components['schemas']['SafeConfig'];

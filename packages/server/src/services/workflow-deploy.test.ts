@@ -67,6 +67,7 @@ const setting = (codebaseId: string, over: Record<string, unknown> = {}) => ({
   method: 'workflow' as const,
   workflowName: 'deploy',
   branch: 'main',
+  productionBranch: null as string | null,
   deployOnMerge: true,
   updatedAt: '2026-09-28T00:00:00Z',
   updatedBy: 'you@example.com',
@@ -143,8 +144,17 @@ const mockReadWaiting = mock(
     reason: null,
   })
 );
+const PROD_TIP = 'd'.repeat(40);
+let behind: unknown = {
+  behind: { live: { sha: PROD_TIP, deployedAt: '2026-09-28T03:23:22Z' }, waiting: null },
+  reason: null,
+};
+const mockReadBehind = mock(
+  async (_c: unknown, _branch: string, _prod: string): Promise<unknown> => behind
+);
 mock.module('./deploy-control', () => ({
   readWaiting: mockReadWaiting,
+  readBehind: mockReadBehind,
   resetWaitingCache: mock(() => undefined),
 }));
 
@@ -183,6 +193,12 @@ beforeEach(() => {
   mockRecordEvent.mockClear();
   mockRecordNotStarted.mockClear();
   mockCancelWorkflow.mockClear();
+  mockReadWaiting.mockClear();
+  mockReadBehind.mockClear();
+  behind = {
+    behind: { live: { sha: PROD_TIP, deployedAt: '2026-09-28T03:23:22Z' }, waiting: null },
+    reason: null,
+  };
 });
 
 describe('the Set up deploys picker', () => {
@@ -462,6 +478,60 @@ describe('the bar and the log', () => {
     expect(view.live.sha).toBeNull();
     expect(view.waiting).toEqual({ tipSha: TIP, prs: [], more: false });
     expect(mockReadWaiting.mock.calls.at(-1)?.[2]).toBeNull();
+  });
+
+  test('deployed outside Archon: live is the production branch tip, and nothing merged since reads as up to date', async () => {
+    // wix-access (#265): it deploys by merging main into production, and Archon
+    // has never run one of its deploys.
+    const prod = setting(ATLAS.id, { productionBranch: 'production' });
+    const view = await getWorkflowDeployView(ATLAS as never, prod, host);
+    expect(view.productionBranch).toBe('production');
+    expect(view.live).toEqual({ sha: PROD_TIP, deployedAt: '2026-09-28T03:23:22Z' });
+    expect(view.waiting).toBeNull();
+    expect(view.waitingReason).toBeNull();
+    expect(mockReadBehind).toHaveBeenCalledWith(ATLAS, 'main', 'production');
+    expect(mockReadWaiting).not.toHaveBeenCalled();
+  });
+
+  test('deployed outside Archon: a PR merged into the working branch waits until production has it', async () => {
+    const pr = { number: 480, title: 'One more', url: 'https://github.com/o/r/pull/480' };
+    behind = {
+      behind: {
+        live: { sha: PROD_TIP, deployedAt: null },
+        waiting: { tipSha: TIP, prs: [pr], more: false },
+      },
+      reason: null,
+    };
+    const prod = setting(ATLAS.id, { productionBranch: 'production' });
+    const view = await getWorkflowDeployView(ATLAS as never, prod, host);
+    expect(view.waiting).toEqual({ tipSha: TIP, prs: [pr], more: false });
+    // A completed Archon run does not override the production branch's record.
+    runsByProject[ATLAS.id] = [
+      {
+        runId: 'a1',
+        sha: 'a'.repeat(40),
+        at: '2026-09-28T00:00:00Z',
+        status: 'completed',
+        finishedAt: '2026-09-28T00:05:00Z',
+      },
+    ];
+    expect((await getWorkflowDeployView(ATLAS as never, prod, host)).live.sha).toBe(PROD_TIP);
+  });
+
+  test('deployed outside Archon: an unreadable production branch is unknown, never up to date', async () => {
+    behind = { behind: null, reason: 'no-production-branch' };
+    const prod = setting(ATLAS.id, { productionBranch: 'prod' });
+    const view = await getWorkflowDeployView(ATLAS as never, prod, host);
+    expect(view.live.sha).toBeNull();
+    expect(view.waiting).toBeNull();
+    expect(view.waitingReason).toBe('no-production-branch');
+  });
+
+  test('deployed outside Archon: Deploy now with nothing waiting starts nothing', async () => {
+    const prod = setting(ATLAS.id, { productionBranch: 'production' });
+    const result = await deployWorkflowNow(ATLAS as never, prod, TIP, 'you', host);
+    expect(result).toMatchObject({ ok: false, status: 409 });
+    expect(accepted).toHaveLength(0);
   });
 
   test('a missing workflow is named as what greys Deploy now', async () => {

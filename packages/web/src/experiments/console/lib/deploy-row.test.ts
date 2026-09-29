@@ -9,12 +9,15 @@ import {
 } from '../skills/deploy';
 import {
   blockedTitle,
+  branchWarning,
   DEPLOY_LOG_LABEL,
+  deployBranchesLabel,
   deployConfirm,
   deployProgress,
   deployProgressText,
   deployRowView,
   parkCountdown,
+  liveMissingLabel,
   turnedOnNotice,
   waitingFooter,
   waitingPillLabel,
@@ -285,6 +288,8 @@ function workflowDeploy(overrides: Partial<WorkflowDeploy> = {}): WorkflowDeploy
   return {
     method: 'workflow',
     workflowName: 'deploy',
+    productionBranch: null,
+    workflows: ['deploy'],
     deployOnMerge: false,
     branch: 'main',
     live: { sha: LIVE, deployedAt: '2026-09-27T07:00:00Z' },
@@ -334,6 +339,37 @@ describe('deployRowView — a workflow deploy', () => {
     );
   });
 
+  test('names both branches when production runs from its own (#266)', () => {
+    expect(deployBranchesLabel(workflowDeploy())).toBe('main');
+    expect(deployBranchesLabel(workflowDeploy({ productionBranch: 'production' }))).toBe(
+      'main → production'
+    );
+  });
+
+  test('a production branch whose tip could not be read is unknown, not undeployed', () => {
+    expect(liveMissingLabel(workflowDeploy({ live: { sha: null, deployedAt: null } }))).toBe(
+      'not deployed yet'
+    );
+    expect(
+      liveMissingLabel(
+        workflowDeploy({ productionBranch: 'production', live: { sha: null, deployedAt: null } })
+      )
+    ).toBe('unknown');
+  });
+
+  test('a production branch GitHub lacks is named, never Up to date', () => {
+    const view = deployRowView(
+      workflowDeploy({ productionBranch: 'prod', waitingReason: 'no-production-branch' }),
+      undefined,
+      NOW
+    );
+    expect(view.kind === 'idle' ? view.right : null).toEqual({
+      kind: 'unknown',
+      label: 'Production branch not found on GitHub',
+      reason: 'no-production-branch',
+    });
+  });
+
   test('a missing workflow greys Deploy now and says why', () => {
     const view = deployRowView(
       workflowDeploy({ blocked: 'workflow-missing', workflowName: 'ship' }),
@@ -344,6 +380,39 @@ describe('deployRowView — a workflow deploy', () => {
       'This project has no workflow named "ship"'
     );
     expect(blockedTitle('no-trigger-host', 'ship')).toContain('ARCHON_TRIGGER_HOST');
+  });
+});
+
+describe('branchWarning (#267)', () => {
+  const list = (branches: string[], complete = true, reason: string | null = null) => ({
+    branches,
+    defaultBranch: branches[0] ?? null,
+    complete,
+    reason,
+  });
+
+  test('a branch on GitHub, an empty field, or a list still loading warns about nothing', () => {
+    expect(branchWarning('production', list(['main', 'production']))).toBeNull();
+    expect(branchWarning(' ', list(['main']))).toBeNull();
+    expect(branchWarning('main', undefined)).toBeNull();
+  });
+
+  test('a branch GitHub does not have is warned about', () => {
+    expect(branchWarning('prod', list(['main', 'production']))).toBe(
+      'prod is not a branch on GitHub.'
+    );
+  });
+
+  test('a list cut short says only that the branch was not among those listed', () => {
+    expect(branchWarning('old', list(['main'], false))).toBe(
+      'old is not among the first 1 branches on GitHub.'
+    );
+  });
+
+  test('a list that could not be read says so, rather than calling every branch missing', () => {
+    expect(branchWarning('main', list([], false, 'no-token'))).toBe(
+      "Couldn't check GitHub for main: No GitHub token."
+    );
   });
 });
 
@@ -379,6 +448,8 @@ describe('parsing the GET answer', () => {
       deploy: {
         method: 'workflow',
         workflowName: 'deploy',
+        workflows: ['build', 'deploy', 7],
+        productionBranch: 'production',
         deployOnMerge: false,
         branch: 'main',
         live: { sha: null, deployedAt: null },
@@ -392,6 +463,8 @@ describe('parsing the GET answer', () => {
     });
     expect(answer?.kind === 'set-up' ? answer.deploy : null).toMatchObject({
       method: 'workflow',
+      productionBranch: 'production',
+      workflows: ['build', 'deploy'],
       run: { id: 'r1', status: 'running' },
       blocked: 'restarting',
     });

@@ -40,6 +40,8 @@ describe('deployConfirmText', () => {
       ...common,
       method: 'workflow',
       workflowName: 'ship-it',
+      productionBranch: null,
+      workflows: ['ship-it'],
       run: null,
       blocked: null,
     };

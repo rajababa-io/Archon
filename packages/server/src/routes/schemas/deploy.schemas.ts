@@ -23,3 +23,17 @@ export const deployLogEntrySchema = z
 export const deployLogResponseSchema = z
   .object({ entries: z.array(deployLogEntrySchema) })
   .openapi('DeployLogResponse');
+
+/**
+ * GET /api/projects/:projectId/deploy/branches — the repository's branches for
+ * the deploy pickers (#267). `reason` says why the list is empty when GitHub
+ * could not be read; the picker then takes a typed name.
+ */
+export const deployBranchesResponseSchema = z
+  .object({
+    branches: z.array(z.string()),
+    defaultBranch: z.string().nullable(),
+    complete: z.boolean(),
+    reason: z.string().nullable(),
+  })
+  .openapi('DeployBranchesResponse');

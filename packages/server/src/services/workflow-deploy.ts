@@ -32,6 +32,7 @@ import { githubRepoOf } from '../routes/github-issues';
 import {
   type DeployLogEntry,
   type Waiting,
+  readBehind,
   readWaiting,
   resetWaitingCache,
 } from './deploy-control';
@@ -108,9 +109,15 @@ async function defaultBranchOf(codebase: Codebase): Promise<string | null> {
 export interface WorkflowDeployView {
   method: 'workflow';
   workflowName: string;
+  /** The project's own workflows, for the bar's settings to switch between. */
+  workflows: string[];
   deployOnMerge: boolean;
   branch: string;
-  /** The commit of the newest deploy run that completed. Null before the first. */
+  productionBranch: string | null;
+  /**
+   * With a production branch, that branch's tip (#265). Without one, the commit
+   * of the newest deploy run that completed; null before the first.
+   */
   live: { sha: string | null; deployedAt: string | null };
   waiting: Waiting | null;
   waitingReason: string | null;
@@ -121,15 +128,56 @@ export interface WorkflowDeployView {
   blocked: DeployBlocked | null;
 }
 
-async function blockerFor(
-  codebase: Codebase,
+function blockerFor(
+  workflows: string[],
   setting: WorkflowProjectDeploy,
   host: DeployHost | null
-): Promise<DeployBlocked | null> {
+): DeployBlocked | null {
   if (host === null) return 'no-trigger-host';
   if (host.isDraining()) return 'restarting';
-  const workflows = await listDeployableWorkflows(codebase);
   return workflows.includes(setting.workflowName) ? null : 'workflow-missing';
+}
+
+interface LiveAndWaiting {
+  live: { sha: string | null; deployedAt: string | null };
+  waiting: Waiting | null;
+  reason: string | null;
+}
+
+/**
+ * What is live and what is waiting, from whichever record says what shipped.
+ *
+ * A project that names a production branch deploys by merging into it, often
+ * through its own CI and never through Archon (#265), so that branch is the
+ * record: its tip is live, and waiting is what the working branch holds that
+ * the tip does not. Its tip is preferred over the CI run that deployed it
+ * because every repository has branches while not every one deploys through
+ * GitHub Actions, and naming "the deploy workflow" would be one more setting to
+ * get wrong. The cost: a deploy that fails after the merge still reads as live.
+ *
+ * Without one, Archon's own completed deploy runs are the record.
+ */
+async function readLiveAndWaiting(
+  codebase: Codebase,
+  setting: WorkflowProjectDeploy,
+  runs: DeployRun[]
+): Promise<LiveAndWaiting> {
+  if (setting.productionBranch !== null) {
+    const { behind, reason } = await readBehind(codebase, setting.branch, setting.productionBranch);
+    if (behind === null) return { live: { sha: null, deployedAt: null }, waiting: null, reason };
+    return { live: behind.live, waiting: behind.waiting, reason: null };
+  }
+  const live = runs.find(r => r.status === 'completed');
+  const { waiting, reason } = await readWaiting(codebase, setting.branch, live?.sha ?? null);
+  // Nothing new since the live commit reads as up to date. Before the first
+  // deploy there is no live commit, so whatever the branch holds is waiting.
+  const nothingNew =
+    live !== undefined && waiting !== null && waiting.prs.length === 0 && !waiting.more;
+  return {
+    live: { sha: live?.sha ?? null, deployedAt: live?.finishedAt ?? null },
+    waiting: nothingNew ? null : waiting,
+    reason,
+  };
 }
 
 export async function getWorkflowDeployView(
@@ -137,31 +185,28 @@ export async function getWorkflowDeployView(
   setting: WorkflowProjectDeploy,
   host: DeployHost | null
 ): Promise<WorkflowDeployView> {
-  const [runs, blocked] = await Promise.all([
+  const [runs, workflows] = await Promise.all([
     projectDeployDb.listDeployRuns(codebase.id),
-    blockerFor(codebase, setting, host),
+    listDeployableWorkflows(codebase),
   ]);
-  const live = runs.find(r => r.status === 'completed');
   const active = runs.find(r => !isTerminalRunStatus(r.status));
-  const { waiting, reason } = await readWaiting(codebase, setting.branch, live?.sha ?? null);
-  // Nothing new since the live commit reads as up to date. Before the first
-  // deploy there is no live commit, so whatever the branch holds is waiting.
-  const nothingNew =
-    live !== undefined && waiting !== null && waiting.prs.length === 0 && !waiting.more;
+  const { live, waiting, reason } = await readLiveAndWaiting(codebase, setting, runs);
   return {
     method: 'workflow',
     workflowName: setting.workflowName,
+    workflows,
     deployOnMerge: setting.deployOnMerge,
     branch: setting.branch,
-    live: { sha: live?.sha ?? null, deployedAt: live?.finishedAt ?? null },
-    waiting: nothingNew ? null : waiting,
+    productionBranch: setting.productionBranch,
+    live,
+    waiting,
     waitingReason: reason,
     run:
       active === undefined
         ? null
         : { id: active.runId, sha: active.sha, status: active.status, startedAt: active.at },
     cancellable: active?.status === 'running',
-    blocked,
+    blocked: blockerFor(workflows, setting, host),
   };
 }
 
@@ -213,7 +258,7 @@ export async function startWorkflowDeploy(
   host: DeployHost | null
 ): Promise<StartDeployResult> {
   const { codebase, setting, sha } = request;
-  const blocked = await blockerFor(codebase, setting, host);
+  const blocked = blockerFor(await listDeployableWorkflows(codebase), setting, host);
   if (blocked !== null || host === null) {
     return {
       ok: false,
@@ -311,13 +356,15 @@ export async function deployWorkflowNow(
 ): Promise<StartDeployResult> {
   resetWaitingCache();
   const runs = await projectDeployDb.listDeployRuns(codebase.id, 10);
-  const liveSha = runs.find(r => r.status === 'completed')?.sha ?? null;
-  const { waiting, reason } = await readWaiting(codebase, setting.branch, liveSha);
+  const { waiting, reason } = await readLiveAndWaiting(codebase, setting, runs);
   if (waiting === null) {
     return {
       ok: false,
       status: 409,
-      error: `Could not read the tip of ${setting.branch} (${reason ?? 'unknown'}).`,
+      error:
+        reason === null
+          ? `Nothing on ${setting.branch} is waiting to deploy.`
+          : `Could not read the tip of ${setting.branch} (${reason}).`,
     };
   }
   if (waiting.tipSha !== expectSha) {
