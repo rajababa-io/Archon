@@ -48,4 +48,13 @@ describe('MenuItem', () => {
     expect(html).toContain('w-[11px]');
     expect(html).toContain('opacity-0');
   });
+
+  test('a disabled row greys out with no reason line and no hover', () => {
+    const html = renderToStaticMarkup(<MenuItem label="Mark unread" onSelect={noop} disabled />);
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain('text-text-tertiary');
+    expect(html).not.toContain('hover:');
+    expect(html).not.toContain('aria-description');
+    expect(html).toContain('>Mark unread</button>');
+  });
 });

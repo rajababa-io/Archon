@@ -18,8 +18,9 @@ interface Anchor {
  * every row — a checkable item and a plain one with different indents is two
  * left edges, and the eye reads that as two lists.
  */
-const MENU_ROW_CLASS =
-  'flex h-[1.875rem] w-full items-center gap-2 rounded-[5px] px-2 text-left text-body hover:bg-surface-elevated';
+const MENU_ROW_SHAPE =
+  'flex h-[1.875rem] w-full items-center gap-2 rounded-[5px] px-2 text-left text-body';
+const MENU_ROW_CLASS = `${MENU_ROW_SHAPE} hover:bg-surface-elevated`;
 
 /** The tick gutter, reserved on every row and filled only by a checked one. */
 function TickSlot({ on }: { on: boolean }): ReactElement {
@@ -44,7 +45,7 @@ export function MenuItem({
   label,
   onSelect,
   danger = false,
-  disabledReason,
+  disabled = false,
 }: {
   label: string;
   onSelect: () => void;
@@ -52,28 +53,23 @@ export function MenuItem({
   danger?: boolean;
   /**
    * Set when the action is unavailable right now. The row stays in place and
-   * greys out, with this written under the label: a row that vanished would
-   * move every row below it, and a grey row with no reason reads as broken.
+   * greys out: a row that vanished would move every row below it.
    */
-  disabledReason?: string;
+  disabled?: boolean;
 }): ReactElement {
-  if (disabledReason !== undefined) {
+  if (disabled) {
     return (
       <button
         type="button"
         role="menuitem"
         aria-disabled
-        aria-description={disabledReason}
         onClick={e => {
           e.stopPropagation();
         }}
-        className="flex w-full cursor-default items-start gap-2 rounded-[5px] px-2 py-1 text-left text-body"
+        className={`${MENU_ROW_SHAPE} cursor-default text-text-tertiary`}
       >
         <TickSlot on={false} />
-        <span className="flex flex-col">
-          <span className="text-text-tertiary">{label}</span>
-          <span className="text-small text-text-tertiary opacity-80">{disabledReason}</span>
-        </span>
+        {label}
       </button>
     );
   }

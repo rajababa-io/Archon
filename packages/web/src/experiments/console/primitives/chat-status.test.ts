@@ -5,7 +5,7 @@ import {
   chatStatus,
   chatStatusSets,
   completedIds,
-  markUnreadBlocker,
+  canMarkUnread,
   readyIds,
   runningRunIds,
   unreadIds,
@@ -398,13 +398,13 @@ describe('unreadIds', () => {
   });
 });
 
-describe('markUnreadBlocker', () => {
+describe('canMarkUnread', () => {
   test('an idle chat may be marked, including the one you have open', () => {
-    expect(markUnreadBlocker('idle', true)).toBeNull();
+    expect(canMarkUnread('idle', true)).toBe(true);
   });
 
-  test('every other status is refused, each with its own reason', () => {
-    const others = [
+  test('every other status is refused', () => {
+    for (const s of [
       'working',
       'awaiting',
       'unread',
@@ -412,14 +412,13 @@ describe('markUnreadBlocker', () => {
       'ready',
       'running',
       'waiting',
-    ] as const;
-    const reasons = others.map(s => markUnreadBlocker(s, true));
-    for (const r of reasons) expect(r).not.toBeNull();
-    expect(new Set(reasons).size).toBe(others.length);
+    ] as const) {
+      expect(canMarkUnread(s, true)).toBe(false);
+    }
   });
 
   test('a chat with no activity is refused — the mark could not show', () => {
-    expect(markUnreadBlocker('idle', false)).toBe('Nothing to read yet');
+    expect(canMarkUnread('idle', false)).toBe(false);
   });
 });
 

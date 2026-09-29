@@ -18,7 +18,7 @@ import {
 import { relativeTime } from '../lib/format';
 import {
   chatStatus,
-  markUnreadBlocker,
+  canMarkUnread,
   STATUS_TITLE,
   type ChatStatusSets,
 } from '../primitives/chat-status';
@@ -564,7 +564,7 @@ export function ConversationRail({
           />
           <MenuItem
             label="Mark unread"
-            disabledReason={markUnreadBlocker(status, c.lastActivityAt !== null) ?? undefined}
+            disabled={!canMarkUnread(status, c.lastActivityAt !== null)}
             onSelect={() => {
               onMarkUnread(c.id);
               setMenuFor(null);
