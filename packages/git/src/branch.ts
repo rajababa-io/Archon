@@ -482,7 +482,7 @@ export async function readCheckoutStatus(
 ): Promise<CheckoutStatus> {
   const { stdout } = await execFileAsync(
     'git',
-    ['-C', workingPath, 'status', '--porcelain=v2', '--branch'],
+    ['--no-optional-locks', '-C', workingPath, 'status', '--porcelain=v2', '--branch'],
     { timeout: 10000 }
   );
   let branch: BranchName | null = null;

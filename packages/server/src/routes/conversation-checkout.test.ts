@@ -12,6 +12,8 @@ function fakeGit(overrides: Partial<CheckoutGit> = {}): CheckoutGit {
       commonGitDir: '/repos/app/.git',
       linkedWorktree: true,
     }),
+    countChangesOffBase: async () => 0,
+    resolveBaseBranch: async () => 'dev',
     ...overrides,
   };
 }
@@ -29,7 +31,14 @@ describe('readConversationCheckout', () => {
         },
       })
     );
-    expect(result).toEqual({ path: '/repos/app', location: 'live', branch: 'dev', dirty: false });
+    expect(result).toEqual({
+      path: '/repos/app',
+      location: 'live',
+      branch: 'dev',
+      dirty: false,
+      baseBranch: null,
+      offBaseFiles: 0,
+    });
     expect(identityAsked).toBe(false);
   });
 
@@ -39,6 +48,7 @@ describe('readConversationCheckout', () => {
       PROJECT,
       fakeGit({
         readCheckoutStatus: async () => ({ branch: toBranchName('feat/x'), dirty: true }),
+        countChangesOffBase: async () => 2,
       })
     );
     expect(result).toEqual({
@@ -46,6 +56,8 @@ describe('readConversationCheckout', () => {
       location: 'worktree',
       branch: 'feat/x',
       dirty: true,
+      baseBranch: 'dev',
+      offBaseFiles: 2,
     });
   });
 
@@ -74,7 +86,14 @@ describe('readConversationCheckout', () => {
         },
       })
     );
-    expect(result).toEqual({ path: '/repos/app', location: 'live', branch: null, dirty: null });
+    expect(result).toEqual({
+      path: '/repos/app',
+      location: 'live',
+      branch: null,
+      dirty: null,
+      baseBranch: null,
+      offBaseFiles: null,
+    });
   });
 
   test('an unreadable worktree identity is unknown, not live', async () => {
@@ -96,6 +115,67 @@ describe('readConversationCheckout', () => {
       location: null,
       branch: null,
       dirty: null,
+      baseBranch: null,
+      offBaseFiles: null,
     });
+  });
+
+  test('a dirty checkout whose changes are all on the base branch counts none off it', async () => {
+    const asked: string[] = [];
+    const result = await readConversationCheckout(
+      { cwd: null },
+      PROJECT,
+      fakeGit({
+        readCheckoutStatus: async () => ({ branch: toBranchName('dev'), dirty: true }),
+        countChangesOffBase: async (path, base) => {
+          asked.push(`${path}@${base}`);
+          return 0;
+        },
+      })
+    );
+    expect(result.dirty).toBe(true);
+    expect(result.offBaseFiles).toBe(0);
+    expect(asked).toEqual(['/repos/app@dev']);
+  });
+
+  test('a clean tree is not compared with the base at all', async () => {
+    const result = await readConversationCheckout(
+      { cwd: null },
+      PROJECT,
+      fakeGit({
+        countChangesOffBase: async () => {
+          throw new Error('should not be asked');
+        },
+      })
+    );
+    expect(result.offBaseFiles).toBe(0);
+  });
+
+  test('an unreadable comparison is unknown, not clean', async () => {
+    const result = await readConversationCheckout(
+      { cwd: null },
+      PROJECT,
+      fakeGit({
+        readCheckoutStatus: async () => ({ branch: toBranchName('dev'), dirty: true }),
+        countChangesOffBase: async () => {
+          throw new Error("No ref for base branch 'dev'");
+        },
+      })
+    );
+    expect(result).toMatchObject({ dirty: true, baseBranch: 'dev', offBaseFiles: null });
+  });
+
+  test('an unresolvable base branch is unknown, not clean', async () => {
+    const result = await readConversationCheckout(
+      { cwd: null },
+      PROJECT,
+      fakeGit({
+        readCheckoutStatus: async () => ({ branch: toBranchName('dev'), dirty: true }),
+        resolveBaseBranch: async () => {
+          throw new Error('origin/HEAD is not set');
+        },
+      })
+    );
+    expect(result).toMatchObject({ dirty: true, baseBranch: null, offBaseFiles: null });
   });
 });

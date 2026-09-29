@@ -62,6 +62,8 @@ export type { CheckoutStatus } from './branch';
 // Uncommitted changes, read-only
 export {
   readWorkingChanges,
+  countChangesOffBase,
+  BaseBranchNotFoundError,
   readWorkingFileDiff,
   listCheckoutFiles,
   NotAGitCheckoutError,
