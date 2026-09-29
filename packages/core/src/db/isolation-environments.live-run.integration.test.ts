@@ -34,7 +34,8 @@ mock.module('./connection', () => ({
   getDatabaseType: () => 'sqlite',
 }));
 
-const { create, getLiveRunOwningEnv } = await import('./isolation-environments');
+const { create, getLiveRunOwningEnv, getOpenChatOwningEnv } =
+  await import('./isolation-environments');
 
 // isolation_environments.codebase_id is NOT NULL with an enforced FK — seed a parent.
 await db.query(
@@ -197,5 +198,75 @@ describe('getLiveRunOwningEnv — real SQLite behavior', () => {
       id: 'run-still-paused',
       status: 'paused',
     });
+  });
+});
+
+describe('getOpenChatOwningEnv — real SQLite behavior (#240)', () => {
+  async function chatEnv(workflowId: string): Promise<string> {
+    const env = await create({
+      codebase_id: 'cb-1',
+      workflow_type: 'thread',
+      workflow_id: workflowId,
+      working_path: '/tmp/ops-client',
+      branch_name: '' as never,
+    });
+    return env.id;
+  }
+
+  async function seedChat(
+    id: string,
+    envId: string,
+    state: { completed?: boolean; deleted?: boolean; hidden?: boolean } = {}
+  ): Promise<void> {
+    await db.query(
+      `INSERT INTO remote_agent_conversations
+         (id, platform_type, platform_conversation_id, isolation_env_id, completed_at, deleted_at, hidden)
+       VALUES ($1, 'web', $1, $2, $3, $4, $5)`,
+      [
+        id,
+        envId,
+        state.completed ? '2026-09-28T06:30:00.000Z' : null,
+        state.deleted ? '2026-09-28T06:30:00.000Z' : null,
+        state.hidden ? 1 : 0,
+      ]
+    );
+  }
+
+  test('an open chat bound to the env pins it', async () => {
+    const envId = await chatEnv('chat-open');
+    await seedChat('chat-open', envId);
+
+    await expect(getOpenChatOwningEnv(envId)).resolves.toEqual({ id: 'chat-open' });
+  });
+
+  test('a completed chat does not pin the env', async () => {
+    const envId = await chatEnv('chat-completed');
+    await seedChat('chat-completed', envId, { completed: true });
+
+    await expect(getOpenChatOwningEnv(envId)).resolves.toBeNull();
+  });
+
+  test('a deleted chat does not pin the env', async () => {
+    const envId = await chatEnv('chat-deleted');
+    await seedChat('chat-deleted', envId, { deleted: true });
+
+    await expect(getOpenChatOwningEnv(envId)).resolves.toBeNull();
+  });
+
+  test('a hidden workflow worker does not pin the env — its run does', async () => {
+    const envId = await chatEnv('chat-worker');
+    await seedChat('chat-worker', envId, { hidden: true });
+
+    await expect(getOpenChatOwningEnv(envId)).resolves.toBeNull();
+  });
+
+  // #2868: every CLI-launched run leaves its conversation behind, never completed.
+  // A conversation a run was launched in belongs to that run, not to a chat.
+  test('a run conversation left behind by a finished run does not pin the env (#2868)', async () => {
+    const envId = await chatEnv('chat-cli-run');
+    await seedConversation('conv-cli-run', envId);
+    await seedRun('run-cli-done', 'conv-cli-run', 'completed');
+
+    await expect(getOpenChatOwningEnv(envId)).resolves.toBeNull();
   });
 });

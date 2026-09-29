@@ -223,6 +223,9 @@ const mockUpdateStatus = mock<typeof IsolationEnvironmentDb.updateStatus>(() => 
 const mockGetLiveRunOwningEnv = mock<typeof IsolationEnvironmentDb.getLiveRunOwningEnv>(() =>
   Promise.resolve(null)
 );
+const mockGetOpenChatOwningEnv = mock<typeof IsolationEnvironmentDb.getOpenChatOwningEnv>(() =>
+  Promise.resolve(null)
+);
 const mockGetById = mock<typeof IsolationEnvironmentDb.getById>(() => Promise.resolve(null));
 const mockListByCodebase = mock<typeof IsolationEnvironmentDb.listByCodebase>(() =>
   Promise.resolve([])
@@ -240,6 +243,7 @@ mock.module('../db/isolation-environments', () => ({
   listAllActiveWithCodebase: mockListAllActiveWithCodebase,
   updateStatus: mockUpdateStatus,
   getLiveRunOwningEnv: mockGetLiveRunOwningEnv,
+  getOpenChatOwningEnv: mockGetOpenChatOwningEnv,
   getById: mockGetById,
   listByCodebase: mockListByCodebase,
   listByCodebaseWithAge: mockListByCodebaseWithAge,
@@ -783,6 +787,8 @@ describe('runScheduledCleanup', () => {
     mockListAllActiveWithCodebase.mockClear();
     mockUpdateStatus.mockClear();
     mockGetLiveRunOwningEnv.mockClear();
+    mockGetOpenChatOwningEnv.mockReset();
+    mockGetOpenChatOwningEnv.mockResolvedValue(null);
     mockGetById.mockClear();
     mockGetCodebase.mockClear();
     mockDeleteOldSessions.mockClear();
@@ -1029,6 +1035,69 @@ describe('runScheduledCleanup', () => {
       reason: 'merged but run run-live is paused',
     });
     expect(report.removed).toHaveLength(0);
+  });
+
+  describe('a fresh chat worktree at its base tip (#240)', () => {
+    // Zero commits: the branch and the worktree HEAD both sit at the base tip, so
+    // every git signal reads "merged" and the verdict is reclaimable.
+    function freshChatEnv(): void {
+      mockListAllActiveWithCodebase.mockResolvedValueOnce([
+        makeEnvironmentWithCodebase({
+          id: 'env-fresh-chat',
+          working_path: '/workspace/repo/worktrees/thread-370d116c',
+          branch_name: 'archon/thread-370d116c',
+          status: 'active',
+          created_by_platform: 'web',
+          created_at: new Date(),
+          codebase_id: 'codebase-1',
+          workflow_type: 'thread',
+          workflow_id: 'web-1790576740024-38mwft',
+          provider: 'worktree',
+          metadata: {},
+        }),
+      ]);
+      mockWorktreeExists.mockResolvedValue(true);
+      mockIsBranchMerged.mockResolvedValue(true);
+      mockIsPatchEquivalent.mockResolvedValue(true);
+    }
+
+    test('is kept, with the reason, while its chat is open', async () => {
+      freshChatEnv();
+      mockGetOpenChatOwningEnv.mockResolvedValueOnce({ id: 'conv-open-1234' });
+
+      const report = await runScheduledCleanup();
+
+      expect(mockGetOpenChatOwningEnv).toHaveBeenCalledWith('env-fresh-chat');
+      expect(report.skipped).toContainEqual({
+        id: 'env-fresh-chat',
+        reason: 'merged but chat conv-ope is still open',
+      });
+      expect(report.removed).toHaveLength(0);
+      expect(mockDestroy).not.toHaveBeenCalled();
+      expect(mockUpdateStatus).not.toHaveBeenCalled();
+    });
+
+    test('is reclaimed once its chat is completed', async () => {
+      freshChatEnv();
+      // A completed chat no longer pins: getOpenChatOwningEnv answers null (default).
+      mockGetById.mockResolvedValueOnce(
+        makeEnvironment({
+          id: 'env-fresh-chat',
+          codebase_id: 'codebase-1',
+          working_path: '/workspace/repo/worktrees/thread-370d116c',
+          status: 'active',
+        })
+      );
+      mockGetCodebase.mockResolvedValueOnce(
+        makeCodebase({ id: 'codebase-1', name: 'test-repo', default_cwd: '/workspace/repo' })
+      );
+
+      const report = await runScheduledCleanup();
+
+      expect(mockGetOpenChatOwningEnv).toHaveBeenCalledWith('env-fresh-chat');
+      expect(report.removed).toContain('env-fresh-chat (merged)');
+      expect(report.skipped).toHaveLength(0);
+    });
   });
 
   test('skips stale environments with a live owning run', async () => {
@@ -1813,6 +1882,8 @@ describe('cleanupMergedWorktrees', () => {
     mockExecFileAsync.mockClear();
     mockDestroy.mockClear();
     mockGetLiveRunOwningEnv.mockClear();
+    mockGetOpenChatOwningEnv.mockReset();
+    mockGetOpenChatOwningEnv.mockResolvedValue(null);
     mockGetById.mockClear();
     mockListByCodebase.mockClear();
     mockGetDefaultBranch.mockClear();
@@ -2551,6 +2622,8 @@ describe('onConversationClosed', () => {
     mockGetById.mockClear();
     mockGetCodebase.mockClear();
     mockGetLiveRunOwningEnv.mockClear();
+    mockGetOpenChatOwningEnv.mockReset();
+    mockGetOpenChatOwningEnv.mockResolvedValue(null);
     mockGetConversationByPlatformId.mockClear();
     mockGetActiveSession.mockClear();
     mockUpdateConversation.mockClear();
@@ -2833,6 +2906,8 @@ describe('cleanupStaleWorktrees', () => {
     mockExecFileAsync.mockClear();
     mockDestroy.mockClear();
     mockGetLiveRunOwningEnv.mockClear();
+    mockGetOpenChatOwningEnv.mockReset();
+    mockGetOpenChatOwningEnv.mockResolvedValue(null);
     mockGetById.mockClear();
     mockListByCodebaseWithAge.mockClear();
     mockHasUncommittedChanges.mockClear();

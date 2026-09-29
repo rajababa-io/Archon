@@ -37,6 +37,7 @@ describe.skipIf(!baseUrl)('getLiveRunOwningEnv — real Postgres behavior', () =
   let db: import('./adapters/postgres').PostgresAdapter;
   let create: typeof import('./isolation-environments').create;
   let getLiveRunOwningEnv: typeof import('./isolation-environments').getLiveRunOwningEnv;
+  let getOpenChatOwningEnv: typeof import('./isolation-environments').getOpenChatOwningEnv;
 
   beforeAll(async () => {
     const { Pool } = await import('pg');
@@ -57,7 +58,8 @@ describe.skipIf(!baseUrl)('getLiveRunOwningEnv — real Postgres behavior', () =
       getDatabaseType: () => 'postgresql',
     }));
 
-    ({ create, getLiveRunOwningEnv } = await import('./isolation-environments'));
+    ({ create, getLiveRunOwningEnv, getOpenChatOwningEnv } =
+      await import('./isolation-environments'));
   });
 
   afterAll(async () => {
@@ -145,5 +147,29 @@ describe.skipIf(!baseUrl)('getLiveRunOwningEnv — real Postgres behavior', () =
     await seedRun(runId, conversationId, 'failed');
 
     await expect(getLiveRunOwningEnv(env.id)).resolves.toEqual({ id: runId, status: 'failed' });
+  });
+
+  // conversations.isolation_env_id is UUID here; the open-chat query compares it
+  // as text, and only a real server proves that parses (#240).
+  test('an open chat pins the env; completing it releases the pin (#240)', async () => {
+    const env = await createEnv('pg-open-chat');
+    const conversationId = '99999999-9999-4999-8999-999999999999';
+    await seedConversation(conversationId, env.id);
+
+    await expect(getOpenChatOwningEnv(env.id)).resolves.toEqual({ id: conversationId });
+
+    await db.query('UPDATE remote_agent_conversations SET completed_at = NOW() WHERE id = $1', [
+      conversationId,
+    ]);
+    await expect(getOpenChatOwningEnv(env.id)).resolves.toBeNull();
+  });
+
+  test('a run conversation left behind by a finished run does not pin the env (#2868)', async () => {
+    const env = await createEnv('pg-run-conv');
+    const conversationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    await seedConversation(conversationId, env.id);
+    await seedRun('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', conversationId, 'completed');
+
+    await expect(getOpenChatOwningEnv(env.id)).resolves.toBeNull();
   });
 });
