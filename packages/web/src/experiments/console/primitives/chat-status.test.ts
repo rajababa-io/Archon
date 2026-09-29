@@ -36,20 +36,17 @@ describe('chatStatus', () => {
   test('the seven states', () => {
     expect(chatStatus('a', sets(['a'], []))).toBe('working');
     expect(chatStatus('a', sets([], ['a']))).toBe('awaiting');
-    expect(chatStatus('a', sets([], [], [], ['a']))).toBe('unread');
     expect(chatStatus('a', sets([], [], ['a']))).toBe('done');
     expect(chatStatus('a', sets([], [], [], [], ['a']))).toBe('ready');
     expect(chatStatus('a', sets([], [], [], [], [], ['a']))).toBe('waiting');
     expect(chatStatus('a', sets([], []))).toBe('idle');
   });
 
-  // #209: a chat that calls watch_ci nearly always ends its turn with a reply,
-  // so under unread the state was almost never seen. It outranks unread, done
-  // and running; the live states and ready still outrank it.
-  test('waiting outranks unread, done and running, and nothing above them', () => {
+  // #209: waiting outranks done and running; the live states and ready still
+  // outrank it.
+  test('waiting outranks done and running, and nothing above them', () => {
     expect(chatStatus('a', sets(['a'], [], [], [], [], ['a']))).toBe('working');
     expect(chatStatus('a', sets([], ['a'], [], [], [], ['a']))).toBe('awaiting');
-    expect(chatStatus('a', sets([], [], [], ['a'], [], ['a']))).toBe('waiting');
     expect(chatStatus('a', sets([], [], ['a'], [], [], ['a']))).toBe('waiting');
     expect(chatStatus('a', sets([], [], [], [], [], ['a'], ['a']))).toBe('waiting');
     expect(chatStatus('a', sets([], [], [], [], ['a'], ['a']))).toBe('ready');
@@ -62,7 +59,6 @@ describe('chatStatus', () => {
     expect(chatStatus('a', sets([], [], [], [], [], [], ['a']))).toBe('running');
     expect(chatStatus('a', sets(['a'], [], [], [], [], [], ['a']))).toBe('working');
     expect(chatStatus('a', sets([], ['a'], [], [], [], [], ['a']))).toBe('awaiting');
-    expect(chatStatus('a', sets([], [], [], ['a'], [], [], ['a']))).toBe('unread');
     expect(chatStatus('a', sets([], [], ['a'], [], [], [], ['a']))).toBe('done');
     expect(chatStatus('a', sets([], [], [], [], ['a'], [], ['a']))).toBe('ready');
   });
@@ -81,35 +77,28 @@ describe('chatStatus', () => {
   test('ready outranks idle — a claim waiting on a decision is not nothing', () => {
     expect(chatStatus('a', sets([], [], [], [], ['a']))).toBe('ready');
   });
-  // The agent claiming its work landed is the new thing to read, and the
-  // decision it asks for is why the chat is worth opening (#181).
-  test('ready outranks unread', () => {
-    expect(chatStatus('a', sets([], [], [], ['a'], ['a']))).toBe('ready');
-  });
-  // `ready` jumps unread without dragging `done` over unread with it: a closed
-  // chat that has since spoken still shows unread, and done still settles ready.
-  test('done beats ready even when unread, and unread still beats done alone', () => {
-    expect(chatStatus('a', sets([], [], ['a'], ['a'], ['a']))).toBe('unread');
-    expect(chatStatus('a', sets([], [], ['a'], [], ['a']))).toBe('done');
-  });
   // Both live states are about right now, which outranks any claim about the
   // work as a whole — the rule `done` already follows.
   test('working and awaiting both outrank ready', () => {
     expect(chatStatus('a', sets(['a'], [], [], [], ['a']))).toBe('working');
     expect(chatStatus('a', sets([], ['a'], [], [], ['a']))).toBe('awaiting');
   });
-  // A chat mid-sentence is unfinished, not missed. Amber on every turn in
-  // flight is the noise that made the two previous attempts unusable.
-  test('working outranks unread — a streaming reply has not been missed', () => {
-    expect(chatStatus('a', sets(['a'], [], [], ['a']))).toBe('working');
-  });
-  test('awaiting outranks unread — the specific ask wins over the general one', () => {
-    expect(chatStatus('a', sets([], ['a'], [], ['a']))).toBe('awaiting');
-  });
-  // The inverse of 'both live states outrank done': a chat you called finished
-  // that has since spoken is worth looking at again, so unread beats green.
-  test('unread outranks done', () => {
-    expect(chatStatus('a', sets([], [], ['a'], ['a']))).toBe('unread');
+  // #5: whether you have read a chat and whose move it is are separate facts.
+  // Unread is drawn as a bold title, so it must never move the status — not
+  // over idle, not over done, not under anything.
+  test('unread never changes the status', () => {
+    const base: [string[], string[], string[]][] = [
+      [[], [], []],
+      [['a'], [], []],
+      [[], ['a'], []],
+      [[], [], ['a']],
+    ];
+    for (const [w, aw, d] of base) {
+      expect(chatStatus('a', sets(w, aw, d, ['a']))).toBe(chatStatus('a', sets(w, aw, d)));
+    }
+    expect(chatStatus('a', sets([], [], [], ['a'], ['a']))).toBe('ready');
+    expect(chatStatus('a', sets([], [], [], ['a'], [], ['a']))).toBe('waiting');
+    expect(chatStatus('a', sets([], [], [], ['a'], [], [], ['a']))).toBe('running');
   });
   // Green is a claim about the WORK; the other two are claims about right now,
   // and right now wins. A chat marked done that is asked another question has
@@ -314,10 +303,8 @@ describe('chatStatus when the working signal is missing', () => {
     ).toBe('idle');
   });
 
-  // Amber, but not the same amber-by-default the old rule produced: this chat
-  // is in the set because activity outran its read marker, and reading it
-  // takes it back out. That is what makes idle reachable.
-  test('unread is amber on its own, and is still not a call for help', () => {
+  // Unread alone is idle: the bold title says it, the status slot does not (#5).
+  test('unread on its own is idle, and is not a call for help', () => {
     expect(
       chatStatus('a', {
         working: none,
@@ -328,7 +315,7 @@ describe('chatStatus when the working signal is missing', () => {
         running: none,
         waiting: none,
       })
-    ).toBe('unread');
+    ).toBe('idle');
   });
 
   test('a gate still outranks working', () => {
@@ -400,25 +387,21 @@ describe('unreadIds', () => {
 
 describe('canMarkUnread', () => {
   test('an idle chat may be marked, including the one you have open', () => {
-    expect(canMarkUnread('idle', true)).toBe(true);
+    expect(canMarkUnread('idle', false, true)).toBe(true);
   });
 
   test('every other status is refused', () => {
-    for (const s of [
-      'working',
-      'awaiting',
-      'unread',
-      'done',
-      'ready',
-      'running',
-      'waiting',
-    ] as const) {
-      expect(canMarkUnread(s, true)).toBe(false);
+    for (const s of ['working', 'awaiting', 'done', 'ready', 'running', 'waiting'] as const) {
+      expect(canMarkUnread(s, false, true)).toBe(false);
     }
   });
 
+  test('a chat already unread is refused — the title is bold already', () => {
+    expect(canMarkUnread('idle', true, true)).toBe(false);
+  });
+
   test('a chat with no activity is refused — the mark could not show', () => {
-    expect(canMarkUnread('idle', false)).toBe(false);
+    expect(canMarkUnread('idle', false, false)).toBe(false);
   });
 });
 

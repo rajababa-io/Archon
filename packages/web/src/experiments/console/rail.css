@@ -102,6 +102,15 @@
   color: var(--text-primary);
   font-weight: 500;
 }
+/* Unread: it has moved since you last read it to the end. The TITLE carries
+   it, not the status dot (#5): whether you have read a chat and whose move it
+   is are separate facts, and the dot has room for one. Heavier than the open
+   row's 500, so the chat on screen still reads as unread until you reach its
+   bottom. */
+.rail-row.is-unread .rail-text {
+  color: var(--text-primary);
+  font-weight: 650;
+}
 
 /* Counts as a TABLE. Fixed-width cells so the eye reads DOWN a column instead
    of re-parsing each row; blank for zero, because an empty cell says "none"
@@ -910,14 +919,6 @@
    graphic and owes 3:1 rather than 4.5:1, which is the difference between
    amber and the ochre the word has to settle for. */
 .chat-status.is-awaiting {
-  color: var(--warning-mark);
-}
-/* Unread: it has moved since you last read it to the end. Shares awaiting's
-   amber deliberately — the two are different facts, but they ask a reader
-   scanning the rail for the same thing, and a second shade would have to be
-   decoded rather than scanned. The mark variant for the same reason as
-   awaiting: a dot owes 3:1, not the 4.5:1 the word has to settle for. */
-.chat-status.is-unread {
   color: var(--warning-mark);
 }
 /* Done: the unit of work this chat IS — an issue, a cluster of them — has

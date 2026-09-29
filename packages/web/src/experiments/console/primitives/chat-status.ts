@@ -1,10 +1,9 @@
 /**
- * What a chat is, in eight states.
+ * What a chat is, in seven states — whose move it is.
  *
  *   working   the server is executing a turn for it right now
  *   awaiting  it is your move — a run it started is paused on a gate, or the
  *             agent asked a question and has not been answered
- *   unread    it has moved since you last opened it
  *   done      a human said this chat's unit of work has landed
  *   ready     the AGENT says the work has landed, and no human has answered
  *   running   no turn is in flight, but a workflow run the chat started is
@@ -56,28 +55,16 @@
  * idle became a state nothing ever reached. A mark that is always on is not a
  * signal.
  *
- * `unread` is that idea built the way it had to be built. What was missing
- * both previous times was a way to turn the mark OFF — so it is a stored read
- * marker (`last_read_at`), written when a human opens the chat in a visible
- * tab, and unread is the COMPARISON against activity rather than a
- * property of the last message. Reading a chat clears it; idle stays reachable.
- *
- * It shares amber with `awaiting` because both ask the same thing of someone
- * scanning the rail. It ranks below `working` because a chat mid-sentence is
- * unfinished rather than unread.
+ * Whether you have READ a chat is not one of these states, and was once (#5).
+ * It is a separate fact — a chat can need you and be read, or be idle and
+ * unread — so it is a separate mark: the title goes bold (`unreadIds`, and
+ * `.rail-row.is-unread` in `rail.css`). As a state it had to share this slot,
+ * where it borrowed awaiting's amber and hid whose move it was behind it.
  */
 import { awaitsAnswer, awaitsApproval } from '@archon/awaiting';
 import { runOwnerChatId } from './run';
 
-export type ChatStatus =
-  | 'working'
-  | 'awaiting'
-  | 'unread'
-  | 'done'
-  | 'ready'
-  | 'running'
-  | 'waiting'
-  | 'idle';
+export type ChatStatus = 'working' | 'awaiting' | 'done' | 'ready' | 'running' | 'waiting' | 'idle';
 
 export interface ChatStatusSets {
   /** Platform conversation ids the server is executing a turn for. */
@@ -96,17 +83,15 @@ export interface ChatStatusSets {
    */
   done: ReadonlySet<string>;
   /**
-   * Chats that have moved since the reader last opened them.
-   *
-   * Ranked BELOW working, deliberately: a chat mid-sentence is unfinished, not
-   * unread, and marking it while it streams would put the whole rail amber for
-   * the duration of every turn.
+   * Chats that have moved since the reader last opened them. NOT a status —
+   * `chatStatus` never reads it. It rides here so every surface takes it from
+   * the same object as the dot beside it; the rail renders it as a bold title.
    */
   unread: ReadonlySet<string>;
   /**
    * Chats where the agent has declared the work finished and no human has
    * answered. Ranked BELOW `done` — a human's judgement settles the question
-   * the claim was asking — and ABOVE `waiting`, `unread` and `idle`, because "someone should decide" is
+   * the claim was asking — and ABOVE `waiting` and `idle`, because "someone should decide" is
    * strictly more than "nothing is pending".
    */
   ready: ReadonlySet<string>;
@@ -117,52 +102,41 @@ export interface ChatStatusSets {
   running: ReadonlySet<string>;
   /**
    * Chats with an open CI watch, read from /api/health beside `working`.
-   * Ranked directly above `unread`: a chat waiting on CI is still in flight,
-   * which is more to know than that it has replied since you last read it.
+   * Ranked directly below `ready`.
    */
   waiting: ReadonlySet<string>;
 }
 
 /**
- * Exclusive and ordered: awaiting, working, ready, waiting, unread, done,
- * running, idle — except that `done` always outranks `ready`.
+ * Exclusive and ordered: awaiting, working, ready, waiting, done, running,
+ * idle — except that `done` always outranks `ready`.
  *
  * The two live states come first because they are about right now, and right
- * now outranks a claim about the work as a whole. Unread sits under both: a
- * chat still streaming has not been missed yet, it is simply not finished, and
- * amber on every turn in flight would be noise. Done sits above idle because
- * "this landed" is strictly more than "nothing is pending", and under unread
- * because a finished chat that has since spoken is worth looking at again.
+ * now outranks a claim about the work as a whole. Done sits above idle because
+ * "this landed" is strictly more than "nothing is pending".
  *
  * There was once another set — chats whose last word was the agent's — ranked
  * below working so a streaming chat would not go amber mid-sentence. The
  * ranking was right and the STATE was wrong: every finished chat ends with the
- * agent, so every finished chat was amber, and idle became unreachable. It
- * also needed a `liveKnown` flag to be safe, because `working` is polled and an
- * unanswered poll would have read as a finished turn — machinery whose only
- * job was to stop a signal lying, which is a signal worth deleting instead.
+ * agent, so every finished chat was amber, and idle became unreachable. Its
+ * successor, unread, is built on a read marker that can turn off — and lives
+ * outside this ranking entirely, as the bold title (#5).
  *
- * `ready` sits above unread. The agent claiming its work landed IS the new
- * thing to look at, and the decision it asks for is the reason to open the
- * chat; showing amber instead hid which chats were finished until each one was
- * opened (#181). Under both live states for the same reason everything else
- * is. Over `idle` because a claim waiting on a decision is a thing to act on
- * and "nothing is pending" is not.
+ * `ready` is over `waiting`, `done` and `idle`: the agent claiming its work
+ * landed IS the new thing to look at, and the decision it asks for is the
+ * reason to open the chat (#181). Under both live states for the same reason
+ * everything else is.
  *
  * `done` still outranks `ready`, which is why `ready` is checked only for a
  * chat that is not done: the two answer the same question and the human's
  * answer settles it — a chat the server has been told is finished must not
- * still be asking. The exception is the reason for the `!done` guard, rather
- * than simply ranking done above both: that would put done over unread too,
- * and a closed chat that has since spoken is worth looking at again.
+ * still be asking.
  *
- * `waiting` sits above unread (#209). A chat that calls `watch_ci` almost always
- * ends its turn with a reply, so ranked under unread the purple state was
- * almost never seen, and a chat still in flight read as one merely unopened.
- * Under `working` because a turn in flight is the chat itself moving, where
- * waiting is the server holding a promise for it; under `ready` because a chat
- * that has claimed its work landed is asking for a decision, which outranks a
- * background wait.
+ * `waiting` sits above done (#209): a chat still in flight on CI is more to
+ * know than a claim about finished work. Under `working` because a turn in
+ * flight is the chat itself moving, where waiting is the server holding a
+ * promise for it; under `ready` because a chat that has claimed its work
+ * landed is asking for a decision, which outranks a background wait.
  *
  * `running` takes idle's place: before it existed, a
  * chat whose run was executing for twenty minutes said "Nothing is running in
@@ -177,7 +151,6 @@ export function chatStatus(conversationId: string, sets: ChatStatusSets): ChatSt
   if (sets.working.has(conversationId)) return 'working';
   if (sets.ready.has(conversationId) && !sets.done.has(conversationId)) return 'ready';
   if (sets.waiting.has(conversationId)) return 'waiting';
-  if (sets.unread.has(conversationId)) return 'unread';
   if (sets.done.has(conversationId)) return 'done';
   if (sets.running.has(conversationId)) return 'running';
   return 'idle';
@@ -272,7 +245,7 @@ export function askAwaitingIds(
 }
 
 /**
- * Chats that have moved since the reader last opened them.
+ * Chats that have moved since the reader last opened them — the bold title.
  *
  * This is the rule that failed twice as "the newest message is the agent's".
  * It failed because it could only ever turn ON: every finished chat ends with
@@ -373,7 +346,6 @@ export function runningRunIds(
 export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
   working: 'Working',
   awaiting: 'Needs you',
-  unread: 'Unread',
   done: 'Closed',
   ready: 'Ready to close',
   running: 'Run going',
@@ -383,12 +355,8 @@ export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
 
 /**
  * The token that renders each state. Amber is "your move", red stays failure.
- *
- * `unread` deliberately shares `awaiting`'s amber. The two are different facts
- * — one is a question you have not answered, the other is a message you have
- * not seen — but they ask for the same thing from a reader scanning the rail,
- * and a second shade of amber would have to be decoded rather than scanned.
- * The distinction stays available in the label and the tooltip.
+ * Amber is `awaiting` alone: it means something you can clear by acting, and
+ * an unread chat is marked by its bold title, never by amber (#5).
  *
  * `ready` shares `done`'s green and separates itself by GEOMETRY instead: the
  * rail draws it hollow where done is filled (`rail.css`, `.chat-status.is-ready
@@ -410,7 +378,6 @@ export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
 export const STATUS_COLOR: Readonly<Record<ChatStatus, string>> = {
   working: 'var(--running)',
   awaiting: 'var(--warning)',
-  unread: 'var(--warning)',
   done: 'var(--success)',
   ready: 'var(--success)',
   running: 'var(--running)',
@@ -421,7 +388,6 @@ export const STATUS_COLOR: Readonly<Record<ChatStatus, string>> = {
 export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {
   working: 'The agent is working on this chat right now',
   awaiting: 'This chat is waiting for your answer',
-  unread: 'This chat has replied since you last read it',
   done: "This chat's work is finished",
   ready: 'The work here has landed. Close this chat, or keep going',
   running: 'A workflow run this chat started is running',
@@ -432,8 +398,8 @@ export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {
 /**
  * Whether "Mark unread" may be used on a chat; when not, the row greys out.
  *
- * Only an `idle` chat may be marked. Every other status is either already
- * asking for attention (awaiting, unread, ready), already green by a human's
+ * Only an `idle` chat that is not already unread may be marked. Every other
+ * status is either already asking for attention (awaiting, ready), already green by a human's
  * hand (done), or still moving (working, running, waiting) — and a chat that
  * is still moving will mark itself when it next says something.
  *
@@ -444,6 +410,6 @@ export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {
  * A chat with no activity is refused too: unread is `last_activity_at >
  * last_read_at`, so with nothing on the activity side the mark cannot show.
  */
-export function canMarkUnread(status: ChatStatus, hasActivity: boolean): boolean {
-  return status === 'idle' && hasActivity;
+export function canMarkUnread(status: ChatStatus, unread: boolean, hasActivity: boolean): boolean {
+  return status === 'idle' && !unread && hasActivity;
 }

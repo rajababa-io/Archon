@@ -16,13 +16,12 @@ export type ChatGroupKey = 'needs-you' | 'working' | 'ready' | 'idle' | 'closed'
  * Which group each status belongs to. A Record over the status union, so a new
  * status is a type error here until it is given a place.
  *
- * `unread` is with `awaiting` because both are amber and both are what the
- * needs-you badge counts. `waiting` (on CI) and `running` (a workflow the chat
+ * Unread is not a status and has no group: an unread chat sits wherever whose
+ * move it is puts it, with its title in bold (#5). `waiting` (on CI) and `running` (a workflow the chat
  * started) are the agent's move, not yours, so they sit with `working`.
  */
 const GROUP_OF: Readonly<Record<ChatStatus, ChatGroupKey>> = {
   awaiting: 'needs-you',
-  unread: 'needs-you',
   working: 'working',
   waiting: 'working',
   running: 'working',

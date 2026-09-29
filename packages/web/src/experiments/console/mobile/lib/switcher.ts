@@ -9,24 +9,25 @@ import type { FoundChat } from '../../skills/conversations';
  * Most urgent first. A Record over the status union, so a new status is a type
  * error here until it is given a place.
  *
- * `awaiting` and `unread` lead because they are what the needs-you badge
- * counts; `working` next, because it is the thing most likely to change while
- * you look.
+ * `awaiting` leads because it is your move; `working` next, because it is the
+ * thing most likely to change while you look. Unread is not a status (#5): it
+ * breaks ties inside one, so an unread chat leads its peers.
  */
 const URGENCY: Readonly<Record<ChatStatus, number>> = {
   awaiting: 0,
-  unread: 1,
-  working: 2,
-  ready: 3,
-  waiting: 4,
-  running: 5,
-  idle: 6,
-  done: 7,
+  working: 1,
+  ready: 2,
+  waiting: 3,
+  running: 4,
+  idle: 5,
+  done: 6,
 };
 
 export interface SwitcherRow {
   chat: FoundChat['chat'];
   status: ChatStatus;
+  /** Moved since you last read it — drawn as a bold title. */
+  unread: boolean;
 }
 
 export interface SwitcherGroup {
@@ -42,6 +43,7 @@ function activity(iso: string | null): number {
 function byUrgency(a: SwitcherRow, b: SwitcherRow): number {
   return (
     URGENCY[a.status] - URGENCY[b.status] ||
+    Number(b.unread) - Number(a.unread) ||
     activity(b.chat.lastActivityAt) - activity(a.chat.lastActivityAt)
   );
 }
@@ -55,13 +57,14 @@ function byUrgency(a: SwitcherRow, b: SwitcherRow): number {
 export function switcherGroups(
   chats: readonly FoundChat[],
   statuses: ReadonlyMap<string, ChatStatus>,
+  unread: ReadonlySet<string>,
   projectLabel: (projectId: string) => string
 ): SwitcherGroup[] {
   const byProject = new Map<string, SwitcherRow[]>();
   for (const { chat, projectId } of chats) {
     if (chat.completed) continue;
     const rows = byProject.get(projectId) ?? [];
-    rows.push({ chat, status: statuses.get(chat.id) ?? 'idle' });
+    rows.push({ chat, status: statuses.get(chat.id) ?? 'idle', unread: unread.has(chat.id) });
     byProject.set(projectId, rows);
   }
   const groups = [...byProject].map(([projectId, rows]) => ({
@@ -72,7 +75,10 @@ export function switcherGroups(
     const first = (g: SwitcherGroup): SwitcherRow | undefined => g.rows[0];
     const ra = first(a);
     const rb = first(b);
-    const lead = ra !== undefined && rb !== undefined ? URGENCY[ra.status] - URGENCY[rb.status] : 0;
+    const lead =
+      ra !== undefined && rb !== undefined
+        ? URGENCY[ra.status] - URGENCY[rb.status] || Number(rb.unread) - Number(ra.unread)
+        : 0;
     return lead || projectLabel(a.projectId).localeCompare(projectLabel(b.projectId));
   });
 }
@@ -81,10 +87,15 @@ export function switcherGroups(
 export function projectChatRows(
   chats: readonly FoundChat[],
   statuses: ReadonlyMap<string, ChatStatus>,
+  unread: ReadonlySet<string>,
   projectId: string
 ): SwitcherRow[] {
   return chats
     .filter(c => c.projectId === projectId && !c.chat.completed)
-    .map(({ chat }) => ({ chat, status: statuses.get(chat.id) ?? 'idle' }))
+    .map(({ chat }) => ({
+      chat,
+      status: statuses.get(chat.id) ?? 'idle',
+      unread: unread.has(chat.id),
+    }))
     .sort(byUrgency);
 }

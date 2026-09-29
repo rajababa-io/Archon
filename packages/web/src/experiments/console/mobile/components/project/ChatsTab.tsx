@@ -22,8 +22,8 @@ export function ChatsTab({
   const [creating, setCreating] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const rows = useMemo(
-    () => projectChatRows(chats.chats ?? [], chats.statuses, projectId),
-    [chats.chats, chats.statuses, projectId]
+    () => projectChatRows(chats.chats ?? [], chats.statuses, chats.statusSets.unread, projectId),
+    [chats.chats, chats.statuses, chats.statusSets.unread, projectId]
   );
 
   // The chat screen finds a chat in the every-project list, so the list is
@@ -69,9 +69,9 @@ export function ChatsTab({
         <p className="mobile-note">No open chats in this project.</p>
       ) : (
         <ul aria-label="Chats in this project">
-          {rows.map(({ chat, status }) => (
+          {rows.map(({ chat, status, unread }) => (
             <li key={chat.id}>
-              <ChatRow chat={chat} status={status} />
+              <ChatRow chat={chat} status={status} unread={unread} />
             </li>
           ))}
         </ul>

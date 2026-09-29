@@ -59,7 +59,8 @@ describe('chatStatuses', () => {
       work: 'working',
       gate: 'awaiting',
       asked: 'awaiting',
-      new: 'unread',
+      // #5: unread is the bold title, not a status.
+      new: 'idle',
       ci: 'waiting',
       run: 'running',
       quiet: 'idle',
@@ -68,11 +69,21 @@ describe('chatStatuses', () => {
 });
 
 describe('wantingCount', () => {
-  test('counts awaiting and unread — never working, done or ready', () => {
+  test('counts awaiting and unread — never working, done or ready on their own', () => {
     expect(
-      wantingCount(m({ a: 'awaiting', b: 'unread', c: 'working', d: 'done', e: 'ready' }))
+      wantingCount(
+        m({ a: 'awaiting', b: 'idle', c: 'working', d: 'done', e: 'ready' }),
+        new Set(['b'])
+      )
     ).toBe(2);
-    expect(wantingCount(new Map())).toBe(0);
+    expect(wantingCount(new Map(), new Set())).toBe(0);
+  });
+  // Unread is a set beside the status now (#5), so the two can overlap.
+  test('a chat both awaiting and unread counts once', () => {
+    expect(wantingCount(m({ a: 'awaiting' }), new Set(['a']))).toBe(1);
+  });
+  test('an unread chat counts whatever its status', () => {
+    expect(wantingCount(m({ a: 'done', b: 'ready' }), new Set(['a', 'b']))).toBe(2);
   });
 });
 
@@ -88,11 +99,6 @@ describe('badgeText', () => {
 });
 
 describe('chatAlerts', () => {
-  test('working to unread is finished', () => {
-    expect(chatAlerts(m({ a: 'working' }), m({ a: 'unread' }))).toEqual([
-      { id: 'a', kind: 'finished' },
-    ]);
-  });
   test('working to idle, done or ready is finished', () => {
     const got = chatAlerts(
       m({ a: 'working', b: 'working', c: 'working' }),
@@ -111,15 +117,12 @@ describe('chatAlerts', () => {
     ]);
   });
   test('no alert for a chat seen for the first time — page load is not news', () => {
-    expect(chatAlerts(new Map(), m({ a: 'awaiting', b: 'unread' }))).toEqual([]);
+    expect(chatAlerts(new Map(), m({ a: 'awaiting', b: 'idle' }))).toEqual([]);
   });
   test('no alert when nothing changed, or on starting to work, or on being read', () => {
-    expect(
-      chatAlerts(
-        m({ a: 'awaiting', b: 'idle', c: 'unread' }),
-        m({ a: 'awaiting', b: 'working', c: 'idle' })
-      )
-    ).toEqual([]);
+    expect(chatAlerts(m({ a: 'awaiting', b: 'idle' }), m({ a: 'awaiting', b: 'working' }))).toEqual(
+      []
+    );
   });
 });
 

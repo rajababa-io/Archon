@@ -14,7 +14,7 @@
  * moment it exists, instead of when somebody remembers to add it.
  *
  * It asserts a rule EXISTS, not which colour it sets. The two surfaces
- * legitimately differ: `is-awaiting` and `is-unread` use `--warning-mark` where
+ * legitimately differ: `is-awaiting` uses `--warning-mark` where
  * `STATUS_COLOR` uses `--warning`, because a dot is a graphic and owes 3:1 while
  * the text owes 4.5:1. Pinning them equal would force one of those to be wrong.
  *
@@ -40,7 +40,6 @@ describe('the rail mark covers every status', () => {
     expect(statuses).toEqual([
       'working',
       'awaiting',
-      'unread',
       'done',
       'ready',
       'running',
@@ -58,5 +57,18 @@ describe('the rail mark covers every status', () => {
     // text — white — on every state that forgets one.
     const rule = RAIL_CSS.split(`.chat-status.is-${status} {`)[1]?.split('}')[0] ?? '';
     expect(rule).toMatch(/color:\s*var\(--/);
+  });
+});
+
+// #5: unread is the title's weight, never the dot. A leftover `.chat-status.is-unread`
+// would be dead now, and a missing title rule would leave unread invisible.
+describe('unread is drawn on the title, not the mark', () => {
+  test('the title rule exists and sets a weight', () => {
+    const rule = RAIL_CSS.split('.rail-row.is-unread .rail-text {')[1]?.split('}')[0] ?? '';
+    expect(rule).toMatch(/font-weight:\s*\d+/);
+  });
+
+  test('no status mark rule for unread survives', () => {
+    expect(RAIL_CSS).not.toContain('.chat-status.is-unread');
   });
 });
