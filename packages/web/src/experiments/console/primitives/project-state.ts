@@ -61,10 +61,10 @@ export function projectState({
   const why =
     [
       awaiting > 0 ? `${String(awaiting)} thing${awaiting === 1 ? '' : 's'} waiting on you` : null,
-      running > 0 ? `${String(running)} run${running === 1 ? '' : 's'} executing` : null,
       workingChats > 0
         ? `${String(workingChats)} chat${workingChats === 1 ? '' : 's'} working`
         : null,
+      running > 0 ? `${String(running)} run${running === 1 ? '' : 's'} executing` : null,
       openIssues > 0 ? `${String(openIssues)} open issue${openIssues === 1 ? '' : 's'}` : null,
       chats > 0 ? `${String(chats)} chat${chats === 1 ? '' : 's'}` : null,
     ]
