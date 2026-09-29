@@ -54,7 +54,7 @@ export const MD_COMPONENTS: Components = {
       return <code className={className}>{children}</code>;
     }
     return (
-      <code className="rounded bg-surface-inset px-1 py-[1px] text-body text-text-primary">
+      <code className="rounded bg-surface-inset px-1 py-[1px] text-body text-text-primary wrap-anywhere">
         {children}
       </code>
     );
