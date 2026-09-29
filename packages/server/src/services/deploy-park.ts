@@ -12,17 +12,18 @@
  * row whose owner it cannot see. Startup orphan cleanup stays off.
  *
  * WHAT PARKS, AND WHAT KEEPS THE DEPLOY WAITING INSTEAD.
- * - A web chat: its running turn is interrupted and its queued messages are taken
- *   and persisted. Other platforms have no dispatcher this server can re-invoke for
- *   a persisted message, and a queued message without a replayable payload cannot
- *   be delivered later, so those are reported blocked and waited for.
+ * - A chat on any platform this server holds a `ParkedTurnDispatcher` for: its
+ *   running turn is interrupted and its queued messages are taken and persisted.
+ *   A chat on a platform with no dispatcher has nowhere to be handed back to, and
+ *   a queued message without a replayable payload cannot be delivered later, so
+ *   those are reported blocked and waited for.
  * - A workflow run this process executes, that is top-level, has no live child
  *   run, and can be resumed by the server. It is paused on a `park` wait; the
  *   executor stops at the next layer boundary. Anything else is blocked.
  */
 import type { ConversationLockManager, ParkableTurn } from '@archon/core';
-import { DeployParkAbort } from '@archon/core';
-import type { AttachedFile } from '@archon/core/types';
+import { classifyAndFormatError, DeployParkAbort, handleMessage } from '@archon/core';
+import type { AttachedFile, Conversation, IPlatformAdapter } from '@archon/core/types';
 import * as conversationDb from '@archon/core/db/conversations';
 import * as messageDb from '@archon/core/db/messages';
 import * as parkedWorkDb from '@archon/core/db/parked-work';
@@ -96,13 +97,21 @@ export type ReplayTurn =
   | { kind: 'queued'; turn: ParkableTurn };
 
 /**
- * Delivers a replayed turn to a conversation by its database id.
- * `conversation_missing` means there is nowhere to deliver it, which is final.
+ * Delivers a replayed turn to its conversation, through the dispatch the owning
+ * platform uses for any turn. Replay owns order and at-most-once; this owns
+ * delivery.
  */
 export type ParkedTurnDispatcher = (
-  conversationId: string,
+  conversation: Conversation,
   turn: ReplayTurn
-) => Promise<'dispatched' | 'refused_draining' | 'conversation_missing'>;
+) => Promise<'dispatched' | 'refused_draining'>;
+
+/**
+ * The dispatchers this server holds, by `platform_type`. A platform with no entry
+ * is not parked, and a row parked for one is left owed until it has one — an
+ * adapter that starts after the boot replay picks its rows up on the next tick.
+ */
+export type ParkedTurnDispatchers = ReadonlyMap<string, ParkedTurnDispatcher>;
 
 export type ParkLockManager = Pick<
   ConversationLockManager,
@@ -180,6 +189,7 @@ async function parkRuns(
 
 async function parkChats(
   lockManager: ParkLockManager,
+  dispatchers: ParkedTurnDispatchers,
   drainId: string,
   blocked: ParkBlocked[]
 ): Promise<{ stopping: Promise<void>[] }> {
@@ -192,11 +202,14 @@ async function parkChats(
   const stopping: Promise<void>[] = [];
   for (const platformId of ids) {
     if (alreadyParked.has(platformId)) continue;
-    const conversation = await conversationDb.getConversationByPlatformId('web', platformId);
-    if (!conversation) {
-      blocked.push({ kind: 'chat', id: platformId, reason: 'non_web_platform' });
+    // The lock manager keys on the platform id alone; those are unique across
+    // platforms (see `findConversationByPlatformId`).
+    const conversation = await conversationDb.findConversationByPlatformId(platformId);
+    if (!conversation || !dispatchers.has(conversation.platform_type)) {
+      const reason = conversation ? 'platform_cannot_resume' : 'no_conversation_record';
+      blocked.push({ kind: 'chat', id: platformId, reason });
       getLog().info(
-        { conversationId: platformId, reason: 'non_web_platform' },
+        { conversationId: platformId, platformType: conversation?.platform_type, reason },
         'drain.park_blocked'
       );
       continue;
@@ -285,6 +298,7 @@ async function waitAtMost(promise: Promise<unknown>, ms: number): Promise<void> 
  */
 export async function parkForDeploy(
   lockManager: ParkLockManager,
+  dispatchers: ParkedTurnDispatchers,
   options: ParkOptions = {}
 ): Promise<ParkReport> {
   const drainId = lockManager.getDrainId();
@@ -292,7 +306,7 @@ export async function parkForDeploy(
   const blocked: ParkBlocked[] = [];
 
   const { parkedRunIds } = await parkRuns(drainId, blocked);
-  const { stopping } = await parkChats(lockManager, drainId, blocked);
+  const { stopping } = await parkChats(lockManager, dispatchers, drainId, blocked);
 
   await waitAtMost(Promise.all(stopping), options.turnStopWaitMs ?? PARK_TURN_STOP_WAIT_MS);
 
@@ -348,15 +362,17 @@ async function releaseReplayed(lockManager: ReplayLockManager): Promise<void> {
  * Rows of one conversation are dispatched in `seq` order; the lock manager queues
  * each behind the one before. A dispatch refused because drain came back gives
  * its claim back and stops that conversation, so the rest replay later, still in
- * order. A pass that reaches the end lets new messages into every conversation
- * with nothing left to replay; until then they queue behind the replay.
+ * order. A conversation whose platform has no dispatcher here is not claimed at
+ * all: it stays owed until a pass that has one. A pass that reaches the end lets
+ * new messages into every conversation with nothing left to replay; until then
+ * they queue behind the replay.
  *
  * Parked workflow runs need nothing here: the continuation scanner resumes them
  * once the server stops draining.
  */
 export async function replayParked(
   lockManager: ReplayLockManager,
-  dispatch: ParkedTurnDispatcher
+  dispatchers: ParkedTurnDispatchers
 ): Promise<void> {
   if (replayInProgress || lockManager.isDraining()) return;
   replayInProgress = true;
@@ -366,14 +382,32 @@ export async function replayParked(
     for (const row of rows) {
       if (stoppedConversations.has(row.conversationId)) continue;
       if (lockManager.isDraining()) return;
+      const conversation = await conversationDb.getConversationById(row.conversationId);
+      const dispatch = conversation ? dispatchers.get(conversation.platform_type) : undefined;
+      if (conversation && !dispatch) {
+        getLog().warn(
+          { conversationId: row.conversationId, platformType: conversation.platform_type },
+          'deploy_park.replay_platform_unavailable'
+        );
+        stoppedConversations.add(row.conversationId);
+        continue;
+      }
       if (!(await parkedWorkDb.claimParkedRow(row.id))) continue;
       getLog().info(
         { parkedId: row.id, conversationId: row.conversationId, kind: row.kind, seq: row.seq },
         'deploy_park.replay_claimed'
       );
+      if (!conversation || !dispatch) {
+        // Nowhere to deliver it, which is final: the row stays claimed.
+        getLog().warn(
+          { parkedId: row.id, conversationId: row.conversationId },
+          'deploy_park.replay_conversation_missing'
+        );
+        continue;
+      }
       let outcome: Awaited<ReturnType<ParkedTurnDispatcher>>;
       try {
-        outcome = await dispatch(row.conversationId, replayTurn(row));
+        outcome = await dispatch(conversation, replayTurn(row));
       } catch (error) {
         getLog().error(
           { err: error as Error, parkedId: row.id, conversationId: row.conversationId },
@@ -381,12 +415,7 @@ export async function replayParked(
         );
         outcome = 'refused_draining';
       }
-      if (outcome === 'conversation_missing') {
-        getLog().warn(
-          { parkedId: row.id, conversationId: row.conversationId },
-          'deploy_park.replay_conversation_missing'
-        );
-      } else if (outcome === 'refused_draining') {
+      if (outcome === 'refused_draining') {
         await parkedWorkDb.unclaimParkedRow(row.id);
         stoppedConversations.add(row.conversationId);
       }
@@ -395,4 +424,63 @@ export async function replayParked(
   } finally {
     replayInProgress = false;
   }
+}
+
+/**
+ * The dispatcher for a platform whose turns are plain `handleMessage` calls under
+ * the conversation lock — every adapter but the web one, whose turns also carry
+ * SSE and transcript bookkeeping (`dispatchParkedTurn` in routes/api.ts).
+ *
+ * The conversation's worktree and provider session were bound by the turn that
+ * was parked, so the resume needs none of the first-message context (thread
+ * history, isolation hints) the adapter's own handler gathers.
+ */
+export function adapterParkedTurnDispatcher(
+  adapter: IPlatformAdapter,
+  lockManager: Pick<ConversationLockManager, 'acquireLock'>,
+  handle: typeof handleMessage = handleMessage
+): ParkedTurnDispatcher {
+  return async (conversation, turn) => {
+    const platformId = conversation.platform_conversation_id;
+    if (turn.kind === 'resume') {
+      // Before the dispatch, so the notice sits above the reply it introduces.
+      const say = adapter.sendDurableNotice
+        ? adapter.sendDurableNotice(platformId, TURN_RESUMED_NOTICE, { category: 'turn_resumed' })
+        : adapter.sendMessage(platformId, TURN_RESUMED_NOTICE);
+      await say.catch((err: unknown) => {
+        getLog().warn({ err, conversationId: platformId }, 'turn_resumed_notice_failed');
+      });
+    }
+    const message = turn.kind === 'resume' ? turn.prompt : turn.turn.text;
+    const userId = (turn.kind === 'resume' ? turn.userId : turn.turn.userId) ?? undefined;
+    const attachedFiles = turn.kind === 'queued' ? turn.turn.attachedFiles : [];
+    const result = await lockManager.acquireLock(
+      platformId,
+      async ({ signal }) => {
+        try {
+          await handle(adapter, platformId, message, {
+            ...(userId !== undefined ? { userId } : {}),
+            ...(attachedFiles.length > 0 ? { attachedFiles } : {}),
+            abortSignal: signal,
+          });
+        } catch (error) {
+          getLog().error(
+            { err: error as Error, conversationId: platformId },
+            'deploy_park.replayed_turn_failed'
+          );
+          await adapter
+            .sendMessage(platformId, classifyAndFormatError(error as Error, adapter))
+            .catch((sendError: unknown) => {
+              getLog().error(
+                { err: sendError, conversationId: platformId },
+                'error_message_send_failed'
+              );
+            });
+        }
+      },
+      undefined,
+      'replay'
+    );
+    return result.status === 'refused-draining' ? 'refused_draining' : 'dispatched';
+  };
 }

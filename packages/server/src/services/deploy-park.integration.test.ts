@@ -3,9 +3,10 @@
  *
  * Real `ConversationLockManager`, real `parkForDeploy` / `replayParked`, a real
  * SQLite database, and a scripted chat turn that runs until it is interrupted —
- * the long agent turn a deploy cannot wait out. The only fake is the dispatcher a
- * resumed turn is handed to, because what is under test is WHAT gets replayed and
- * in which order, not the orchestrator it is replayed into.
+ * the long agent turn a deploy cannot wait out. For web chats the only fake is the
+ * dispatcher a resumed turn is handed to, because what is under test is WHAT gets
+ * replayed and in which order. For every other platform the dispatcher is the real
+ * `adapterParkedTurnDispatcher`, and only the orchestrator it hands off to is fake.
  *
  * Runs in its own `bun test` invocation (see package.json): it replaces the core
  * database connection with an in-memory adapter.
@@ -29,8 +30,17 @@ const messageDb = await import('@archon/core/db/messages');
 const parkedWorkDb = await import('@archon/core/db/parked-work');
 const workflowDb = await import('@archon/core/db/workflows');
 const { startRunLiveOwner } = await import('@archon/core/services/run-live-owner');
-const { parkForDeploy, replayParked, DEPLOY_RESUME_PROMPT } = await import('./deploy-park');
+const sessionDb = await import('@archon/core/db/sessions');
+const {
+  adapterParkedTurnDispatcher,
+  parkForDeploy,
+  replayParked,
+  DEPLOY_RESUME_PROMPT,
+  TURN_RESUMED_NOTICE,
+} = await import('./deploy-park');
 type ReplayTurn = import('./deploy-park').ReplayTurn;
+type ParkedTurnDispatcher = import('./deploy-park').ParkedTurnDispatcher;
+type IPlatformAdapter = import('@archon/core/types').IPlatformAdapter;
 type LockManager = InstanceType<typeof ConversationLockManager>;
 
 /** A turn that runs until the manager aborts it, and remembers why it ended. */
@@ -66,17 +76,22 @@ interface Dispatched {
   turn: ReplayTurn;
 }
 
+/** Only web chats can be parked or replayed: what a web-only server holds. */
+const webOnly = (dispatch: ParkedTurnDispatcher): Map<string, ParkedTurnDispatcher> =>
+  new Map([['web', dispatch]]);
+const PARK_WEB = webOnly(async () => 'dispatched');
+
 function recordingDispatcher(
   answer: (call: Dispatched) => 'dispatched' | 'refused_draining' = () => 'dispatched'
-): { calls: Dispatched[]; dispatch: Parameters<typeof replayParked>[1] } {
+): { calls: Dispatched[]; dispatch: Map<string, ParkedTurnDispatcher> } {
   const calls: Dispatched[] = [];
   return {
     calls,
-    dispatch: async (conversationId, turn) => {
-      const call = { conversationId, turn };
+    dispatch: webOnly(async (conversation, turn) => {
+      const call = { conversationId: conversation.id, turn };
       calls.push(call);
       return answer(call);
-    },
+    }),
   };
 }
 
@@ -113,13 +128,13 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     owners.push(await startRunLiveOwner('run-owned'));
 
     oldServer.beginDrain(600);
-    const report = await parkForDeploy(oldServer, { runFinishWindowMs: 0 });
+    const report = await parkForDeploy(oldServer, PARK_WEB, { runFinishWindowMs: 0 });
 
     // What was parked, and what keeps the deploy waiting.
     expect(report.parked).toEqual({ chats: 3, queuedMessages: 1, runs: 1 });
     expect(report.blocked).toEqual(
       expect.arrayContaining([
-        { kind: 'chat', id: 'slack-thread', reason: 'non_web_platform' },
+        { kind: 'chat', id: 'slack-thread', reason: 'platform_cannot_resume' },
         { kind: 'run', id: 'run-elsewhere', reason: 'not_owned_by_this_server' },
       ])
     );
@@ -140,7 +155,7 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     expect((await workflowDb.getWorkflowRun('run-elsewhere'))?.status).toBe('running');
 
     // Re-asking is harmless: nothing is parked twice.
-    const again = await parkForDeploy(oldServer, { runFinishWindowMs: 0 });
+    const again = await parkForDeploy(oldServer, PARK_WEB, { runFinishWindowMs: 0 });
     expect(again.parked).toEqual(report.parked);
 
     // THE SWAP. A new process: fresh lock manager, same database.
@@ -244,7 +259,7 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     });
 
     server.beginDrain(600);
-    await parkForDeploy(server, { runFinishWindowMs: 0 });
+    await parkForDeploy(server, PARK_WEB, { runFinishWindowMs: 0 });
     await parked.ended;
 
     // The deploy failed before its swap. Between the cancel and the replay:
@@ -255,12 +270,12 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     expect(unrelated.status).toBe('started');
 
     // Delivery the way the web dispatcher does it: through the same lock, as a replay.
-    const dispatch: Parameters<typeof replayParked>[1] = async (conversationId, replayed) => {
-      expect(conversationId).toBe(chat);
+    const dispatch = webOnly(async (conversation, replayed) => {
+      expect(conversation.id).toBe(chat);
       const label = replayed.kind === 'resume' ? 'resume' : `replayed:${replayed.turn.text}`;
       await server.acquireLock('chat-unparked', turn(label), undefined, 'replay');
       return 'dispatched';
-    };
+    });
     await replayParked(server, dispatch);
     for (let tick = 0; tick < 100 && log.length < 4; tick++) await Promise.resolve();
 
@@ -281,15 +296,15 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
     ];
 
     server.beginDrain(600);
-    await parkForDeploy(server, { runFinishWindowMs: 0 });
+    await parkForDeploy(server, PARK_WEB, { runFinishWindowMs: 0 });
     await Promise.all(ownedTurns.map(turn => turn.ended));
     server.cancelDrain();
 
-    const dispatch: Parameters<typeof replayParked>[1] = async conversationId => {
-      if (conversationId === owed) return 'refused_draining';
+    const dispatch = webOnly(async conversation => {
+      if (conversation.id === owed) return 'refused_draining';
       await server.acquireLock('chat-done', async () => {}, undefined, 'replay');
       return 'dispatched';
-    };
+    });
     await replayParked(server, dispatch);
     for (let tick = 0; tick < 100 && server.isActive('chat-done'); tick++) await Promise.resolve();
 
@@ -300,6 +315,136 @@ describe('a deploy parks a busy server and the next server resumes it', () => {
   });
 
   test('parking outside a drain is refused, so nothing is parked only to be replayed at once', async () => {
-    await expect(parkForDeploy(new ConversationLockManager(10))).rejects.toThrow('not draining');
+    await expect(parkForDeploy(new ConversationLockManager(10), PARK_WEB)).rejects.toThrow(
+      'not draining'
+    );
+  });
+});
+
+/** An adapter that records what it was asked to say, in order. */
+function fakeAdapter(platformType: string): { adapter: IPlatformAdapter; said: string[] } {
+  const said: string[] = [];
+  const adapter = {
+    getPlatformType: () => platformType,
+    sendMessage: async (_conversationId: string, message: string): Promise<void> => {
+      said.push(message);
+    },
+  } as unknown as IPlatformAdapter;
+  return { adapter, said };
+}
+
+interface Handled {
+  platformId: string;
+  message: string;
+  sessionId: string | undefined;
+  hasAbortSignal: boolean;
+  saidBefore: number;
+}
+
+describe('a chat on any platform with a dispatcher is parked and resumed in its session', () => {
+  const PLATFORMS = ['slack', 'telegram', 'discord', 'github', 'gitlab', 'gitea'];
+
+  test.each(PLATFORMS)('%s', async platformType => {
+    const platformId = `${platformType}-mid-turn`;
+    const conversation = await conversationDb.getOrCreateConversation(platformType, platformId);
+    const session = await sessionDb.createSession({
+      conversation_id: conversation.id,
+      ai_assistant_type: 'claude',
+      assistant_session_id: `provider-session-${platformType}`,
+    });
+    await messageDb.addMessage(conversation.id, 'user', 'fix the flaky test');
+
+    // The old server: the turn is mid-flight when the deploy parks it.
+    const oldServer = new ConversationLockManager(10);
+    const { adapter: oldAdapter } = fakeAdapter(platformType);
+    const parkDispatchers = new Map([
+      [platformType, adapterParkedTurnDispatcher(oldAdapter, oldServer, async () => {})],
+    ]);
+    const turn = scriptedLongTurn(oldServer, platformId);
+    oldServer.beginDrain(600);
+    const report = await parkForDeploy(oldServer, parkDispatchers, { runFinishWindowMs: 0 });
+    expect(report.blocked.filter(item => item.kind === 'chat')).toEqual([]);
+    expect(report.parked.chats).toBe(1);
+    expect(await turn.ended).toBeInstanceOf(DeployParkAbort);
+
+    // The new server replays it through the same kind of dispatcher.
+    const newServer = new ConversationLockManager(10);
+    const { adapter, said } = fakeAdapter(platformType);
+    const handled: Handled[] = [];
+    const handle = async (
+      platform: IPlatformAdapter,
+      id: string,
+      message: string,
+      context?: { abortSignal?: AbortSignal }
+    ): Promise<void> => {
+      expect(platform).toBe(adapter);
+      handled.push({
+        platformId: id,
+        message,
+        sessionId: (await sessionDb.getActiveSession(conversation.id))?.id,
+        hasAbortSignal: context?.abortSignal instanceof AbortSignal,
+        saidBefore: said.length,
+      });
+    };
+    await replayParked(
+      newServer,
+      new Map([[platformType, adapterParkedTurnDispatcher(adapter, newServer, handle)]])
+    );
+    for (let tick = 0; tick < 100 && handled.length === 0; tick++) await Promise.resolve();
+
+    expect(handled).toHaveLength(1);
+    const [resumed] = handled;
+    expect(resumed?.platformId).toBe(platformId);
+    expect(resumed?.message.startsWith(DEPLOY_RESUME_PROMPT)).toBe(true);
+    expect(resumed?.message).toContain('> fix the flaky test');
+    // Same conversation, same active provider session: the resume continues it.
+    expect(resumed?.sessionId).toBe(session.id);
+    // A resumed turn can itself be parked by the next deploy.
+    expect(resumed?.hasAbortSignal).toBe(true);
+    // The chat is told it is back before the reply it introduces.
+    expect(said).toEqual([TURN_RESUMED_NOTICE]);
+    expect(resumed?.saidBefore).toBe(1);
+    expect((await parkedWorkDb.summarizeDrain(report.drainId)).resumed.chats).toBe(1);
+  });
+
+  test('a lock with no conversation behind it is blocked with its own reason', async () => {
+    const server = new ConversationLockManager(10);
+    scriptedLongTurn(server, 'no-such-conversation');
+    server.beginDrain(600);
+    const report = await parkForDeploy(server, PARK_WEB, { runFinishWindowMs: 0 });
+    expect(report.blocked.filter(item => item.kind === 'chat')).toEqual([
+      { kind: 'chat', id: 'no-such-conversation', reason: 'no_conversation_record' },
+    ]);
+    expect(server.isActive('no-such-conversation')).toBe(true);
+  });
+
+  test('a parked chat whose adapter is not up yet stays owed until it is', async () => {
+    const conversation = await conversationDb.getOrCreateConversation('telegram', 'tg-late');
+    await parkedWorkDb.insertParkedChat('9c8d7e6f-5a4b-4c3d-8e2f-1a0b9c8d7e6f', conversation.id, [
+      { kind: 'chat_resume', seq: 0, content: '', attachedFiles: [], userId: null },
+    ]);
+
+    // The boot replay runs before Telegram starts.
+    const server = new ConversationLockManager(10);
+    await replayParked(server, PARK_WEB);
+    const owed = await parkedWorkDb.listUnresumedParkedChats();
+    expect(owed.map(row => row.conversationId)).toContain(conversation.id);
+
+    // The next tick, with Telegram up.
+    const handled: string[] = [];
+    const { adapter } = fakeAdapter('telegram');
+    await replayParked(
+      server,
+      new Map([
+        [
+          'telegram',
+          adapterParkedTurnDispatcher(adapter, server, async (_p, _id, message) => {
+            handled.push(message);
+          }),
+        ],
+      ])
+    );
+    for (let tick = 0; tick < 100 && handled.length === 0; tick++) await Promise.resolve();
+    expect(handled).toEqual([DEPLOY_RESUME_PROMPT]);
   });
 });

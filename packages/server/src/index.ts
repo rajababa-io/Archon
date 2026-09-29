@@ -107,7 +107,11 @@ import {
   workflowResumeConversationId,
   workflowResumeTargetForConversation,
 } from './services/workflow-resume-service';
-import { replayParked } from './services/deploy-park';
+import {
+  adapterParkedTurnDispatcher,
+  replayParked,
+  type ParkedTurnDispatcher,
+} from './services/deploy-park';
 import {
   handleMessage,
   pool,
@@ -644,12 +648,13 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
 
         // Fire-and-forget: handler returns immediately, processing happens async
         lockManager
-          .acquireLock(conversationId, async () => {
+          .acquireLock(conversationId, async ({ signal }) => {
             await handleMessage(discordAdapter, conversationId, content, {
               threadContext,
               parentConversationId,
               isolationHints: { workflowType: 'thread', workflowId: conversationId },
               userId,
+              abortSignal: signal,
             });
           })
           .then(result => notifyDrainRefusal('Discord', discordAdapter, conversationId, result))
@@ -721,12 +726,13 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
 
         // Fire-and-forget: handler returns immediately, processing happens async
         lockManager
-          .acquireLock(conversationId, async () => {
+          .acquireLock(conversationId, async ({ signal }) => {
             await handleMessage(slackAdapter, conversationId, content, {
               threadContext,
               parentConversationId,
               isolationHints: { workflowType: 'thread', workflowId: conversationId },
               userId,
+              abortSignal: signal,
             });
           })
           .then(result => notifyDrainRefusal('Slack', slackAdapter, conversationId, result))
@@ -843,8 +849,21 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // server is not draining: at boot, when a deploy cancels its drain, and on every
   // continuation tick. It replays only rows the park step wrote, so it never guesses
   // about work it did not park.
+  // Keyed by platform type. Telegram joins after the listener opens, so its parked
+  // chats wait for the first continuation tick rather than the boot replay.
+  const parkedTurnDispatchers = new Map<string, ParkedTurnDispatcher>([
+    ['web', apiRoutes.dispatchParkedTurn],
+  ]);
+  const addParkedTurnDispatcher = (adapter: IPlatformAdapter | null): void => {
+    if (adapter === null) return;
+    parkedTurnDispatchers.set(
+      adapter.getPlatformType(),
+      adapterParkedTurnDispatcher(adapter, lockManager)
+    );
+  };
+  for (const adapter of [github, gitea, gitlab, discord, slack]) addParkedTurnDispatcher(adapter);
   const replayParkedWork = (): Promise<void> =>
-    replayParked(lockManager, apiRoutes.dispatchParkedTurn).catch((err: unknown) => {
+    replayParked(lockManager, parkedTurnDispatchers).catch((err: unknown) => {
       getLog().error({ err }, 'deploy_park.replay_failed');
     });
 
@@ -915,7 +934,13 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // so the default install gains no new surface. See ./routes/internal-drain.
   const drainToken = process.env.ARCHON_DRAIN_TOKEN?.trim();
   if (drainToken) {
-    registerInternalDrainRoutes(app, lockManager, drainToken, replayParkedWork);
+    registerInternalDrainRoutes(
+      app,
+      lockManager,
+      drainToken,
+      parkedTurnDispatchers,
+      replayParkedWork
+    );
     registerDeployPolicyRoute(app, drainToken);
   }
 
@@ -1131,10 +1156,11 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
 
         // Fire-and-forget: handler returns immediately, processing happens async
         lockManager
-          .acquireLock(conversationId, async () => {
+          .acquireLock(conversationId, async ({ signal }) => {
             await handleMessage(telegramAdapter, conversationId, message, {
               isolationHints: { workflowType: 'thread', workflowId: conversationId },
               userId,
+              abortSignal: signal,
             });
           })
           .then(result => notifyDrainRefusal('Telegram', telegramAdapter, conversationId, result))
@@ -1158,6 +1184,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // adapter is initialized. Web background runs execute against a hidden worker
   // conversation but deliver to their visible parent; other runs use their owning
   // conversation directly.
+  addParkedTurnDispatcher(telegram);
   const workflowPlatforms = new Map<string, IWorkflowPlatform>();
   for (const platform of [webAdapter, github, gitea, gitlab, discord, slack, telegram]) {
     if (platform !== null) workflowPlatforms.set(platform.getPlatformType(), platform);

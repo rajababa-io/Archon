@@ -788,13 +788,14 @@ Use 'glab mr view ${String(mr.iid)}' for full details and 'glab mr diff ${String
         'gitlab.thread_context_loaded'
       );
 
-      const acquisition = await this.lockManager.acquireLock(conversationId, async () => {
+      const acquisition = await this.lockManager.acquireLock(conversationId, async ({ signal }) => {
         try {
           await handleMessage(this, conversationId, finalMessage, {
             issueContext: contextToAppend,
             threadContext,
             isolationHints,
             userId: archonUserId,
+            abortSignal: signal,
           });
         } catch (error) {
           const err = toError(error);

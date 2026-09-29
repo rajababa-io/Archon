@@ -29,7 +29,12 @@ import type { ConversationLockManager } from '@archon/core';
 import { summarizeDrain } from '@archon/core/db/parked-work';
 import { createLogger } from '@archon/paths';
 import { MAX_DRAIN_BUDGET_SECONDS } from './drain-budget';
-import { NotDrainingError, parkForDeploy, type ParkLockManager } from '../services/deploy-park';
+import {
+  NotDrainingError,
+  parkForDeploy,
+  type ParkedTurnDispatchers,
+  type ParkLockManager,
+} from '../services/deploy-park';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -72,6 +77,8 @@ export function isAuthorizedDrainRequest(
 }
 
 /**
+ * @param dispatchers The platforms this server can hand a parked chat back to; a
+ *   chat on any other platform is left running and reported blocked.
  * @param replayParked Resumes parked chats. Cancelling drain calls it, so a deploy
  *   that fails before its swap hands parked work straight back to this server.
  */
@@ -79,6 +86,7 @@ export function registerInternalDrainRoutes(
   app: OpenAPIHono,
   lockManager: DrainTarget,
   token: string,
+  dispatchers: ParkedTurnDispatchers,
   replayParked: () => Promise<void>
 ): void {
   app.post('/internal/drain', async c => {
@@ -131,7 +139,7 @@ export function registerInternalDrainRoutes(
       return c.json({ error: 'unauthorized' }, 401);
     }
     try {
-      const report = await parkForDeploy(lockManager);
+      const report = await parkForDeploy(lockManager, dispatchers);
       return c.json(report);
     } catch (error) {
       if (error instanceof NotDrainingError) return c.json({ error: error.message }, 409);
