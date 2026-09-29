@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { IssueThread } from './IssueDialog';
+import { IssueDialog, IssueThread } from './IssueDialog';
 import { Markdown } from './Markdown';
 import type { GithubIssueDetail } from '../skills';
 
@@ -136,5 +136,17 @@ describe('Markdown images', () => {
     expect(html.match(/<a /g)).toHaveLength(1);
     expect(html).toContain('href="https://example.com/full.jpg"');
     expect(html).toContain('<img src="/files/a/pic.jpg"');
+  });
+});
+
+describe('IssueDialog', () => {
+  test('a chat with no project says there is no repository, without asking the server', () => {
+    const html = renderToStaticMarkup(
+      <IssueDialog projectId={null} number={96} onClose={() => undefined} />
+    );
+    expect(html).toContain('Issue #96');
+    expect(html).toContain('This chat belongs to no project, so there is no repository to read.');
+    // No copy of the issue, so no link to one.
+    expect(html).not.toContain('github.com');
   });
 });

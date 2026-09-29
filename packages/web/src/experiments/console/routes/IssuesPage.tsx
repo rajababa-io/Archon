@@ -338,6 +338,7 @@ export function IssuesPage(): ReactElement {
       {open !== null ? (
         <IssueDialog
           projectId={projectId}
+          number={open.issue.number}
           issue={open.issue}
           placement={open.placement}
           onClose={() => {

@@ -640,10 +640,40 @@
    the card and ate the click. A cover on the button rather than a click
    handler on the row: the row menu is portalled, and a React click from it
    bubbles to the row, so picking "Close" would also open the chat. */
-.chatlist .rail-row > button::after {
+.chatlist .chat-open::after {
   content: '';
   position: absolute;
   inset: 0;
+}
+/* Empty and unpositioned, so its cover resolves against the row. The title
+   beside it is a sibling rather than its content — see `.chat-issue`. */
+.chatlist .chat-open {
+  display: block;
+  width: 0;
+  height: 0;
+}
+.console-root .chatlist .chat-open:focus-visible {
+  outline: none;
+}
+.console-root .chatlist .chat-open:focus-visible::after {
+  outline: 2px solid var(--accent-ring);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+/* A leading #N in a chat title opens that issue. Above the opener's cover,
+   or the cover would take the click; styled as the title's own text until
+   hovered, so a titled chat reads like any other. */
+.chatlist .chat-issue {
+  position: relative;
+  z-index: 1;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.chatlist .chat-issue:hover {
+  color: var(--accent-bright);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .chatlist .rail-row .rail-text {
   display: -webkit-box;
