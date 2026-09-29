@@ -1086,6 +1086,14 @@ export class SqliteAdapter implements IDatabase {
         PRIMARY KEY (scope, scope_id)
       );
 
+      CREATE TABLE IF NOT EXISTS remote_agent_console_view_prefs (
+        person TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        view TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        PRIMARY KEY (person, scope_id)
+      );
+
       -- Workflow events table
       CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),

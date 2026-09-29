@@ -547,6 +547,17 @@ A push is sent when a chat starts waiting on you (an unanswered ask block, or a 
 
 ---
 
+## Console views
+
+The console tab each signed-in person last picked, so All projects and each project reopen on it from any device. The person is the email on a verified Cloudflare Access pass (`ARCHON_CF_ACCESS_TEAM_DOMAIN`, `ARCHON_CF_ACCESS_AUD`); without one both routes answer 401 and the console remembers the tab in the browser only.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/console/views` | `{ views }` — the caller's choices by scope id: `""` for All projects, otherwise a project id |
+| PUT | `/api/console/views` | One choice: `{ scopeId, view }`, where `view` is `overview`, `runs`, `chat`, `issues` or `files` |
+
+---
+
 ## Configuration
 
 | Method | Path | Description |

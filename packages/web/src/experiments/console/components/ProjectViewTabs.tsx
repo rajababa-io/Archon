@@ -3,7 +3,7 @@ import * as skill from '../skills';
 import { useEntity } from '../store/cache';
 import { ALL_SCOPE, K } from '../store/keys';
 import { Link } from 'react-router';
-import { writeProjectView, type ProjectView } from '../lib/project-view';
+import { ALL_PROJECTS_SCOPE, writeProjectView, type ProjectView } from '../lib/project-view';
 import type { RunCounts } from '../skills/runs';
 
 interface ProjectViewTabsProps {
@@ -82,8 +82,9 @@ function ViewTab({
  * The project's tab control. Active styling mirrors FilterChips (brand-bar
  * underline).
  *
- * Picking a tab records it as this project's view, so returning to the project
- * later lands on the same one. The write happens on click, before navigation,
+ * Picking a tab records it as this project's view, for the signed-in person
+ * where there is one, so returning to the project later — on any device —
+ * lands on the same one. The write happens on click, before navigation,
  * so choosing Runs is seen as a choice rather than bounced back to Chat.
  */
 export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): ReactElement {
@@ -117,7 +118,8 @@ export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): Re
 }
 
 /**
- * Runs | Chat across every project.
+ * Runs | Chat across every project. Picking one records it the way a project's
+ * tab does, so All projects reopens on it.
  *
  * The counts mean what a project's mean: runs in play (running, paused or
  * queued, not the lifetime total) and open chats. The chat count reads the
@@ -144,6 +146,9 @@ export function AllProjectsTabs({ active }: { active: ProjectView }): ReactEleme
           label={label}
           count={counts[key]}
           isActive={key === active}
+          onClick={() => {
+            writeProjectView(ALL_PROJECTS_SCOPE, key);
+          }}
         />
       ))}
     </div>
