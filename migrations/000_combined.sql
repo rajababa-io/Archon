@@ -856,6 +856,19 @@ CREATE TABLE IF NOT EXISTS remote_agent_deploy_not_started (
 COMMENT ON TABLE remote_agent_deploy_not_started IS
   'Merges that should have started a project''s deploy and did not, with the reason. Read into the project''s deploy log.';
 
+-- The console tab each signed-in person last picked (#251). See
+-- migrations/042_console_view_prefs.sql.
+CREATE TABLE IF NOT EXISTS remote_agent_console_view_prefs (
+  person TEXT NOT NULL,
+  scope_id TEXT NOT NULL,
+  view VARCHAR(16) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (person, scope_id)
+);
+
+COMMENT ON TABLE remote_agent_console_view_prefs IS
+  'Last console tab per signed-in person: All projects (scope_id empty) and each project.';
+
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases
 -- created the narrow CHECK; re-adding the named constraint converges them. Every

@@ -9,7 +9,7 @@ import { DraftRunCard } from '../components/DraftRunCard';
 import { PendingInputBanner } from '../components/PendingInputBanner';
 import { useEntity } from '../store/cache';
 import { K, type Scope } from '../store/keys';
-import { readProjectView } from '../lib/project-view';
+import { ALL_PROJECTS_SCOPE, loadServerViews, readProjectView } from '../lib/project-view';
 import { useKeymap, type Binding } from '../lib/keymap';
 import * as skill from '../skills';
 import { runDetailPath, type Run } from '../primitives/run';
@@ -303,23 +303,43 @@ export function RunsPage(): ReactElement {
   const [searchParams] = useSearchParams();
   const demoMode = searchParams.get('demo') === '1';
 
-  // Land on the view this project was last opened in, and on Overview when it
-  // has never been opened. Overview is the default because it answers "what is
-  // this and where is it" — the question you have on arriving, which a list of
-  // runs does not answer.
+  // Land on the tab this scope was last opened in. A project never opened lands
+  // on Overview, because it answers "what is this and where is it" — the
+  // question you have on arriving, which a list of runs does not answer. All
+  // projects never opened stays here, on Runs.
   //
-  // The stored preference still wins, per project: a project you always work in
-  // Chat keeps opening in Chat. Only the project's index route redirects — a
-  // deep link to a run is explicit, and each tab records itself before
-  // navigating, so nothing is ever bounced back. `replace` keeps the skipped
-  // entry out of history, so Back still leaves the project rather than
-  // ping-ponging.
+  // The stored preference wins, per scope: a project you always work in Chat
+  // keeps opening in Chat. Only the index routes redirect — a deep link to a
+  // run is explicit, and each tab records itself before navigating, so nothing
+  // is ever bounced back. `replace` keeps the skipped entry out of history, so
+  // Back still leaves rather than ping-ponging.
+  //
+  // Looked at twice: once from this browser's copy, on the first frame, and
+  // again when the signed-in person's own choices arrive from the server — on a
+  // device that has never opened this scope the second look is the one that
+  // knows. Leaving the page before then cancels it.
   useEffect(() => {
-    if (projectId === undefined) return;
-    const view = readProjectView(projectId) ?? 'overview';
-    if (view !== 'runs') {
-      void navigate(`/console/p/${projectId}/${view}`, { replace: true });
-    }
+    let here = true;
+    const land = (): void => {
+      if (!here) return;
+      if (projectId === undefined) {
+        if (readProjectView(ALL_PROJECTS_SCOPE) === 'chat') {
+          here = false;
+          void navigate('/console/chat', { replace: true });
+        }
+        return;
+      }
+      const view = readProjectView(projectId) ?? 'overview';
+      if (view !== 'runs') {
+        here = false;
+        void navigate(`/console/p/${projectId}/${view}`, { replace: true });
+      }
+    };
+    land();
+    void loadServerViews().then(land);
+    return (): void => {
+      here = false;
+    };
   }, [projectId, navigate]);
 
   // Default to `running` — where the user's attention belongs. Completed is a

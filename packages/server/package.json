@@ -167,6 +167,9 @@
       "src/routes/push.test.ts"
     ],
     [
+      "src/routes/console-views.test.ts"
+    ],
+    [
       "src/services/deploy-park.integration.test.ts"
     ]
   ]

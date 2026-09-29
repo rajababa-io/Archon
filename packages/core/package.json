@@ -145,6 +145,9 @@
       "src/db/push.integration.test.ts"
     ],
     [
+      "src/db/console-view-prefs.integration.test.ts"
+    ],
+    [
       "src/db/conversations.order.integration.test.ts"
     ],
     [
