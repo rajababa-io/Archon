@@ -463,7 +463,7 @@ function ChatView({
           ref={scrollRef}
           {...scrollerProps}
           onClickCapture={openImage}
-          className="h-full overflow-y-auto overscroll-contain px-3 pt-3 pb-3"
+          className="h-full overflow-x-hidden overflow-y-auto overscroll-contain px-3 pt-3 pb-3"
           style={pull > 0 ? { transform: `translateY(${String(pull)}px)` } : undefined}
         >
           <div ref={contentRef} className="flex flex-col gap-3">

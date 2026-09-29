@@ -216,7 +216,7 @@ export function ChatStatusStrip({
       </div>
 
       {expanded && trace.length > 0 ? (
-        <ol className="ml-3 flex flex-col gap-[0.1875rem] border-l border-border pl-3 text-small">
+        <ol className="ml-3 flex flex-col gap-[0.1875rem] self-stretch border-l border-border pl-3 text-small">
           {hidden > 0 ? (
             <li className="text-text-tertiary">
               + {hidden} earlier {hidden === 1 ? 'step' : 'steps'}
