@@ -380,3 +380,39 @@ export function useEntity<T>(key: string, loader: () => Promise<T>): EntityView<
     },
   };
 }
+
+/**
+ * `useEntity` over a list of keys, for a view that reads many entries at once
+ * — a total across rows that each read their own. A hook cannot be called in
+ * a loop, so this subscribes to every key through the same `subscribeKey`
+ * primitive and re-renders when any one of them changes.
+ *
+ * Each item carries its own loader, paired with its key for the same reason
+ * `KeyedLoader` exists: a loader is only ever a correct answer for one key.
+ * Subscribing alongside a row that already reads the key costs no extra
+ * request — the load is shared through `inflight` and the cache.
+ */
+export function useEntities<T>(items: readonly KeyedLoader<T>[]): (T | undefined)[] {
+  const latest = useRef(items);
+  latest.current = items;
+  const keysSig = items.map(i => i.key).join('\n');
+
+  const subscribe = useCallback(
+    (onStoreChange: () => void): (() => void) => {
+      const offs = latest.current.map(i => subscribeKey(i.key, onStoreChange, i.loader));
+      return (): void => {
+        for (const off of offs) off();
+      };
+    },
+    // Keyed on the key LIST, not the item array: a new array each render with
+    // the same keys must not tear down and re-run every load.
+    [keysSig]
+  );
+
+  // A string of the per-key version counters: strings compare by value, so the
+  // snapshot is stable until some key actually changes.
+  const snapshot = (): string => latest.current.map(i => versionOf(i.key)).join(',');
+  useSyncExternalStore(subscribe, snapshot, snapshot);
+
+  return items.map(i => cache.get(i.key) as T | undefined);
+}
