@@ -149,6 +149,14 @@
 .rail-row:focus-within .rail-reveal {
   opacity: 1;
 }
+/* No hover on a touchscreen, so an affordance that waits for one never comes.
+   The ⋯ is the only way to a row's menu on iPhone, which fires no contextmenu
+   on long-press. */
+@media (hover: none) {
+  .rail-reveal {
+    opacity: 1;
+  }
+}
 
 .rail-ibtn {
   display: grid;
@@ -158,6 +166,18 @@
   border-radius: 5px;
   color: var(--text-tertiary);
   flex: 0 0 auto;
+}
+/* A finger needs more than 20px. The hit area grows past the glyph without
+   growing the reserved slot, so the row's layout is the same on every device. */
+@media (pointer: coarse) {
+  .rail-ibtn {
+    position: relative;
+  }
+  .rail-ibtn::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
 }
 .rail-ibtn:hover {
   background: var(--border);
@@ -645,6 +665,13 @@
 .chatlist .chat-open {
   position: absolute;
   inset: 0;
+}
+/* The ⋯ sits above `.chat-open`, or a tap on it would open the chat instead
+   of its menu. Centred on the title's first line, like the status dot. */
+.chatlist .rail-actions {
+  position: relative;
+  z-index: 1;
+  height: calc(var(--text-body) * 1.35);
 }
 .console-root .chatlist .chat-open:focus-visible {
   outline-offset: -2px;

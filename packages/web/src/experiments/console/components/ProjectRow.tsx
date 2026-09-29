@@ -5,7 +5,7 @@ import { openInIde, useIdeEnv } from '../lib/health';
 import { setIdentity, useProjectIdentity } from '../lib/project-identity';
 import { pushIdentity } from '../lib/presentation-sync';
 import { ProjectCountCells } from './ProjectCountCells';
-import { MenuItem, MenuSeparator, RowMenu } from './RowMenu';
+import { MenuItem, MenuSeparator, RowMenu, RowMenuButton } from './RowMenu';
 import { projectLabel, useDisplayName, setDisplayName } from '../lib/display-name';
 import { formatProjectLocator } from '../lib/format';
 import type { Project } from '../primitives/project';
@@ -23,16 +23,6 @@ interface ProjectRowProps {
   registerRow?: (el: HTMLElement | null) => void;
   onDragBegin?: () => void;
   onDragEnd?: () => void;
-}
-
-function DotsIcon({ size = 17 }: { size?: number }): ReactElement {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="5" cy="12" r="1.7" />
-      <circle cx="12" cy="12" r="1.7" />
-      <circle cx="19" cy="12" r="1.7" />
-    </svg>
-  );
 }
 
 /**
@@ -239,7 +229,7 @@ export function ProjectRow({
           the quiet projects shouting. */}
         <ProjectCountCells projectId={project.id} />
 
-        {/* Hover actions: env vars + ⋯ menu. */}
+        {/* The ⋯ menu: on hover with a mouse, always shown on touch (rail.css). */}
         {/* The slot is always reserved and only its CONTENTS fade, so revealing
           the menu button can never reflow the row. The old version swapped a
           LIVE badge out for the buttons on the selected row, which is exactly
@@ -247,19 +237,12 @@ export function ProjectRow({
         <div className={`rail-hide rail-actions ${menuOpen ? '' : 'rail-reveal'}`}>
           {onRemove !== undefined ? (
             <div className="relative">
-              <button
-                type="button"
-                onClick={e => {
-                  e.stopPropagation();
+              <RowMenuButton
+                open={menuOpen}
+                onToggle={() => {
                   setMenuOpen(v => !v);
                 }}
-                title="More actions"
-                aria-label="More actions"
-                aria-expanded={menuOpen}
-                className="rail-ibtn"
-              >
-                <DotsIcon />
-              </button>
+              />
               <RowMenu
                 anchor={rowEl}
                 open={menuOpen}

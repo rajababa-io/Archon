@@ -23,7 +23,7 @@ import {
   type ChatStatusSets,
 } from '../primitives/chat-status';
 import { groupChatsByStatus } from '../primitives/chat-groups';
-import { MenuCheckItem, MenuItem, RowMenu } from './RowMenu';
+import { MenuCheckItem, MenuItem, RowMenu, RowMenuButton } from './RowMenu';
 import { IssueDialog } from './IssueDialog';
 import { titleParts } from '../lib/title-issues';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
@@ -549,6 +549,16 @@ export function ConversationRail({
             ) : null}
           </div>
         )}
+
+        {/* Right-click is not the only way in: iPhone never fires it. */}
+        <div className={`rail-actions ${menuFor === c.id ? '' : 'rail-reveal'}`}>
+          <RowMenuButton
+            open={menuFor === c.id}
+            onToggle={() => {
+              setMenuFor(menuFor === c.id ? null : c.id);
+            }}
+          />
+        </div>
 
         <RowMenu
           anchor={rowRefs.current.get(c.id) ?? null}

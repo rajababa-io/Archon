@@ -154,6 +154,56 @@ export function MenuSeparator(): ReactElement {
   return <div role="separator" className="mx-1.5 my-1 h-px bg-border" />;
 }
 
+function DotsIcon(): ReactElement {
+  return (
+    <svg width={17} height={17} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="5" cy="12" r="1.7" />
+      <circle cx="12" cy="12" r="1.7" />
+      <circle cx="19" cy="12" r="1.7" />
+    </svg>
+  );
+}
+
+/**
+ * The ⋯ that opens a row's menu — the way in that does not need a right-click.
+ *
+ * Right-click alone left the menu unreachable on iPhone: iOS Safari never fires
+ * `contextmenu` on a long-press. The button sits in the row's reserved
+ * `.rail-actions` slot; rail.css shows it on hover where there is a hover, and
+ * always where there is not.
+ */
+export function RowMenuButton({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}): ReactElement {
+  return (
+    <button
+      type="button"
+      // The menu closes on any pointerdown outside itself, and this button is
+      // outside it: without this, a tap meant to close would close and then
+      // reopen.
+      onPointerDown={e => {
+        e.stopPropagation();
+      }}
+      onClick={e => {
+        // The row, and the list around it, have click handlers of their own.
+        e.stopPropagation();
+        onToggle();
+      }}
+      title="More actions"
+      aria-label="More actions"
+      aria-haspopup="menu"
+      aria-expanded={open}
+      className="rail-ibtn"
+    >
+      <DotsIcon />
+    </button>
+  );
+}
+
 export interface RowMenuProps {
   /**
    * The row the menu belongs to; its rect is what the menu is placed against.
@@ -231,7 +281,10 @@ export function RowMenu({
 
   useEffect(() => {
     if (!open) return;
-    const onPointer = (e: MouseEvent): void => {
+    // `pointerdown`, not `mousedown`: iOS Safari sends the compatibility mouse
+    // events for a tap only on elements it judges clickable, so a tap on plain
+    // page left the menu open.
+    const onPointer = (e: PointerEvent): void => {
       const t = e.target as Node | null;
       if (t !== null && panelRef.current?.contains(t) === true) return;
       onClose();
@@ -239,10 +292,10 @@ export function RowMenu({
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose();
     };
-    document.addEventListener('mousedown', onPointer);
+    document.addEventListener('pointerdown', onPointer);
     document.addEventListener('keydown', onKey);
     return (): void => {
-      document.removeEventListener('mousedown', onPointer);
+      document.removeEventListener('pointerdown', onPointer);
       document.removeEventListener('keydown', onKey);
     };
   }, [open, onClose]);
