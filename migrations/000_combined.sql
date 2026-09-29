@@ -870,6 +870,11 @@ CREATE TABLE IF NOT EXISTS remote_agent_console_view_prefs (
 COMMENT ON TABLE remote_agent_console_view_prefs IS
   'Last console tab per signed-in person: All projects (scope_id empty) and each project.';
 
+-- The branch production runs from, for a project deploying outside Archon
+-- (#265, #266). See migrations/044_project_deploy_production_branch.sql.
+ALTER TABLE remote_agent_project_deploy
+  ADD COLUMN IF NOT EXISTS production_branch VARCHAR(255);
+
 -- A project that deploys itself on another host and asks Archon first (#220).
 -- See migrations/043_project_deploy_remote.sql.
 ALTER TABLE remote_agent_project_deploy
@@ -1065,6 +1070,8 @@ COMMENT ON COLUMN remote_agent_project_deploy.remote_url IS
   'Where Deploy now is sent for a remote-host deploy. NULL for every other method.';
 COMMENT ON COLUMN remote_agent_project_deploy.remote_token_sha256 IS
   'SHA-256 (hex) of the credential a remote-host deploy presents. The credential is never stored.';
+COMMENT ON COLUMN remote_agent_project_deploy.production_branch IS
+  'The branch that holds what is live when the project deploys outside Archon. NULL: live is the newest completed Archon deploy run.';
 
 -- Sessions
 CREATE INDEX IF NOT EXISTS idx_remote_agent_sessions_conversation

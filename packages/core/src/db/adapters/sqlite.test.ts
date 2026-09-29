@@ -234,7 +234,12 @@ describe('SqliteAdapter upgrade path', () => {
     await upgraded.close();
 
     expect(columnsOf(path, 'remote_agent_project_deploy')).toEqual(
-      expect.arrayContaining(['workflow_name', 'remote_url', 'remote_token_sha256'])
+      expect.arrayContaining([
+        'workflow_name',
+        'remote_url',
+        'remote_token_sha256',
+        'production_branch',
+      ])
     );
     expect(columnsOf(path, 'remote_agent_deploy_reports')).toEqual(
       expect.arrayContaining(['verdict', 'sha', 'live_sha', 'reason'])

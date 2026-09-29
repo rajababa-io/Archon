@@ -160,10 +160,10 @@ export function waitingFromHistory(raw: unknown, liveSha: string | null): Waitin
       reachedLive = true;
       break;
     }
-    const pr = node.associatedPullRequests?.nodes?.find(p => p?.merged === true);
-    if (pr?.number !== undefined && !seen.has(pr.number)) {
+    const pr = mergedPr(node);
+    if (pr !== null && !seen.has(pr.number)) {
       seen.add(pr.number);
-      prs.push({ number: pr.number, title: pr.title ?? '', url: pr.url ?? '' });
+      prs.push(pr);
     }
   }
   const more = liveSha === null ? nodes.length >= HISTORY_PAGE : !reachedLive;
@@ -220,9 +220,230 @@ export async function readWaiting(
   return { waiting: value, reason };
 }
 
+// ─── Waiting, against a production branch ───────────────────────────────────
+
+const BEHIND_QUERY = `
+  query($owner:String!,$repo:String!,$work:String!,$prod:String!,$last:Int!){
+    repository(owner:$owner,name:$repo){
+      work:ref(qualifiedName:$work){ target{ oid } }
+      prod:ref(qualifiedName:$prod){
+        target{ oid ... on Commit { committedDate } }
+        compare(headRef:$work){
+          aheadBy
+          commits(last:$last){
+            nodes{
+              oid
+              associatedPullRequests(first:1){ nodes{ number title url merged } }
+            }
+          }
+        }
+      }
+    }
+  }`;
+
+interface RawNode {
+  oid?: string;
+  associatedPullRequests?: {
+    nodes?: ({ number?: number; title?: string; url?: string; merged?: boolean } | null)[];
+  };
+}
+interface RawBehind {
+  repository?: {
+    work?: { target?: { oid?: string } } | null;
+    prod?: {
+      target?: { oid?: string; committedDate?: string };
+      compare?: {
+        aheadBy?: number;
+        commits?: { nodes?: (RawNode | null)[] };
+      } | null;
+    } | null;
+  };
+}
+
+/** The merged PR a commit arrived in. GitHub's association, never the commit subject. */
+function mergedPr(node: RawNode): WaitingPr | null {
+  const pr = node.associatedPullRequests?.nodes?.find(p => p?.merged === true);
+  if (pr?.number === undefined) return null;
+  return { number: pr.number, title: pr.title ?? '', url: pr.url ?? '' };
+}
+
+/** What production is running, and what the working branch holds that it does not. */
+export interface Behind {
+  /** The production branch's tip and when it was committed — the deploy's own record. */
+  live: { sha: string; deployedAt: string | null };
+  /** Null when the production branch already contains everything on the working branch. */
+  waiting: Waiting | null;
+}
+
+/**
+ * The live commit and the waiting list for a project whose production branch
+ * is the record of what shipped (#265). The live commit is that branch's tip;
+ * waiting is every merged PR on `branch` that the tip does not contain — an
+ * ancestry question GitHub answers with a compare, so a `main → production`
+ * merge commit that is on neither side's first-parent line still counts every
+ * PR it carried as live.
+ *
+ * Exported for tests; the view calls {@link readBehind}.
+ */
+export function behindFromCompare(raw: unknown): Behind | 'no-branch' | 'no-production-branch' {
+  const repo = (raw as RawBehind).repository;
+  const tip = repo?.work?.target?.oid;
+  if (tip === undefined) return 'no-branch';
+  const prod = repo?.prod;
+  const liveSha = prod?.target?.oid;
+  const compare = prod?.compare;
+  if (liveSha === undefined || compare === null || compare === undefined) {
+    return 'no-production-branch';
+  }
+  const nodes = (compare.commits?.nodes ?? []).filter(
+    (n): n is RawNode => n !== null && n !== undefined
+  );
+  const prs: WaitingPr[] = [];
+  const seen = new Set<number>();
+  // GitHub lists a comparison's commits oldest first; the bar reads newest first.
+  for (const node of [...nodes].reverse()) {
+    const pr = mergedPr(node);
+    if (pr !== null && !seen.has(pr.number)) {
+      seen.add(pr.number);
+      prs.push(pr);
+    }
+  }
+  const ahead = compare.aheadBy ?? nodes.length;
+  return {
+    live: { sha: liveSha, deployedAt: prod?.target?.committedDate ?? null },
+    waiting: ahead === 0 ? null : { tipSha: tip, prs, more: ahead > nodes.length },
+  };
+}
+
+const behindCache = new Map<string, { at: number; value: Behind | null; reason: string | null }>();
+
+/**
+ * Read {@link Behind} for `branch` against `productionBranch`. Null with a
+ * reason when GitHub could not be read or either branch is missing; the caller
+ * then knows neither what is live nor what waits, and says so.
+ */
+export async function readBehind(
+  codebase: Codebase,
+  branch: string,
+  productionBranch: string
+): Promise<{ behind: Behind | null; reason: string | null }> {
+  const key = `${codebase.id}:${branch}:${productionBranch}`;
+  const hit = behindCache.get(key);
+  if (hit !== undefined && Date.now() - hit.at < WAITING_TTL_MS) {
+    return { behind: hit.value, reason: hit.reason };
+  }
+  const src = await resolveIssueSource(codebase.id);
+  let value: Behind | null = null;
+  let reason: string | null = null;
+  if (src === null) reason = 'no-project';
+  else if (isIssueReadFailure(src)) reason = src.reason;
+  else {
+    try {
+      const out = await githubGraphQl(src, BEHIND_QUERY, {
+        owner: src.owner,
+        repo: src.repo,
+        work: `refs/heads/${branch}`,
+        prod: `refs/heads/${productionBranch}`,
+        last: HISTORY_PAGE,
+      });
+      if ('reason' in out) reason = out.reason;
+      else {
+        const read = behindFromCompare(out.data);
+        if (typeof read === 'string') reason = read;
+        else value = read;
+      }
+    } catch (err) {
+      getLog().warn({ err, codebaseId: codebase.id }, 'deploy.behind_read_failed');
+      reason = 'unreachable';
+    }
+  }
+  behindCache.set(key, { at: Date.now(), value, reason });
+  return { behind: value, reason };
+}
+
+// ─── The repository's branches ──────────────────────────────────────────────
+
+const BRANCHES_QUERY = `
+  query($owner:String!,$repo:String!,$first:Int!){
+    repository(owner:$owner,name:$repo){
+      defaultBranchRef{ name }
+      refs(refPrefix:"refs/heads/",first:$first,orderBy:{field:ALPHABETICAL,direction:ASC}){
+        totalCount
+        nodes{ name }
+      }
+    }
+  }`;
+
+/** How many branches the pickers list. A repository with more says so. */
+export const BRANCH_PAGE = 100;
+
+export interface RemoteBranches {
+  /** The repository's default branch first, then the rest alphabetically. */
+  branches: string[];
+  defaultBranch: string | null;
+  /** False when the repository has more branches than {@link BRANCH_PAGE}. */
+  complete: boolean;
+}
+
+interface RawBranches {
+  repository?: {
+    defaultBranchRef?: { name?: string } | null;
+    refs?: { totalCount?: number; nodes?: ({ name?: string } | null)[] };
+  } | null;
+}
+
+/** Exported for tests; the route calls {@link readRemoteBranches}. */
+export function branchesFromRefs(raw: unknown): RemoteBranches | null {
+  const repo = (raw as RawBranches).repository;
+  if (repo === null || repo === undefined) return null;
+  const names = (repo.refs?.nodes ?? [])
+    .map(n => n?.name)
+    .filter((n): n is string => typeof n === 'string' && n !== '');
+  const defaultBranch = repo.defaultBranchRef?.name ?? null;
+  const branches =
+    defaultBranch !== null && names.includes(defaultBranch)
+      ? [defaultBranch, ...names.filter(n => n !== defaultBranch)]
+      : names;
+  return {
+    branches,
+    defaultBranch,
+    complete: (repo.refs?.totalCount ?? names.length) <= names.length,
+  };
+}
+
+/**
+ * The branches on the project's GitHub repository, for the deploy pickers
+ * (#267). Read from GitHub rather than the local checkout: a clone's
+ * remote-tracking refs are only as fresh as its last fetch, and the question is
+ * what the remote holds now.
+ */
+export async function readRemoteBranches(
+  codebase: Codebase
+): Promise<{ branches: RemoteBranches | null; reason: string | null }> {
+  const src = await resolveIssueSource(codebase.id);
+  if (src === null) return { branches: null, reason: 'no-project' };
+  if (isIssueReadFailure(src)) return { branches: null, reason: src.reason };
+  try {
+    const out = await githubGraphQl(src, BRANCHES_QUERY, {
+      owner: src.owner,
+      repo: src.repo,
+      first: BRANCH_PAGE,
+    });
+    if ('reason' in out) return { branches: null, reason: out.reason };
+    const branches = branchesFromRefs(out.data);
+    return branches === null
+      ? { branches: null, reason: 'no-repository' }
+      : { branches, reason: null };
+  } catch (err) {
+    getLog().warn({ err, codebaseId: codebase.id }, 'deploy.branches_read_failed');
+    return { branches: null, reason: 'unreachable' };
+  }
+}
+
 /** Forget cached waiting lists. Called after a deploy request, and by tests. */
 export function resetWaitingCache(): void {
   waitingCache.clear();
+  behindCache.clear();
 }
 
 // ─── The view the header draws ───────────────────────────────────────────────

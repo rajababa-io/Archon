@@ -4,7 +4,13 @@ import { resolve } from 'node:path';
 import { ARCHON_HOST_DEPLOY_POINTER, namesDeployPointer } from './project-deploy-rules';
 
 describe('the deploy pointer', () => {
-  const base = { codebaseId: 'p1', deployOnMerge: false, updatedAt: '', updatedBy: null };
+  const base = {
+    codebaseId: 'p1',
+    productionBranch: null,
+    deployOnMerge: false,
+    updatedAt: '',
+    updatedBy: null,
+  };
 
   test('is the branch deploy-local.sh pushes to by default', () => {
     const script = readFileSync(

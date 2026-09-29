@@ -5,9 +5,11 @@
  *                                                Set up deploys starts filled with
  *   PUT    /api/projects/:projectId/deploy       Set up deploys          (person only)
  *   PATCH  /api/projects/:projectId/deploy       flip Deploy on Merge    (person only)
+ *   PATCH  /api/projects/:projectId/deploy/settings  change branches or workflow (person only)
  *   POST   /api/projects/:projectId/deploy       Deploy now              (person only)
  *   DELETE /api/projects/:projectId/deploy       Cancel deploy           (person only)
  *   GET    /api/projects/:projectId/deploy/log   the Overview tab's deploy log
+ *   GET    /api/projects/:projectId/deploy/branches  the repository's branches, for the pickers
  *
  *   GET    /internal/deploy-policy               the host's question, drain-token gated
  *   GET    /internal/remote-deploy/policy        a remote host's question  (its own credential)
@@ -25,11 +27,12 @@
  * check runs before anything else in each handler, so a refused request changes
  * nothing and reads nothing.
  *
- * `app.get` rather than registerOpenApiRoute for all but the log, the same
- * call the issue routes make: the console reads these through its own typed
- * wrapper, and the shape includes the deploy status the health schema already
- * pins. The log is an OpenAPI route so its entry kinds reach the console's
- * generated types from the one list the server builds them from (#235).
+ * `app.get` rather than registerOpenApiRoute for all but the log and the branch
+ * list, the same call the issue routes make: the console reads these through
+ * its own typed wrapper, and the shape includes the deploy status the health
+ * schema already pins. The log is an OpenAPI route so its entry kinds reach the
+ * console's generated types from the one list the server builds them from
+ * (#235); the branch list is one so its shape does too.
  */
 
 import type { Context } from 'hono';
@@ -37,11 +40,16 @@ import { createRoute, type OpenAPIHono } from '@hono/zod-openapi';
 import * as codebaseDb from '@archon/core/db/codebases';
 import * as projectDeployDb from '@archon/core/db/project-deploy';
 import type { ProjectDeploy } from '@archon/core/db/project-deploy';
+import { namesDeployPointer } from '@archon/core/db/project-deploy-rules';
 import type { Codebase } from '@archon/core';
 import { createLogger } from '@archon/paths';
 import { isAuthorizedDrainRequest } from './internal-drain';
 import { errorSchema } from './schemas/common.schemas';
-import { deployLogResponseSchema, projectIdParamsSchema } from './schemas/deploy.schemas';
+import {
+  deployBranchesResponseSchema,
+  deployLogResponseSchema,
+  projectIdParamsSchema,
+} from './schemas/deploy.schemas';
 import { checkHumanPass, HUMAN_PASS_HEADER, humanPassRefusal } from '../services/human-pass';
 import {
   cancelDeploy,
@@ -50,6 +58,8 @@ import {
   deployNow,
   getDeployLog,
   getProjectDeployView,
+  readRemoteBranches,
+  resetWaitingCache,
 } from '../services/deploy-control';
 import {
   type DeployHost,
@@ -86,6 +96,44 @@ const deployLogRoute = createRoute({
     404: { content: { 'application/json': { schema: errorSchema } }, description: 'No project' },
   },
 });
+
+const deployBranchesRoute = createRoute({
+  method: 'get',
+  path: '/api/projects/{projectId}/deploy/branches',
+  tags: ['Deploy'],
+  summary: "The branches on a project's GitHub repository, default branch first",
+  request: { params: projectIdParamsSchema },
+  responses: {
+    200: {
+      content: { 'application/json': { schema: deployBranchesResponseSchema } },
+      description: 'OK',
+    },
+    404: { content: { 'application/json': { schema: errorSchema } }, description: 'No project' },
+  },
+});
+
+/** A trimmed string field, '' when absent or not a string. */
+function field(body: Record<string, unknown> | null, name: string): string {
+  const value = body?.[name];
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
+ * The production branch a request names: null for none. Refused when it is
+ * the working branch, because a branch compared with itself always reads as
+ * up to date.
+ */
+function productionBranchOf(
+  body: Record<string, unknown> | null,
+  branch: string
+): { productionBranch: string | null } | { error: string } {
+  const productionBranch = field(body, 'productionBranch');
+  if (productionBranch === '') return { productionBranch: null };
+  if (productionBranch === branch) {
+    return { error: 'The production branch must differ from the branch merges land on.' };
+  }
+  return { productionBranch };
+}
 
 /** What is running, for the Deploy now confirm: chats mid-turn and workflow runs. */
 export type RunningCounter = () => Promise<{ chats: number; workflows: number }>;
@@ -146,15 +194,14 @@ export function registerProjectDeployRoutes(
   app.put('/api/projects/:projectId/deploy', async c => {
     const person = await requirePerson(c);
     if (person instanceof Response) return person;
-    const body = (await c.req.json().catch(() => null)) as {
-      branch?: unknown;
-      workflowName?: unknown;
-    } | null;
-    const branch = typeof body?.branch === 'string' ? body.branch.trim() : '';
-    const workflowName = typeof body?.workflowName === 'string' ? body.workflowName.trim() : '';
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const branch = field(body, 'branch');
+    const workflowName = field(body, 'workflowName');
     if (branch === '' || workflowName === '') {
       return c.json({ error: 'branch and workflowName are required' }, 400);
     }
+    const production = productionBranchOf(body, branch);
+    if ('error' in production) return c.json({ error: production.error }, 400);
     const codebase = await codebaseDb.getCodebase(c.req.param('projectId'));
     if (codebase === null) return c.json({ error: 'Project not found' }, 404);
     if (!(await listDeployableWorkflows(codebase)).includes(workflowName)) {
@@ -162,13 +209,18 @@ export function registerProjectDeployRoutes(
     }
     const created = await projectDeployDb.setUpWorkflowDeploy(
       codebase.id,
-      branch,
-      workflowName,
+      { branch, productionBranch: production.productionBranch, workflowName },
       person.email
     );
     if (created === null) return c.json({ error: 'This project already has a deploy' }, 409);
     getLog().info(
-      { projectId: codebase.id, branch, workflowName, by: person.email },
+      {
+        projectId: codebase.id,
+        branch,
+        productionBranch: production.productionBranch,
+        workflowName,
+        by: person.email,
+      },
       'deploy.set_up'
     );
     return c.json({ deploy: created }, 201);
@@ -193,6 +245,72 @@ export function registerProjectDeployRoutes(
       'deploy.toggle_flipped'
     );
     return c.json({ deployOnMerge: changed.after.deployOnMerge });
+  });
+
+  app.patch('/api/projects/:projectId/deploy/settings', async c => {
+    const person = await requirePerson(c);
+    if (person instanceof Response) return person;
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const branch = field(body, 'branch');
+    if (branch === '') return c.json({ error: 'branch is required' }, 400);
+    const production = productionBranchOf(body, branch);
+    if ('error' in production) return c.json({ error: production.error }, 400);
+    const workflowName = field(body, 'workflowName');
+    const found = await loadProject(c.req.param('projectId'));
+    if (found === null) return c.json({ error: 'Project not found' }, 404);
+    const { codebase, setting: before } = found;
+    if (before === null) return c.json({ error: 'This project has no deploy' }, 404);
+    if (before.method === 'workflow') {
+      if (workflowName === '') return c.json({ error: 'workflowName is required' }, 400);
+      if (!(await listDeployableWorkflows(codebase)).includes(workflowName)) {
+        return c.json({ error: `This project has no workflow named "${workflowName}".` }, 400);
+      }
+    } else {
+      // Only a workflow deploy reads what is live from a branch; the host and a
+      // remote host are their own witnesses, so the setting would change nothing.
+      if (production.productionBranch !== null || workflowName !== '') {
+        return c.json(
+          { error: 'Only a workflow deploy has a production branch or a workflow to change.' },
+          400
+        );
+      }
+      if (namesDeployPointer({ ...before, branch })) {
+        return c.json(
+          { error: `${branch} is the pointer deploys move. Follow the branch merges land on.` },
+          400
+        );
+      }
+    }
+    const after = await projectDeployDb.updateDeploySettings(
+      codebase.id,
+      {
+        branch,
+        productionBranch: production.productionBranch,
+        workflowName: workflowName === '' ? null : workflowName,
+      },
+      person.email
+    );
+    if (after === null) return c.json({ error: 'This project has no deploy' }, 404);
+    // The bar redraws from a fresh read: a cached list is for the old branches.
+    resetWaitingCache();
+    getLog().info(
+      {
+        projectId: codebase.id,
+        from: {
+          branch: before.branch,
+          productionBranch: before.productionBranch,
+          workflowName: before.method === 'workflow' ? before.workflowName : null,
+        },
+        to: {
+          branch: after.branch,
+          productionBranch: after.productionBranch,
+          workflowName: after.method === 'workflow' ? after.workflowName : null,
+        },
+        by: person.email,
+      },
+      'deploy.settings_changed'
+    );
+    return c.json({ deploy: after });
   });
 
   app.post('/api/projects/:projectId/deploy', async c => {
@@ -258,6 +376,21 @@ export function registerProjectDeployRoutes(
           ? await getRemoteDeployLog(codebase.id)
           : await getDeployLog(codebase.id);
     return c.json({ entries }, 200);
+  });
+
+  app.openapi(deployBranchesRoute, async c => {
+    const codebase = await codebaseDb.getCodebase(c.req.valid('param').projectId);
+    if (codebase === null) return c.json({ error: 'Project not found' }, 404);
+    const { branches, reason } = await readRemoteBranches(codebase);
+    return c.json(
+      {
+        branches: branches?.branches ?? [],
+        defaultBranch: branches?.defaultBranch ?? null,
+        complete: branches?.complete ?? false,
+        reason,
+      },
+      200
+    );
   });
 }
 

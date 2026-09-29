@@ -92,6 +92,7 @@ export const K = {
    */
   projectDeploy: (projectId: string): string => `projectDeploy:${projectId}`,
   projectDeployLog: (projectId: string): string => `projectDeployLog:${projectId}`,
+  projectDeployBranches: (projectId: string): string => `projectDeployBranches:${projectId}`,
   issue: (projectId: string, number: number): string => `issue:${projectId}:${String(number)}`,
   presentation: (projectId: string): string => `presentation:${projectId}`,
   providerConnections: 'provider-connections' as const,

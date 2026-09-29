@@ -59,6 +59,7 @@ const SETTING = {
   codebaseId: PROJECT,
   method: 'remote-host' as const,
   branch: 'main',
+  productionBranch: null,
   deployOnMerge: false,
   updatedAt: '2026-09-29T00:00:00Z',
   updatedBy: null,

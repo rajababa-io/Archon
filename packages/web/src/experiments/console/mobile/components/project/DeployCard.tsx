@@ -8,6 +8,7 @@ import { useLiveChats } from '../../../lib/live-chats';
 import { useNow } from '../../../lib/clock';
 import {
   PERSON_ONLY_TITLE,
+  deployBranchesLabel,
   deployRowView,
   liveMissingLabel,
   type DeployRowRight,
@@ -106,6 +107,7 @@ function DeployPanel({
           {view.live.ago !== null ? ` · ${view.live.ago}` : ''}
         </span>
       </p>
+      <p className="font-mono text-small text-text-secondary">{deployBranchesLabel(deploy)}</p>
 
       {view.kind === 'deploying' ? (
         <div className="flex flex-col gap-1.5">

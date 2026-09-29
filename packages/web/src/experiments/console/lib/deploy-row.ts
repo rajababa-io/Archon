@@ -15,6 +15,7 @@
 import type { DeployDrain, DeployStatus } from '../skills/activeChats';
 import type {
   DeployBlocked,
+  DeployBranches,
   DeployLogKind,
   DeployWaiting,
   HostDeploy,
@@ -77,6 +78,10 @@ export function waitingUnknownLabel(reason: string): string {
       return 'Live commit unknown';
     case 'branch-is-deploy-pointer':
       return 'Watching the deploy branch, not the one merges land on';
+    case 'no-branch':
+      return 'Branch not found on GitHub';
+    case 'no-production-branch':
+      return 'Production branch not found on GitHub';
     default:
       return "Can't check for merged PRs";
   }
@@ -312,9 +317,42 @@ export function deployRowView(
   return { kind: 'idle', live: { sha, ago }, deployOnMerge: deploy.deployOnMerge, right, blocked };
 }
 
-/** The Live slot when no commit can be named. A workflow deploy may simply not have run yet. */
+/**
+ * The branches the bar names: `main → production` when production runs from
+ * its own branch (#266), otherwise the one branch merges land on.
+ */
+export function deployBranchesLabel(deploy: ProjectDeploy): string {
+  return deploy.method === 'workflow' && deploy.productionBranch !== null
+    ? `${deploy.branch} → ${deploy.productionBranch}`
+    : deploy.branch;
+}
+
+/**
+ * What a branch picker warns about the name in it (#267), or null when it is
+ * one of the repository's branches — or the list has not arrived, which is no
+ * reason to warn yet. A name the list lacks is a warning, never a refusal:
+ * the branch may be about to be pushed.
+ */
+export function branchWarning(name: string, list: DeployBranches | undefined): string | null {
+  const branch = name.trim();
+  if (branch === '' || list === undefined) return null;
+  if (list.reason !== null) {
+    return `Couldn't check GitHub for ${branch}: ${waitingUnknownLabel(list.reason)}.`;
+  }
+  if (list.branches.includes(branch)) return null;
+  return list.complete
+    ? `${branch} is not a branch on GitHub.`
+    : `${branch} is not among the first ${String(list.branches.length)} branches on GitHub.`;
+}
+
+/**
+ * The Live slot when no commit can be named. A workflow deploy Archon runs may
+ * simply not have run yet; one read from a production branch is unknown.
+ */
 export function liveMissingLabel(deploy: ProjectDeploy): string {
-  return deploy.method === 'workflow' ? 'not deployed yet' : 'unknown';
+  return deploy.method === 'workflow' && deploy.productionBranch === null
+    ? 'not deployed yet'
+    : 'unknown';
 }
 
 /** The title on every action while this browser cannot act. */

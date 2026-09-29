@@ -4,20 +4,20 @@
  * the set-up bar so the header does not change size between projects.
  *
  * Set up deploys opens a small picker: the branch whose merges are deployed,
- * and the repository's own workflow that deploys it. Saving gives the project
- * a deploy with Deploy on Merge off; nothing deploys until a person asks.
+ * the branch production runs from when merging into it is the deploy, and the
+ * repository's own workflow that deploys it. Saving gives the project a deploy
+ * with Deploy on Merge off; nothing deploys until a person asks.
  */
 
-import { useEffect, useState, type ReactElement } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, type ReactElement } from 'react';
 import * as skill from '../skills';
-import type { DeploySetup } from '../skills/deploy';
+import type { DeploySettingsInput, DeploySetup } from '../skills/deploy';
 import { HttpError, errorDetail } from '../lib/http';
 import { PERSON_ONLY_TITLE } from '../lib/deploy-row';
 import { invalidate } from '../store/cache';
 import { K } from '../store/keys';
-import { GHOST, PRIMARY } from './DeployRow';
-import { INPUT_CLASS, SELECT_CLASS, SelectShell } from './SettingsFormPrimitives';
+import { GHOST } from './DeployRow';
+import { DeploySettingsDialog } from './DeploySettingsDialog';
 
 interface DeploySetupRowProps {
   projectId: string;
@@ -53,9 +53,17 @@ export function DeploySetupRow({ projectId, setup, canAct }: DeploySetupRowProps
         </button>
       </div>
       {open ? (
-        <SetupPicker
+        <DeploySettingsDialog
           projectId={projectId}
-          setup={setup}
+          title="Set up deploys"
+          initial={{
+            branch: setup.branch ?? '',
+            productionBranch: '',
+            workflowName: setup.workflow ?? '',
+          }}
+          workflows={setup.workflows}
+          footnote="Deploy on Merge starts off. Nothing deploys until you press Deploy now."
+          onSave={input => saveDeploySetup(projectId, input)}
           onClose={() => {
             setOpen(false);
           }}
@@ -68,11 +76,10 @@ export function DeploySetupRow({ projectId, setup, canAct }: DeploySetupRowProps
 /** Give the project its deploy. Resolves to why the server refused, or null once it exists. */
 export async function saveDeploySetup(
   projectId: string,
-  branch: string,
-  workflow: string
+  input: DeploySettingsInput
 ): Promise<string | null> {
   try {
-    await skill.setUpDeploy(projectId, branch.trim(), workflow);
+    await skill.setUpDeploy(projectId, input);
   } catch (err) {
     return err instanceof HttpError && err.serverError !== undefined
       ? err.serverError
@@ -80,111 +87,4 @@ export async function saveDeploySetup(
   }
   invalidate(K.projectDeploy(projectId));
   return null;
-}
-
-function SetupPicker({
-  projectId,
-  setup,
-  onClose,
-}: {
-  projectId: string;
-  setup: DeploySetup;
-  onClose: () => void;
-}): ReactElement {
-  const [branch, setBranch] = useState(setup.branch ?? '');
-  const [workflow, setWorkflow] = useState(setup.workflow ?? '');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return (): void => {
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [onClose]);
-
-  const save = (): void => {
-    setBusy(true);
-    setError(null);
-    void saveDeploySetup(projectId, branch, workflow).then(failure => {
-      setBusy(false);
-      if (failure === null) onClose();
-      else setError(failure);
-    });
-  };
-
-  const ready = branch.trim() !== '' && workflow !== '';
-
-  return createPortal(
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Set up deploys"
-      className="console-root fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4"
-      onMouseDown={onClose}
-    >
-      <div
-        onMouseDown={e => {
-          e.stopPropagation();
-        }}
-        className="flex w-[400px] max-w-full flex-col gap-3 rounded-xl border bg-surface-elevated px-5.5 py-5 text-text-primary"
-        style={{ borderColor: 'var(--border-bright)' }}
-      >
-        <h3 className="text-[16px] font-semibold">Set up deploys</h3>
-        <label className="flex flex-col gap-1 text-small text-text-secondary">
-          Branch
-          <input
-            value={branch}
-            onChange={e => {
-              setBranch(e.target.value);
-            }}
-            placeholder="main"
-            className={INPUT_CLASS}
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-small text-text-secondary">
-          Workflow
-          {setup.workflows.length === 0 ? (
-            <span className="text-body text-text-tertiary">
-              This project has no workflows. Add one — usually .archon/workflows/deploy.yaml — to
-              its repository.
-            </span>
-          ) : (
-            <SelectShell>
-              <select
-                value={workflow}
-                onChange={e => {
-                  setWorkflow(e.target.value);
-                }}
-                className={SELECT_CLASS}
-              >
-                {workflow === '' ? <option value="">Choose a workflow</option> : null}
-                {setup.workflows.map(name => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </SelectShell>
-          )}
-        </label>
-        <p className="whitespace-normal text-small text-text-tertiary">
-          Deploy on Merge starts off. Nothing deploys until you press Deploy now.
-        </p>
-        {error !== null ? <p className="text-small text-error">{error}</p> : null}
-        <div className="flex justify-end gap-2.5">
-          <button type="button" className={GHOST} onClick={onClose}>
-            Cancel
-          </button>
-          <button type="button" className={PRIMARY} disabled={busy || !ready} onClick={save}>
-            Save
-          </button>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
 }

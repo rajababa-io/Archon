@@ -56,6 +56,12 @@ interface ProjectDeployBase {
   codebaseId: string;
   /** The branch merges land on; what "merged but not live" is measured along. */
   branch: string;
+  /**
+   * The branch that holds what is live, for a project that deploys outside
+   * Archon — merging `branch` into it is the deploy (#265). Null when nothing
+   * names one; the method's own witness then says what is live.
+   */
+  productionBranch: string | null;
   deployOnMerge: boolean;
   updatedAt: string;
   updatedBy: string | null;
@@ -85,6 +91,7 @@ interface ProjectDeployRow {
   updated_by: string | null;
   workflow_name: string | null;
   remote_url: string | null;
+  production_branch: string | null;
 }
 
 function iso(value: string | Date): string {
@@ -99,6 +106,8 @@ function toProjectDeploy(row: ProjectDeployRow): ProjectDeploy | null {
   const base: ProjectDeployBase = {
     codebaseId: row.codebase_id,
     branch: row.branch,
+    productionBranch:
+      row.production_branch === null || row.production_branch === '' ? null : row.production_branch,
     deployOnMerge: row.deploy_on_merge === true || row.deploy_on_merge === 1,
     updatedAt: iso(row.updated_at),
     updatedBy: row.updated_by,
@@ -121,7 +130,7 @@ function toProjectDeploy(row: ProjectDeployRow): ProjectDeploy | null {
 }
 
 const SELECT = `SELECT codebase_id, method, branch, deploy_on_merge, updated_at, updated_by,
-    workflow_name, remote_url
+    workflow_name, remote_url, production_branch
   FROM remote_agent_project_deploy`;
 
 /** Null means the project has no deploy, or one this binary cannot drive. */
@@ -198,19 +207,48 @@ export async function listMergeDeploysOnBranch(branch: string): Promise<Workflow
  */
 export async function setUpWorkflowDeploy(
   codebaseId: string,
-  branch: string,
-  workflowName: string,
+  setup: { branch: string; productionBranch: string | null; workflowName: string },
   actor: string
 ): Promise<ProjectDeploy | null> {
   const res = await pool.query<{ codebase_id: string }>(
     `INSERT INTO remote_agent_project_deploy
-       (codebase_id, method, branch, workflow_name, deploy_on_merge, updated_at, updated_by)
-     VALUES ($1, 'workflow', $2, $3, $4, ${getDialect().now()}, $5)
+       (codebase_id, method, branch, production_branch, workflow_name, deploy_on_merge,
+        updated_at, updated_by)
+     VALUES ($1, 'workflow', $2, $3, $4, $5, ${getDialect().now()}, $6)
      ON CONFLICT (codebase_id) DO NOTHING
      RETURNING codebase_id`,
-    [codebaseId, branch, workflowName, false, actor]
+    [codebaseId, setup.branch, setup.productionBranch, setup.workflowName, false, actor]
   );
   if (res.rows.length === 0) return null;
+  return getProjectDeploy(codebaseId);
+}
+
+/** What the deploy bar's settings can change after setup (#266). */
+export interface DeploySettingsChange {
+  branch: string;
+  productionBranch: string | null;
+  /** Only a `workflow` deploy has one; null leaves the stored name alone. */
+  workflowName: string | null;
+}
+
+/**
+ * Change a deploy's branches, and a workflow deploy's workflow. The method and
+ * Deploy on Merge are not touched: the switch has its own route and event.
+ * Null when the project has no deploy this binary can read.
+ */
+export async function updateDeploySettings(
+  codebaseId: string,
+  change: DeploySettingsChange,
+  actor: string
+): Promise<ProjectDeploy | null> {
+  if ((await getProjectDeploy(codebaseId)) === null) return null;
+  await pool.query(
+    `UPDATE remote_agent_project_deploy
+       SET branch = $1, production_branch = $2, workflow_name = COALESCE($3, workflow_name),
+           updated_at = ${getDialect().now()}, updated_by = $4
+     WHERE codebase_id = $5`,
+    [change.branch, change.productionBranch, change.workflowName, actor, codebaseId]
+  );
   return getProjectDeploy(codebaseId);
 }
 

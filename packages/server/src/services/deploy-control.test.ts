@@ -22,6 +22,8 @@ mock.module('../routes/github-issues', () => ({
 }));
 
 import {
+  behindFromCompare,
+  branchesFromRefs,
   cancelDeploy,
   decidePolicy,
   deployedAt,
@@ -143,6 +145,107 @@ describe('waitingFromHistory', () => {
 
   test('a branch GitHub does not know is no answer, not an empty one', () => {
     expect(waitingFromHistory({ repository: { ref: null } }, LIVE)).toBeNull();
+  });
+});
+
+/** GitHub's answer to "what does `work` have that `prod` does not", commits oldest first. */
+function compared(
+  commits: { oid: string; pr?: number }[],
+  aheadBy = commits.length,
+  prodSha: string | null = LIVE
+) {
+  return {
+    repository: {
+      work: { target: { oid: TIP } },
+      prod:
+        prodSha === null
+          ? null
+          : {
+              target: { oid: prodSha, committedDate: '2026-09-28T03:23:22Z' },
+              compare: {
+                aheadBy,
+                commits: {
+                  nodes: commits.map(c => ({
+                    oid: c.oid,
+                    associatedPullRequests: {
+                      nodes:
+                        c.pr === undefined
+                          ? []
+                          : [{ number: c.pr, title: `PR ${c.pr}`, url: `u/${c.pr}`, merged: true }],
+                    },
+                  })),
+                },
+              },
+            },
+    },
+  };
+}
+
+describe('behindFromCompare', () => {
+  test('production holding everything on the branch is live with nothing waiting', () => {
+    // wix-access on 2026-09-29: main is 0 commits ahead of production (#265).
+    expect(behindFromCompare(compared([], 0))).toEqual({
+      live: { sha: LIVE, deployedAt: '2026-09-28T03:23:22Z' },
+      waiting: null,
+    });
+  });
+
+  test('lists the merged PRs production lacks, newest first, once each', () => {
+    const read = behindFromCompare(
+      compared([
+        { oid: '1'.repeat(40), pr: 478 },
+        { oid: '2'.repeat(40), pr: 479 },
+        { oid: '3'.repeat(40), pr: 479 },
+      ])
+    );
+    expect(read).toMatchObject({
+      live: { sha: LIVE },
+      waiting: { tipSha: TIP, more: false },
+    });
+    expect(typeof read === 'string' ? [] : read.waiting?.prs.map(p => p.number)).toEqual([
+      479, 478,
+    ]);
+  });
+
+  test('a direct push with no PR still waits', () => {
+    expect(behindFromCompare(compared([{ oid: MID }]))).toMatchObject({
+      waiting: { tipSha: TIP, prs: [], more: false },
+    });
+  });
+
+  test('more commits ahead than one page says so', () => {
+    const read = behindFromCompare(compared([{ oid: MID, pr: 1 }], HISTORY_PAGE + 5));
+    expect(typeof read === 'string' ? null : read.waiting?.more).toBe(true);
+  });
+
+  test('a missing branch on either side is named, never read as up to date', () => {
+    expect(behindFromCompare(compared([], 0, null))).toBe('no-production-branch');
+    expect(behindFromCompare({ repository: { work: null, prod: null } })).toBe('no-branch');
+  });
+});
+
+describe('branchesFromRefs', () => {
+  const refs = (names: string[], totalCount = names.length, defaultBranch = 'main') => ({
+    repository: {
+      defaultBranchRef: { name: defaultBranch },
+      refs: { totalCount, nodes: names.map(name => ({ name })) },
+    },
+  });
+
+  test('puts the default branch first and keeps the rest in order', () => {
+    expect(branchesFromRefs(refs(['feat/x', 'main', 'production']))).toEqual({
+      branches: ['main', 'feat/x', 'production'],
+      defaultBranch: 'main',
+      complete: true,
+    });
+  });
+
+  test('says when the repository has more branches than were listed', () => {
+    expect(branchesFromRefs(refs(['main'], 250))?.complete).toBe(false);
+  });
+
+  test('a repository GitHub does not know is no answer', () => {
+    expect(branchesFromRefs({ repository: null })).toBeNull();
   });
 });
 

@@ -60,6 +60,13 @@ export type DeployBlocked = 'no-trigger-host' | 'restarting' | 'workflow-missing
 export interface WorkflowDeploy extends DeployCommon {
   method: 'workflow';
   workflowName: string;
+  /**
+   * The branch production runs from, when the project deploys by merging into
+   * it (#265). Live is then that branch's tip; null means Archon's own runs.
+   */
+  productionBranch: string | null;
+  /** The project's own workflows, for the bar's settings. */
+  workflows: readonly string[];
   /** The deploy run in flight. */
   run: { id: string; sha: string; status: DeployRunStatus; startedAt: string } | null;
   blocked: DeployBlocked | null;
@@ -88,6 +95,8 @@ export type DeployAnswer =
   | { kind: 'not-set-up'; setup: DeploySetup; canAct: boolean };
 
 export type DeployLogEntry = components['schemas']['DeployLogEntry'];
+/** The repository's branches, for the pickers (#267). */
+export type DeployBranches = components['schemas']['DeployBranchesResponse'];
 export type DeployLogKind = DeployLogEntry['kind'];
 
 /**
@@ -179,6 +188,10 @@ export function parseProjectDeploy(raw: unknown): ProjectDeploy | null {
       ...common,
       method: 'workflow',
       workflowName: raw.workflowName,
+      productionBranch: nullableString(raw.productionBranch),
+      workflows: Array.isArray(raw.workflows)
+        ? (raw.workflows as unknown[]).filter((w): w is string => typeof w === 'string')
+        : [],
       run: parseRun(raw.run),
       blocked: BLOCKED.includes(raw.blocked as DeployBlocked)
         ? (raw.blocked as DeployBlocked)
@@ -247,16 +260,32 @@ export async function getProjectDeploy(projectId: string): Promise<DeployAnswer 
   return parseDeployAnswer(await requestJson<unknown>(deployPath(projectId)));
 }
 
+/** What Set up deploys and the bar's settings send. An empty production branch is none. */
+export interface DeploySettingsInput {
+  branch: string;
+  productionBranch: string;
+  /** Empty for a deploy that is not a workflow's. */
+  workflowName: string;
+}
+
 /** Set up deploys: the row starts with Deploy on Merge off, and nothing deploys. */
-export async function setUpDeploy(
+export async function setUpDeploy(projectId: string, input: DeploySettingsInput): Promise<void> {
+  await requestJson(deployPath(projectId), { method: 'PUT', body: JSON.stringify(input) });
+}
+
+/** Change the deploy's branches, or its workflow, from the bar's settings (#266). */
+export async function updateDeploySettings(
   projectId: string,
-  branch: string,
-  workflowName: string
+  input: DeploySettingsInput
 ): Promise<void> {
-  await requestJson(deployPath(projectId), {
-    method: 'PUT',
-    body: JSON.stringify({ branch, workflowName }),
+  await requestJson(`${deployPath(projectId)}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
   });
+}
+
+export async function getDeployBranches(projectId: string): Promise<DeployBranches> {
+  return requestJson<DeployBranches>(`${deployPath(projectId)}/branches`);
 }
 
 export async function setDeployOnMerge(projectId: string, on: boolean): Promise<boolean> {
