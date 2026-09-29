@@ -365,16 +365,25 @@ test('the switcher lists chats by status and opens the one tapped', async ({ pag
   const sheet = page.getByRole('dialog', { name: 'Switch chat' });
   await expect(sheet).toBeVisible();
 
-  // Unread before idle, though the idle chat is the newer: by status, not by
-  // recency. Reading the order is the assertion — both titles alone would
-  // pass against a list in any order.
+  // Both chats are idle; the unread one leads, though the other is the newer.
+  // Reading the order is the assertion — both titles alone would pass against
+  // a list in any order. Unread is not a status (#5): both rows say Idle, and
+  // only the unread one's title is bold.
   // The chat rows only: the sheet also links to Settings and to each project.
   const rows = sheet.getByRole('list').getByRole('link');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText(OTHER_CHAT_TITLE);
-  await expect(rows.nth(0)).toContainText('Unread');
+  await expect(rows.nth(0)).toContainText('Idle');
+  await expect(rows.nth(0).getByText(OTHER_CHAT_TITLE, { exact: true })).toHaveCSS(
+    'font-weight',
+    '600'
+  );
   await expect(rows.nth(1)).toContainText(CHAT_TITLE);
   await expect(rows.nth(1)).toContainText('Idle');
+  await expect(rows.nth(1).getByText(CHAT_TITLE, { exact: true })).not.toHaveCSS(
+    'font-weight',
+    '600'
+  );
 
   await rows.nth(0).tap();
   await expect(sheet).toBeHidden();
