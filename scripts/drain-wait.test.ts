@@ -257,7 +257,7 @@ describe('parkAnswerLines', () => {
     drainId: '0b7c7f43-6a4e-4c1b-9d59-3f6f2d1c8a10',
     parked: { chats: 3, queuedMessages: 1, runs: 1 },
     blocked: [
-      { kind: 'chat', id: 'slack-thread-9', reason: 'non_web_platform' },
+      { kind: 'chat', id: 'slack-thread-9', reason: 'platform_cannot_resume' },
       { kind: 'run', id: 'cli-run-1', reason: 'not_owned_by_this_server' },
     ],
   };
@@ -266,7 +266,7 @@ describe('parkAnswerLines', () => {
     expect(parkAnswerLines(answer)).toEqual([
       '0b7c7f43-6a4e-4c1b-9d59-3f6f2d1c8a10',
       'parked 3 chats, 1 queued message, 1 workflow run',
-      'still running, waiting for it: chat slack-thread-9 — not a web chat, so it cannot be resumed after the restart',
+      'still running, waiting for it: chat slack-thread-9 — its chat platform has no way to resume it after the restart',
       'still running, waiting for it: run cli-run-1 — this server does not run it',
     ]);
   });

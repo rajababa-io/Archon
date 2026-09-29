@@ -76,8 +76,11 @@ mock.module('@archon/core', () => ({
   DRAIN_REFUSAL_NOTICE,
   notifyDrainRefusal,
   ConversationLockManager: class {
-    async acquireLock(_id: string, handler: () => Promise<void>): Promise<{ status: 'started' }> {
-      await handler();
+    async acquireLock(
+      _id: string,
+      handler: (turn: { signal: AbortSignal }) => Promise<void>
+    ): Promise<{ status: 'started' }> {
+      await handler({ signal: new AbortController().signal });
       return { status: 'started' };
     }
     getStats() {
@@ -231,10 +234,12 @@ function createIssueCommentPayload(
  */
 function createTestAdapter(): GitHubAdapter {
   const adapter = new GitHubAdapter({ kind: 'pat', token: 'fake-token' }, WEBHOOK_SECRET, {
-    acquireLock: mock(async (_id: string, handler: () => Promise<void>) => {
-      await handler();
-      return { status: 'started' as const };
-    }),
+    acquireLock: mock(
+      async (_id: string, handler: (turn: { signal: AbortSignal }) => Promise<void>) => {
+        await handler({ signal: new AbortController().signal });
+        return { status: 'started' as const };
+      }
+    ),
   });
 
   // @ts-expect-error - mock private method for testing

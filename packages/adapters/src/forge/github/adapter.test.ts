@@ -180,10 +180,12 @@ import * as core from '@archon/core';
 import * as workflowDb from '@archon/core/db/workflows';
 
 // Create a mock lock manager that immediately executes handlers
-const mockAcquireLock = mock(async (_id: string, handler: () => Promise<void>) => {
-  await handler();
-  return { status: 'started' as const };
-});
+const mockAcquireLock = mock(
+  async (_id: string, handler: (turn: { signal: AbortSignal }) => Promise<void>) => {
+    await handler({ signal: new AbortController().signal });
+    return { status: 'started' as const };
+  }
+);
 const mockLockManager = {
   acquireLock: mockAcquireLock,
 };
@@ -992,10 +994,12 @@ describe('GitHubAdapter', () => {
     });
 
     afterEach(() => {
-      mockAcquireLock.mockImplementation(async (_id: string, handler: () => Promise<void>) => {
-        await handler();
-        return { status: 'started' as const };
-      });
+      mockAcquireLock.mockImplementation(
+        async (_id: string, handler: (turn: { signal: AbortSignal }) => Promise<void>) => {
+          await handler({ signal: new AbortController().signal });
+          return { status: 'started' as const };
+        }
+      );
       if (originalAllowedUsers !== undefined) {
         process.env.GITHUB_ALLOWED_USERS = originalAllowedUsers;
       }
@@ -1636,6 +1640,8 @@ describe('GitHubAdapter', () => {
         expect.anything(),
         expect.objectContaining({
           isolationHints: expect.objectContaining({ isForkPR: expected }),
+          // The lock manager's signal, so a deploy can park the turn.
+          abortSignal: expect.any(AbortSignal),
         })
       );
     }

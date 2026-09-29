@@ -7329,9 +7329,7 @@ export function registerApiRoutes(
    * web turn takes. A resumed turn is system-authored, so nothing is written as a
    * user message; a queued message is written at delivery, like any other.
    */
-  const dispatchParkedTurn: ParkedTurnDispatcher = async (conversationDbId, turn) => {
-    const conversation = await conversationDb.getConversationById(conversationDbId);
-    if (!conversation?.platform_conversation_id) return 'conversation_missing';
+  const dispatchParkedTurn: ParkedTurnDispatcher = async (conversation, turn) => {
     const platformId = conversation.platform_conversation_id;
     webAdapter.setConversationDbId(platformId, conversation.id);
 

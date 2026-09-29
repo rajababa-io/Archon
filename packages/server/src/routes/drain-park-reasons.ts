@@ -9,7 +9,8 @@
  * park can report always has words the deploy can print.
  */
 export const PARK_BLOCK_REASONS = {
-  non_web_platform: 'not a web chat, so it cannot be resumed after the restart',
+  platform_cannot_resume: 'its chat platform has no way to resume it after the restart',
+  no_conversation_record: 'no saved conversation matches it, so there is nothing to resume',
   unparkable_queued_turn: 'a message queued behind it cannot be saved for later',
   persist_failed: 'saving it for later failed',
   not_owned_by_this_server: 'this server does not run it',

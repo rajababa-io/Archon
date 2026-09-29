@@ -62,7 +62,7 @@ function makeApp(replayParked: () => Promise<void> = mock(async () => {})): {
     beginDrain: mock(() => DRAIN_STATUS),
     cancelDrain: mock(() => {}),
   } as unknown as DrainTarget;
-  registerInternalDrainRoutes(app, target, TOKEN, replayParked);
+  registerInternalDrainRoutes(app, target, TOKEN, new Map(), replayParked);
   return { app, target };
 }
 

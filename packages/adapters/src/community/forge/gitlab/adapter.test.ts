@@ -119,8 +119,11 @@ mock.module('@archon/core', () => ({
   DRAIN_REFUSAL_NOTICE,
   notifyDrainRefusal,
   ConversationLockManager: class {
-    async acquireLock(_id: string, fn: () => Promise<void>): Promise<{ status: 'started' }> {
-      await fn();
+    async acquireLock(
+      _id: string,
+      fn: (turn: { signal: AbortSignal }) => Promise<void>
+    ): Promise<{ status: 'started' }> {
+      await fn({ signal: new AbortController().signal });
       return { status: 'started' };
     }
   },
@@ -717,7 +720,11 @@ describe('GitLabAdapter', () => {
         expect.anything(),
         expect.anything(),
         expect.anything(),
-        expect.objectContaining({ userId: 'user-test-uuid' })
+        expect.objectContaining({
+          userId: 'user-test-uuid',
+          // The lock manager's signal, so a deploy can park the turn.
+          abortSignal: expect.any(AbortSignal),
+        })
       );
     });
 

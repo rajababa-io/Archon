@@ -1685,13 +1685,14 @@ ${userComment}`;
     );
 
     // 13. Route to orchestrator with isolation hints (with lock for concurrency control)
-    const acquisition = await this.lockManager.acquireLock(conversationId, async () => {
+    const acquisition = await this.lockManager.acquireLock(conversationId, async ({ signal }) => {
       try {
         await handleMessage(this, conversationId, finalMessage, {
           issueContext: contextToAppend,
           threadContext,
           isolationHints,
           userId: archonUserId,
+          abortSignal: signal,
         });
       } catch (error) {
         const err = toError(error);
