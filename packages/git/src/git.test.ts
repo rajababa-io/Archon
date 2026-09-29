@@ -1692,7 +1692,7 @@ branch refs/heads/feature/auth
       expect(result).toEqual({ branch: git.toBranchName('feat/x'), dirty: false });
       expect(execSpy).toHaveBeenCalledWith(
         'git',
-        ['-C', '/workspace/repo', 'status', '--porcelain=v2', '--branch'],
+        ['--no-optional-locks', '-C', '/workspace/repo', 'status', '--porcelain=v2', '--branch'],
         { timeout: 10000 }
       );
     });

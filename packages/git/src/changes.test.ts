@@ -12,7 +12,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { trackTempRoots } from '@archon/paths/test-utils';
 import {
+  BaseBranchNotFoundError,
   MAX_DIFF_LINES,
+  countChangesOffBase,
   NotAGitCheckoutError,
   listCheckoutFiles,
   readWorkingChanges,
@@ -223,5 +225,106 @@ describe('listCheckoutFiles', () => {
   test('a plain directory is not a checkout', async () => {
     const plain = trackTempRoot(mkdtempSync(join(tmpdir(), 'not-a-checkout-')));
     await expect(listCheckoutFiles(plain)).rejects.toBeInstanceOf(NotAGitCheckoutError);
+  });
+});
+
+describe('countChangesOffBase', () => {
+  /**
+   * A checkout on `main` whose base branch `dev` has since moved on: `dev`
+   * edited kept.txt twice (v1, then v2), added merged.txt, and deleted gone.txt.
+   * The checkout is left where it was, the way a shared live folder is.
+   */
+  function behindBase(): string {
+    const root = repo();
+    git(root, 'checkout', '-q', '-b', 'dev');
+    writeFileSync(join(root, 'kept.txt'), 'v1\n');
+    git(root, 'commit', '-q', '-am', 'v1');
+    writeFileSync(join(root, 'kept.txt'), 'v2\n');
+    writeFileSync(join(root, 'merged.txt'), 'merged\n');
+    git(root, 'rm', '-q', 'gone.txt');
+    git(root, 'add', '.');
+    git(root, 'commit', '-q', '-m', 'v2');
+    git(root, 'checkout', '-q', 'main');
+    return root;
+  }
+
+  test('a change whose content is already on the base branch is not counted', async () => {
+    const root = behindBase();
+    writeFileSync(join(root, 'kept.txt'), 'v2\n');
+    writeFileSync(join(root, 'merged.txt'), 'merged\n');
+    git(root, 'add', 'merged.txt');
+    git(root, 'rm', '-q', 'gone.txt');
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(0);
+  });
+
+  test('a new file absent from the base branch is counted', async () => {
+    const root = behindBase();
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'only-here.ts'), 'new\n');
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(1);
+  });
+
+  test('a staged older version of a file the base has since changed is not counted', async () => {
+    // Not lost work: v1 is in the base history even though the tip moved to v2.
+    const root = behindBase();
+    writeFileSync(join(root, 'kept.txt'), 'v1\n');
+    git(root, 'add', 'kept.txt');
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(0);
+  });
+
+  test('a staged copy of base content with a further working-tree edit is counted', async () => {
+    const root = behindBase();
+    writeFileSync(join(root, 'kept.txt'), 'v2\n');
+    git(root, 'add', 'kept.txt');
+    writeFileSync(join(root, 'kept.txt'), 'v3, only here\n');
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(1);
+  });
+
+  test('deleting a file the base still has is counted', async () => {
+    const root = behindBase();
+    git(root, 'rm', '-q', 'moved.txt');
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(1);
+  });
+
+  test("content only on a remote's copy of the base branch is not counted", async () => {
+    const root = repo();
+    const main = git(root, 'rev-parse', 'HEAD');
+    writeFileSync(join(root, 'kept.txt'), 'from the fork\n');
+    git(root, 'commit', '-q', '-am', 'fork work');
+    git(root, 'update-ref', 'refs/remotes/fork/dev', 'HEAD');
+    git(root, 'update-ref', 'refs/heads/dev', main);
+    git(root, 'reset', '-q', '--hard', main);
+    writeFileSync(join(root, 'kept.txt'), 'from the fork\n');
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(0);
+  });
+
+  test('reads without writing the index', async () => {
+    const root = behindBase();
+    writeFileSync(join(root, 'kept.txt'), 'v2\n');
+    writeFileSync(join(root, 'fresh.txt'), 'x\n');
+    const index = join(root, '.git', 'index');
+    const before = { bytes: readFileSync(index), mtime: statSync(index).mtimeMs };
+
+    expect(await countChangesOffBase(root, 'dev')).toBe(1);
+    expect(readFileSync(index).equals(before.bytes)).toBe(true);
+    expect(statSync(index).mtimeMs).toBe(before.mtime);
+    expect(git(root, 'status', '--porcelain')).toContain('?? fresh.txt');
+  });
+
+  test('a base branch with no ref cannot be compared', async () => {
+    const root = repo();
+    writeFileSync(join(root, 'fresh.txt'), 'x\n');
+    await expect(countChangesOffBase(root, 'dev')).rejects.toBeInstanceOf(BaseBranchNotFoundError);
+  });
+
+  test('a plain directory is not a checkout', async () => {
+    const plain = trackTempRoot(mkdtempSync(join(tmpdir(), 'not-a-checkout-')));
+    await expect(countChangesOffBase(plain, 'dev')).rejects.toBeInstanceOf(NotAGitCheckoutError);
   });
 });

@@ -8,6 +8,8 @@ const LIVE: ConversationCheckout = {
   location: 'live',
   branch: 'dev',
   dirty: false,
+  baseBranch: null,
+  offBaseFiles: 0,
 };
 
 function render(
@@ -26,7 +28,7 @@ describe('StatusDetails', () => {
     expect(html).toContain('effort high');
     expect(html).toContain('⎇ dev · live checkout');
     expect(html).toContain('$4.12');
-    expect(html).not.toContain('uncommitted');
+    expect(html).not.toContain('●');
   });
 
   test('a Codex chat with no reported cost shows no cost — never $0.00', () => {
@@ -41,26 +43,38 @@ describe('StatusDetails', () => {
     expect(html).not.toContain('effort');
   });
 
-  test('a dirty checkout is marked; a worktree says so', () => {
+  test('changes not on the base branch are marked with their count; a worktree says so', () => {
     const html = render(null, {
       path: '/wt/x',
       location: 'worktree',
       branch: 'feat/x',
       dirty: true,
+      baseBranch: 'dev',
+      offBaseFiles: 3,
     });
     expect(html).toContain('⎇ feat/x · worktree');
-    expect(html).toContain('uncommitted');
+    expect(html).toContain('● 3 not on dev');
+  });
+
+  test('a dirty checkout whose changes are all on the base branch is not marked', () => {
+    const html = render(null, { ...LIVE, dirty: true, baseBranch: 'dev', offBaseFiles: 0 });
+    expect(html).not.toContain('●');
+  });
+
+  test('a dirty checkout that could not be compared with the base shows no marker', () => {
+    const html = render(null, { ...LIVE, dirty: true, baseBranch: 'dev', offBaseFiles: null });
+    expect(html).not.toContain('●');
   });
 
   test('an unread checkout shows no branch and no marker', () => {
     const html = render(null, undefined);
     expect(html).not.toContain('⎇');
-    expect(html).not.toContain('uncommitted');
+    expect(html).not.toContain('●');
   });
 
   test('an unknown dirty state is not a clean one, and not a dirty one either', () => {
-    const html = render(null, { ...LIVE, dirty: null });
-    expect(html).not.toContain('uncommitted');
+    const html = render(null, { ...LIVE, dirty: null, offBaseFiles: null });
+    expect(html).not.toContain('●');
     expect(html).toContain('⎇ dev');
   });
 });
@@ -69,6 +83,15 @@ describe('checkoutLabel', () => {
   test('each half shows alone when only it is known, nothing when neither is', () => {
     expect(checkoutLabel({ ...LIVE, location: null })).toBe('⎇ dev');
     expect(checkoutLabel({ ...LIVE, branch: null })).toBe('live checkout');
-    expect(checkoutLabel({ path: null, location: null, branch: null, dirty: null })).toBeNull();
+    expect(
+      checkoutLabel({
+        path: null,
+        location: null,
+        branch: null,
+        dirty: null,
+        baseBranch: null,
+        offBaseFiles: null,
+      })
+    ).toBeNull();
   });
 });

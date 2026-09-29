@@ -108,6 +108,13 @@ export const conversationCheckoutResponseSchema = z
     location: z.enum(['live', 'worktree']).nullable(),
     branch: z.string().nullable(),
     dirty: z.boolean().nullable(),
+    /** The branch `offBaseFiles` compares with; null when unresolved. */
+    baseBranch: z.string().nullable(),
+    /**
+     * Changed files whose content is on no copy of the base branch — what a
+     * reset would lose. Zero when clean; null when it could not be compared.
+     */
+    offBaseFiles: z.number().int().nonnegative().nullable(),
   })
   .openapi('ConversationCheckoutResponse');
 

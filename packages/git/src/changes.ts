@@ -339,3 +339,186 @@ export async function listCheckoutFiles(cwd: string): Promise<CheckoutFiles> {
     truncated: all.length > MAX_LISTED_FILES,
   };
 }
+
+/** No base branch ref exists in the checkout, so nothing can be compared with it. */
+export class BaseBranchNotFoundError extends Error {
+  constructor(readonly baseBranch: string) {
+    super(`No ref for base branch '${baseBranch}'`);
+    this.name = 'BaseBranchNotFoundError';
+  }
+}
+
+/** One content a changed path holds: a blob id, or null for "the path is gone". */
+type HeldVersion = string | null;
+
+interface HeldPath {
+  path: string;
+  /** The contents this path holds that HEAD does not. */
+  versions: HeldVersion[];
+  /** True when the working-tree file must be hashed to know its content. */
+  hashWorktree: boolean;
+  /** Counted without comparing: a conflict or a submodule. */
+  alwaysCounted: boolean;
+}
+
+/**
+ * Parse `git status --porcelain=v2 -z --untracked-files=all` into the content
+ * each changed path holds that HEAD does not.
+ *
+ * A path can hold two such contents — a staged one and a different one in the
+ * working tree — and a reset destroys both, so both are compared. A content
+ * equal to HEAD's is already committed and is left out.
+ */
+function heldPaths(status: string): HeldPath[] {
+  const held: HeldPath[] = [];
+  const fields = nulFields(status);
+  for (let i = 0; i < fields.length; i++) {
+    const entry = fields[i] ?? '';
+    const kind = entry[0];
+    if (kind === '?') {
+      held.push({ path: entry.slice(2), versions: [], hashWorktree: true, alwaysCounted: false });
+      continue;
+    }
+    if (kind === 'u') {
+      // `u XY sub m1 m2 m3 mW h1 h2 h3 path` — a conflict is unfinished work.
+      const path = entry.split(' ').slice(10).join(' ');
+      held.push({ path, versions: [], hashWorktree: false, alwaysCounted: true });
+      continue;
+    }
+    if (kind !== '1' && kind !== '2') continue;
+    // `1 XY sub mH mI mW hH hI path`; `2` adds a score before the path and its
+    // original path in the next NUL field. The original's content is at HEAD,
+    // so a rename's source is never lost work.
+    const parts = entry.split(' ');
+    const [, xy = '..', sub = 'N...', , , , hH = '', hI = ''] = parts;
+    const path = parts.slice(kind === '1' ? 8 : 9).join(' ');
+    if (kind === '2') i++;
+    const [staged = '.', worktree = '.'] = xy;
+    const versions: HeldVersion[] = [];
+    if (staged !== '.') versions.push(staged === 'D' ? null : hI);
+    if (worktree === 'D') versions.push(null);
+    held.push({
+      path,
+      versions: versions.filter(v => v !== hH),
+      hashWorktree: worktree !== '.' && worktree !== 'D',
+      alwaysCounted: sub !== 'N...',
+    });
+  }
+  return held;
+}
+
+/**
+ * How many changed paths in the checkout at `cwd` hold content that is not
+ * already on `baseBranch` — the uncommitted work a reset would actually lose.
+ *
+ * `git status` alone cannot say that: a checkout shared by several chats
+ * nearly always holds leftover copies of work that has since merged, and a
+ * warning lit for those is one nobody reads. Here each content a changed path
+ * holds (staged, working tree, or deleted) is compared with the base branch:
+ *
+ * - it matches when a base ref's tip holds exactly that blob at that path, or
+ *   any commit in the base history did — an older version the base has since
+ *   moved past is still recoverable from it, so it is not lost;
+ * - a deletion matches when some base tip no longer has the path.
+ *
+ * "The base branch" is every ref that names it: the local branch and each
+ * remote's copy (`refs/remotes/<any>/<base>`). A checkout with several
+ * remotes cannot say which one is canonical, and content on any of them
+ * exists outside this folder. Nothing is fetched — refs are as fresh as the
+ * last fetch, and staleness can only over-count, never hide work.
+ *
+ * A conflict or a submodule change is counted without comparing. Past
+ * MAX_CHANGED_FILES the remainder is counted unchecked rather than hashed.
+ * READ-ONLY: `--no-optional-locks` on every call, and `hash-object` without
+ * `-w` writes nothing.
+ *
+ * Throws NotAGitCheckoutError, BaseBranchNotFoundError, or the git failure —
+ * the caller decides what an unanswered comparison shows, and it is not clean.
+ */
+export async function countChangesOffBase(cwd: string, baseBranch: string): Promise<number> {
+  const { root } = await repoState(cwd);
+  const refs = (
+    await git(root, [
+      'for-each-ref',
+      '--format=%(refname)',
+      `refs/heads/${baseBranch}`,
+      `refs/remotes/*/${baseBranch}`,
+    ])
+  )
+    .split('\n')
+    .filter(ref => ref.length > 0);
+  if (refs.length === 0) throw new BaseBranchNotFoundError(baseBranch);
+
+  const all = heldPaths(
+    await git(root, ['status', '--porcelain=v2', '-z', '--untracked-files=all'])
+  );
+  const checked = all.slice(0, MAX_CHANGED_FILES);
+  const toCompare = checked.filter(p => !p.alwaysCounted);
+  const counted = all.length - toCompare.length;
+
+  // One blob id per line, in argument order.
+  const toHash = toCompare.filter(p => p.hashWorktree);
+  if (toHash.length > 0) {
+    const ids = (await git(root, ['hash-object', '--', ...toHash.map(p => p.path)])).split('\n');
+    toHash.forEach((p, n) => p.versions.push(ids[n] ?? ''));
+  }
+
+  const pending = toCompare.filter(p => p.versions.length > 0);
+  if (pending.length === 0) return counted;
+
+  // Tip contents, per ref: `mode type blob\tpath`.
+  const atTip = new Set<string>();
+  const tipsHolding = new Map<string, number>();
+  for (const ref of refs) {
+    const listing = await git(root, [
+      '--literal-pathspecs',
+      'ls-tree',
+      '-r',
+      '-z',
+      '--full-tree',
+      ref,
+      '--',
+      ...pending.map(p => p.path),
+    ]);
+    for (const line of nulFields(listing)) {
+      const tab = line.indexOf('\t');
+      const path = line.slice(tab + 1);
+      atTip.add(`${path}\0${line.slice(0, tab).split(' ')[2] ?? ''}`);
+      tipsHolding.set(path, (tipsHolding.get(path) ?? 0) + 1);
+    }
+  }
+  const onTip = (path: string, v: HeldVersion): boolean =>
+    v === null ? (tipsHolding.get(path) ?? 0) < refs.length : atTip.has(`${path}\0${v}`);
+  const offTip = pending.filter(p => !p.versions.every(v => onTip(p.path, v)));
+  if (offTip.length === 0) return counted;
+
+  // Every blob each remaining path has held anywhere in the base history.
+  // `--raw -z` gives `:modeA modeB blobA blobB S\0path\0` per change.
+  const inHistory = new Set<string>();
+  const log = await git(root, [
+    '--literal-pathspecs',
+    'log',
+    '--raw',
+    '-z',
+    '--no-abbrev',
+    '--no-renames',
+    '--format=',
+    ...refs,
+    '--',
+    ...offTip.map(p => p.path),
+  ]);
+  const fields = nulFields(log);
+  for (let i = 0; i + 1 < fields.length; i++) {
+    const meta = (fields[i] ?? '').trimStart();
+    if (!meta.startsWith(':')) continue;
+    const [, , blobA = '', blobB = ''] = meta.split(' ');
+    const path = fields[++i] ?? '';
+    inHistory.add(`${path}\0${blobA}`);
+    inHistory.add(`${path}\0${blobB}`);
+  }
+  const lost = offTip.filter(
+    p =>
+      !p.versions.every(v => onTip(p.path, v) || (v !== null && inHistory.has(`${p.path}\0${v}`)))
+  );
+  return counted + lost.length;
+}

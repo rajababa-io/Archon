@@ -5263,6 +5263,8 @@ export interface components {
       location: 'live' | 'worktree' | null;
       branch: string | null;
       dirty: boolean | null;
+      baseBranch: string | null;
+      offBaseFiles: number | null;
     };
     CreateConversationResponse: {
       conversationId: string;
