@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MenuCheckItem, MenuItem } from './RowMenu';
+import { MenuCheckItem, MenuItem, RowMenuButton } from './RowMenu';
 
 const noop = (): void => undefined;
 
@@ -56,5 +56,16 @@ describe('MenuItem', () => {
     expect(html).not.toContain('hover:');
     expect(html).not.toContain('aria-description');
     expect(html).toContain('>Mark unread</button>');
+  });
+});
+
+describe('RowMenuButton', () => {
+  test('says whether its menu is open', () => {
+    expect(renderToStaticMarkup(<RowMenuButton open onToggle={noop} />)).toContain(
+      'aria-expanded="true"'
+    );
+    expect(renderToStaticMarkup(<RowMenuButton open={false} onToggle={noop} />)).toContain(
+      'aria-expanded="false"'
+    );
   });
 });

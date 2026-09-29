@@ -16,6 +16,14 @@ import { useSyncExternalStore } from 'react';
  */
 export const RAIL_AUTO_COLLAPSE_PX = 1100;
 
+/**
+ * Below this, the project rail leaves the layout and becomes a drawer opened
+ * from the header. A drawer covers the page rather than sharing its width, so
+ * the auto-collapse above does not apply to it — and on a phone an icon-only
+ * drawer hid every project's name and its ⋯ menu.
+ */
+export const RAIL_DRAWER_PX = 768;
+
 function subscribe(onChange: () => void): () => void {
   window.addEventListener('resize', onChange);
   return () => {

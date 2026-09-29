@@ -137,3 +137,13 @@ describe('ConversationRail — issue numbers in a title (#119)', () => {
     expect(html).toContain('<span class="rail-text">Fix the #3 regression</span>');
   });
 });
+
+describe('ConversationRail — row menu (#255)', () => {
+  test('every row has a ⋯ button, so the menu does not depend on right-click', () => {
+    // iOS Safari fires no contextmenu on long-press; a menu reachable only by
+    // right-click could not be opened on an iPhone at all.
+    const html = draw({ conversations: [chat('one'), chat('two'), chat('three')] });
+    expect(html.match(/aria-label="More actions"/g)?.length).toBe(3);
+    expect(html).toContain('aria-haspopup="menu"');
+  });
+});

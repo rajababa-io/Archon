@@ -6,7 +6,6 @@ interface ProjectTileProps {
   name: string;
   selected: boolean;
   onClick: () => void;
-  onRemove?: () => void;
   activityDot?: 'running' | 'paused' | 'failed' | null;
 }
 
@@ -20,7 +19,6 @@ export function ProjectTile({
   name,
   selected,
   onClick,
-  onRemove,
   activityDot = null,
 }: ProjectTileProps): ReactElement {
   const style: CSSProperties = { backgroundColor: tileColor(projectId) };
@@ -32,15 +30,7 @@ export function ProjectTile({
     <button
       type="button"
       onClick={onClick}
-      onContextMenu={e => {
-        if (onRemove === undefined) return;
-        e.preventDefault();
-        const confirmed = window.confirm(
-          `Remove project "${name}"?\n\nLocal files and worktrees are not deleted.`
-        );
-        if (confirmed) onRemove();
-      }}
-      title={`${name} · right-click to remove`}
+      title={name}
       aria-label={name}
       aria-pressed={selected}
       className={`relative aspect-square w-11 rounded-md flex items-center justify-center text-body font-medium leading-none text-white/95 transition-[transform,box-shadow] hover:-translate-y-[1px] active:translate-y-0 ${ring}`}

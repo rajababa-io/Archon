@@ -59,10 +59,10 @@ export function ChatModelPicker({
       <button
         type="button"
         ref={setAnchor}
-        // The menu closes on any mousedown outside itself, and this button is
-        // outside it: without this, a click meant to close would close and
+        // The menu closes on any pointerdown outside itself, and this button
+        // is outside it: without this, a click meant to close would close and
         // then reopen.
-        onMouseDown={e => {
+        onPointerDown={e => {
           e.stopPropagation();
         }}
         onClick={() => {

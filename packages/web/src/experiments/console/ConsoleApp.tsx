@@ -29,6 +29,7 @@ import { K } from './store/keys';
 import { useKeymap, type Binding } from './lib/keymap';
 import { useDashboardSSE } from './lib/sse';
 import { SHORTCUTS } from './lib/shortcuts';
+import { RAIL_DRAWER_PX, useViewportWidth } from './lib/use-viewport';
 import './theme.css';
 import './rail.css';
 
@@ -45,6 +46,9 @@ export function ConsoleApp(): ReactElement {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [railOpen, setRailOpen] = useState(false);
+  // Decided here, once, rather than by a CSS breakpoint: the rail needs the
+  // same answer to know it is a drawer, and two copies of the width would drift.
+  const drawer = useViewportWidth() < RAIL_DRAWER_PX;
   useEffect(() => {
     setRailOpen(false);
   }, [pathname]);
@@ -102,37 +106,46 @@ export function ConsoleApp(): ReactElement {
 
   return (
     <div className="console-root flex h-screen w-screen flex-col bg-surface text-text-primary">
-      <header className="flex items-center gap-2.25 border-b border-border px-3 py-1.25 md:hidden">
-        <button
-          type="button"
-          aria-controls="project-navigation"
-          aria-expanded={railOpen}
-          onClick={() => {
-            setRailOpen(open => !open);
-          }}
-          className="rounded border border-border px-3 py-1.25"
-        >
-          {railOpen ? 'Close navigation' : 'Projects and settings'}
-        </button>
-        <span className="font-medium">Archon</span>
-      </header>
+      {drawer ? (
+        <header className="flex items-center gap-2.25 border-b border-border px-3 py-1.25">
+          <button
+            type="button"
+            aria-controls="project-navigation"
+            aria-expanded={railOpen}
+            onClick={() => {
+              setRailOpen(open => !open);
+            }}
+            className="rounded border border-border px-3 py-1.25"
+          >
+            {railOpen ? 'Close navigation' : 'Projects and settings'}
+          </button>
+          <span className="font-medium">Archon</span>
+        </header>
+      ) : null}
       <MobileViewBanner />
       <div className="rail-shell flex min-h-0 flex-1">
-        {railOpen ? (
+        {drawer && railOpen ? (
           <button
             type="button"
             aria-label="Close navigation"
             onClick={() => {
               setRailOpen(false);
             }}
-            className="fixed inset-0 z-20 bg-black/60 md:hidden"
+            className="fixed inset-0 z-20 bg-black/60"
           />
         ) : null}
         <div
           id="project-navigation"
-          className={`${railOpen ? 'fixed inset-y-0 left-0 z-30 flex max-w-[calc(100vw-3rem)] shadow-xl' : 'hidden'} md:static md:z-auto md:flex md:max-w-none md:shadow-none`}
+          className={
+            !drawer
+              ? 'flex'
+              : railOpen
+                ? 'fixed inset-y-0 left-0 z-30 flex max-w-[calc(100vw-3rem)] shadow-xl'
+                : 'hidden'
+          }
         >
           <ProjectRail
+            drawer={drawer}
             onAddProject={() => {
               setAddOpen(true);
               setRailOpen(false);

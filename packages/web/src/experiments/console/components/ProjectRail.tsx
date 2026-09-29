@@ -45,6 +45,8 @@ import {
 } from '../primitives/project';
 
 interface ProjectRailProps {
+  /** Shown as a drawer over the page rather than beside it. */
+  drawer: boolean;
   onAddProject: () => void;
   /** Opens the command palette — the rail's search row is a shortcut to it. */
   onSearch: () => void;
@@ -141,7 +143,7 @@ function RailNavLink({
  * <main> that hosts them), so `useParams()` returns `{}` here even on a
  * project URL. We extract the project id from the pathname directly.
  */
-export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): ReactElement {
+export function ProjectRail({ drawer, onAddProject, onSearch }: ProjectRailProps): ReactElement {
   const navigate = useNavigate();
   const location = useLocation();
   const scope = extractProjectId(location.pathname) ?? 'all';
@@ -178,9 +180,11 @@ export function ProjectRail({ onAddProject, onSearch }: ProjectRailProps): React
    * stored preference would mean a window you narrowed once left the rail
    * collapsed forever; keeping the two separate means widening the window
    * gives you back exactly what you had.
+   *
+   * A drawer is exempt: it covers the page instead of sharing its width.
    */
   const viewportWidth = useViewportWidth();
-  const tooNarrow = viewportWidth < RAIL_AUTO_COLLAPSE_PX;
+  const tooNarrow = !drawer && viewportWidth < RAIL_AUTO_COLLAPSE_PX;
   const collapsed = chosenCollapsed || tooNarrow;
   const peeking = useRailPeek(collapsed, width);
   const showWide = !collapsed || peeking;
