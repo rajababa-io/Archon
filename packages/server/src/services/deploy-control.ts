@@ -468,13 +468,24 @@ export async function cancelDeploy(
  * `hold:<reason>`. One machine token per answer, because the reader is a shell
  * script and this is the whole of what it needs.
  */
-export async function decidePolicy(query: {
+export async function decidePolicy(query: PolicyQuery): Promise<string> {
+  const setting = await projectDeployDb.findProjectDeployByMethod('archon-host');
+  if (setting === null) return 'hold:no-project';
+  return decideFor(setting, query);
+}
+
+export interface PolicyQuery {
   source: string | undefined;
   sha: string | undefined;
   request: string | undefined;
-}): Promise<string> {
-  const setting = await projectDeployDb.findProjectDeployByMethod('archon-host');
-  if (setting === null) return 'hold:no-project';
+}
+
+/**
+ * The answer for one project's deploy, whichever host is asking: a `merge`
+ * request runs only while Deploy on Merge is on, and a `manual` one only with a
+ * token the console issued for that commit — which only a person's press makes.
+ */
+export async function decideFor(setting: ProjectDeploy, query: PolicyQuery): Promise<string> {
   if (query.sha === undefined || !SHA.test(query.sha)) return 'hold:malformed';
 
   if (query.source === 'manual') {
@@ -484,7 +495,9 @@ export async function decidePolicy(query: {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(id)) {
       return 'hold:not-issued';
     }
-    return (await projectDeployDb.isIssuedManualRequest(id, query.sha)) ? 'run' : 'hold:not-issued';
+    return (await projectDeployDb.isIssuedManualRequest(setting.codebaseId, id, query.sha))
+      ? 'run'
+      : 'hold:not-issued';
   }
   if (query.source === 'merge') {
     return setting.deployOnMerge ? 'run' : 'hold:toggle-off';

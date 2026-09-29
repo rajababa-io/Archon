@@ -59,10 +59,24 @@ const mockSetUp = mock(
       updatedBy: actor,
     }) as unknown
 );
+const REMOTE_SETTING = {
+  ...SETTING,
+  method: 'remote-host',
+  branch: 'main',
+  deployOnMerge: true,
+  remoteUrl: 'http://adina:8080/archon/deploy',
+};
+const mockFindRemote = mock(
+  async (token: string): Promise<unknown> => (token === 'adina-credential' ? REMOTE_SETTING : null)
+);
+const mockRecordReport = mock(async (..._args: unknown[]): Promise<void> => undefined);
 mock.module('@archon/core/db/project-deploy', () => ({
   getProjectDeploy: mockGetProjectDeploy,
   setDeployOnMerge: mockSetDeployOnMerge,
   setUpWorkflowDeploy: mockSetUp,
+  findRemoteDeployByToken: mockFindRemote,
+  recordDeployReport: mockRecordReport,
+  isDeployReportVerdict: (v: unknown) => v === 'held' || v === 'ok' || v === 'failed',
 }));
 
 const WORKFLOW_SETTING = { ...SETTING, method: 'workflow', branch: 'main', workflowName: 'deploy' };
@@ -100,15 +114,31 @@ const mockCancelDeploy = mock(
   })
 );
 const mockDecidePolicy = mock(async (_q: unknown): Promise<string> => 'run');
+const mockDecideFor = mock(async (_s: unknown, _q: unknown): Promise<string> => 'run');
 mock.module('../services/deploy-control', () => ({
   deployNow: mockDeployNow,
   cancelDeploy: mockCancelDeploy,
   decidePolicy: mockDecidePolicy,
+  decideFor: mockDecideFor,
   getDeployLog: mock(async () => []),
   getProjectDeployView: mock(async () => ({ deployOnMerge: false })),
 }));
 
-import { registerDeployPolicyRoute, registerProjectDeployRoutes } from './project-deploy';
+const mockDeployRemoteNow = mock(
+  async (..._args: unknown[]): Promise<unknown> => ({ ok: true, requestId: 'r' })
+);
+const mockRemoteLog = mock(async (_id: string): Promise<unknown[]> => []);
+mock.module('../services/remote-deploy', () => ({
+  deployRemoteNow: mockDeployRemoteNow,
+  getRemoteDeployLog: mockRemoteLog,
+  getRemoteDeployView: mock(async () => ({ method: 'remote-host', deployOnMerge: true })),
+}));
+
+import {
+  registerDeployPolicyRoute,
+  registerProjectDeployRoutes,
+  registerRemoteDeployRoutes,
+} from './project-deploy';
 import { resetHumanPassCache } from '../services/human-pass';
 
 const TEAM = 'team.cloudflareaccess.com';
@@ -179,12 +209,16 @@ beforeEach(() => {
   mockSetUp.mockClear();
   mockDeployWorkflowNow.mockClear();
   mockCancelWorkflowDeploy.mockClear();
+  mockDeployRemoteNow.mockClear();
+  mockRecordReport.mockClear();
+  mockDecideFor.mockClear();
 });
 
 function app(): OpenAPIHono {
   const a = new OpenAPIHono();
   registerProjectDeployRoutes(a, async () => ({ chats: 2, workflows: 1 }), null);
   registerDeployPolicyRoute(a, 'drain-token');
+  registerRemoteDeployRoutes(a);
   return a;
 }
 
@@ -214,6 +248,7 @@ function nothingChanged(): void {
   expect(mockSetUp).not.toHaveBeenCalled();
   expect(mockDeployWorkflowNow).not.toHaveBeenCalled();
   expect(mockCancelWorkflowDeploy).not.toHaveBeenCalled();
+  expect(mockDeployRemoteNow).not.toHaveBeenCalled();
 }
 
 describe('an agent cannot set up deploys, flip the toggle, Deploy now, or Cancel deploy', () => {
@@ -383,5 +418,126 @@ describe('a workflow project acts on its own workflow, never the Archon host dep
     const res = await app().request(`${url}/log`);
     expect(res.status).toBe(200);
     expect(mockWorkflowLog).toHaveBeenCalledWith(PROJECT);
+  });
+});
+
+describe('a remote-host project acts through its own host, never the Archon host deploy (#220)', () => {
+  beforeEach(() => {
+    mockGetProjectDeploy.mockImplementation(async () => REMOTE_SETTING);
+  });
+  afterAll(() => {
+    mockGetProjectDeploy.mockImplementation(async () => SETTING);
+  });
+
+  test('Deploy now asks its host, as the person who pressed it', async () => {
+    const res = await call(ACTIONS[1]!, {
+      'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey),
+    });
+    expect(res.status).toBe(202);
+    expect(mockDeployNow).not.toHaveBeenCalled();
+    expect(mockDeployWorkflowNow).not.toHaveBeenCalled();
+    const [, setting, sha, email] = mockDeployRemoteNow.mock.calls[0] ?? [];
+    expect(setting).toEqual(REMOTE_SETTING);
+    expect(sha).toBe(TIP);
+    expect(email).toBe('you@example.com');
+  });
+
+  test('an agent pressing Deploy now is refused before the host is asked', async () => {
+    const res = await call(ACTIONS[1]!, { 'X-Archon-User': 'ameet' });
+    expect(res.status).toBe(403);
+    expect(mockDeployRemoteNow).not.toHaveBeenCalled();
+  });
+
+  test('Cancel deploy refuses, and never reaches the Archon host deploy', async () => {
+    const res = await call(ACTIONS[2]!, {
+      'Cf-Access-Jwt-Assertion': await pass(teamKey.privateKey),
+    });
+    expect(res.status).toBe(409);
+    expect(mockCancelDeploy).not.toHaveBeenCalled();
+  });
+
+  test("the log is the host's reports, not this install's deploy-history", async () => {
+    const res = await app().request(`${url}/log`);
+    expect(res.status).toBe(200);
+    expect(mockRemoteLog).toHaveBeenCalledWith(PROJECT);
+  });
+});
+
+describe('the remote host policy and report routes (#220)', () => {
+  const AUTH = { Authorization: 'Bearer adina-credential' };
+
+  test('a caller without the project credential is refused', async () => {
+    for (const headers of [{}, { Authorization: 'Bearer drain-token' }] as Record<
+      string,
+      string
+    >[]) {
+      const res = await app().request(`/internal/remote-deploy/policy?source=merge&sha=${TIP}`, {
+        headers,
+      });
+      expect(res.status).toBe(401);
+    }
+    expect(mockDecideFor).not.toHaveBeenCalled();
+    const res = await app().request('/internal/remote-deploy/report', {
+      method: 'POST',
+      body: JSON.stringify({ verdict: 'ok', sha: TIP, live: TIP }),
+    });
+    expect(res.status).toBe(401);
+    expect(mockRecordReport).not.toHaveBeenCalled();
+  });
+
+  test("answers the credential's own project, with the shared policy", async () => {
+    mockDecideFor.mockImplementationOnce(async () => 'hold:toggle-off');
+    const res = await app().request(`/internal/remote-deploy/policy?source=merge&sha=${TIP}`, {
+      headers: AUTH,
+    });
+    expect(await res.text()).toBe('hold:toggle-off');
+    expect(mockDecideFor).toHaveBeenLastCalledWith(REMOTE_SETTING, {
+      source: 'merge',
+      sha: TIP,
+      request: undefined,
+    });
+  });
+
+  test('a lookup that throws answers a hold, never run', async () => {
+    mockFindRemote.mockImplementationOnce(async () => {
+      throw new Error('db down');
+    });
+    const res = await app().request(`/internal/remote-deploy/policy?source=merge&sha=${TIP}`, {
+      headers: AUTH,
+    });
+    expect(res.status).toBe(500);
+    expect(await res.text()).toBe('hold:policy-error');
+  });
+
+  test('records a report against the credential project', async () => {
+    const live = 'a'.repeat(40);
+    const res = await app().request('/internal/remote-deploy/report', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({ verdict: 'held', sha: TIP, live, reason: 'hold:toggle-off' }),
+    });
+    expect(res.status).toBe(204);
+    expect(mockRecordReport).toHaveBeenCalledWith(PROJECT, {
+      verdict: 'held',
+      sha: TIP,
+      liveSha: live,
+      reason: 'hold:toggle-off',
+    });
+  });
+
+  test('refuses a report it cannot read', async () => {
+    for (const body of [
+      { verdict: 'deployed', sha: TIP, live: TIP },
+      { verdict: 'ok', sha: 'abc', live: TIP },
+      { verdict: 'ok', sha: TIP },
+    ]) {
+      const res = await app().request('/internal/remote-deploy/report', {
+        method: 'POST',
+        headers: AUTH,
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    }
+    expect(mockRecordReport).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import type { HostDeploy, WorkflowDeploy } from '../../skills/deploy';
+import type { HostDeploy, RemoteDeploy, WorkflowDeploy } from '../../skills/deploy';
 import { deployConfirm } from '../../lib/deploy-row';
 import { deployConfirmText } from './deploy-confirm';
 
@@ -45,6 +45,13 @@ describe('deployConfirmText', () => {
     };
     expect(deployConfirmText(deploy, 'Site', TIP).body).toBe(
       'This runs the ship-it workflow on 86b91ff0.'
+    );
+  });
+
+  test('a remote-host deploy says the host pulls the commit, and pauses nothing here', () => {
+    const deploy: RemoteDeploy = { ...common, method: 'remote-host' };
+    expect(deployConfirmText(deploy, 'Vault', TIP).body).toBe(
+      'The host that runs Vault pulls 86b91ff0 and restarts what it changed.'
     );
   });
 });

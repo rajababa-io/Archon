@@ -19,6 +19,12 @@ export function deployConfirmText(
   if (deploy.method === 'workflow') {
     return { title, body: `This runs the ${deploy.workflowName} workflow on ${shortSha(tipSha)}.` };
   }
+  if (deploy.method === 'remote-host') {
+    return {
+      title,
+      body: `The host that runs ${projectName} pulls ${shortSha(tipSha)} and restarts what it changed.`,
+    };
+  }
   const running = deployConfirm(projectName, deploy.running);
   return {
     title,
