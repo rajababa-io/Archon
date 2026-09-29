@@ -1,4 +1,4 @@
-import { Search, Inbox, Play, PanelLeft, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, Inbox, PanelLeft, ChevronUp, ChevronDown } from 'lucide-react';
 import { useRailPeek } from '../lib/use-rail-peek';
 import { RAIL_AUTO_COLLAPSE_PX, useViewportWidth } from '../lib/use-viewport';
 import {
@@ -27,8 +27,7 @@ import {
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Settings, Workflow, type LucideIcon } from 'lucide-react';
 import { ProjectRow } from './ProjectRow';
-import { ProjectCountHeader } from './ProjectCountCells';
-import type { RunCounts } from '../skills';
+import { ProjectCountHeader, ProjectCountTotals } from './ProjectCountCells';
 import { EnvVarsDialog } from './EnvVarsDialog';
 // Sign-out lives here because the console is the only UI — there is no other
 // surface left to log out from. Renders null when web auth is off (the solo
@@ -72,29 +71,6 @@ export async function removeProjectFromRail(
 function extractProjectId(pathname: string): string | null {
   const m = /^\/console\/p\/([^/]+)/.exec(pathname);
   return m === null ? null : m[1];
-}
-
-/**
- * Runs executing right now, across every project.
- *
- * The glyph is what says "runs" — a bare "2 running" leaves the reader to
- * guess what is running, which is a question this exact line has been asked
- * twice. Renders nothing at zero.
- */
-function GlobalRunning(): ReactElement | null {
-  const { data } = useEntity<RunCounts>(K.countsGlobal, skill.listGlobalCounts);
-  const n = data?.running ?? 0;
-  if (n === 0) return null;
-  return (
-    <span
-      title={`${n} run${n === 1 ? '' : 's'} executing right now, across all projects`}
-      className="rail-hide rail-cnt"
-      style={{ color: 'var(--running)' }}
-    >
-      <Play />
-      {n} running
-    </span>
-  );
 }
 
 const RAIL_COLLAPSED_KEY = 'archon.console.railCollapsed';
@@ -222,6 +198,7 @@ export function ProjectRail({ drawer, onAddProject, onSearch }: ProjectRailProps
   const { data: projects, error } = useEntity<Project[]>(K.projects, () => skill.listProjects());
 
   const allSelected = scope === 'all';
+  const allProjectIds = useMemo(() => (projects ?? []).map(p => p.id), [projects]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -423,7 +400,8 @@ export function ProjectRail({ drawer, onAddProject, onSearch }: ProjectRailProps
               <Inbox />
             </span>
             <span className="rail-hide rail-text">All projects</span>
-            <GlobalRunning />
+            <ProjectCountTotals projectIds={allProjectIds} />
+            <span className="rail-hide rail-actions" />
           </button>
         </div>
 

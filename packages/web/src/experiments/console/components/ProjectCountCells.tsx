@@ -1,7 +1,7 @@
 import { MessageCircle, Play, CircleDot } from 'lucide-react';
 import { memo, type ReactElement } from 'react';
 import * as skill from '../skills';
-import { useEntity } from '../store/cache';
+import { useEntities, useEntity } from '../store/cache';
 import { K } from '../store/keys';
 
 /**
@@ -76,6 +76,95 @@ function ProjectCountCellsImpl({ projectId }: { projectId: string }): ReactEleme
           data?.issues === null || data?.issues === undefined
             ? 'Open issues — not available for this project'
             : `${data.issues} open issue${data.issues === 1 ? '' : 's'}`
+        }
+      />
+    </span>
+  );
+}
+
+export interface CountTotals {
+  runs: number;
+  running: number;
+  awaiting: number;
+  chats: number;
+  /** `null` when no project could report its issues. */
+  issues: number | null;
+  /** Projects whose issue count is unknown — left out of `issues`. */
+  issuesUnknown: number;
+}
+
+/**
+ * Sum of every project's row. A project still loading adds nothing; one whose
+ * issues cannot be asked is left out of the issue total and counted instead,
+ * so the tooltip can say the figure is partial rather than claim it is whole.
+ */
+export function sumProjectCounts(rows: readonly (skill.ProjectCounts | undefined)[]): CountTotals {
+  const t: CountTotals = {
+    runs: 0,
+    running: 0,
+    awaiting: 0,
+    chats: 0,
+    issues: null,
+    issuesUnknown: 0,
+  };
+  for (const r of rows) {
+    if (r === undefined) continue;
+    t.runs += r.runs;
+    t.running += r.running;
+    t.awaiting += r.awaiting;
+    t.chats += r.chats;
+    if (r.issues === null) t.issuesUnknown += 1;
+    else t.issues = (t.issues ?? 0) + r.issues;
+  }
+  return t;
+}
+
+/**
+ * The same three cells for the All projects row: totals across EVERY project,
+ * not only the ones the rail search is showing. Reads the per-project entries
+ * the rows already load, so it adds no requests of its own.
+ */
+export function ProjectCountTotals({
+  projectIds,
+}: {
+  projectIds: readonly string[];
+}): ReactElement {
+  const rows = useEntities<skill.ProjectCounts>(
+    projectIds.map(id => ({
+      key: K.projectCounts(id),
+      loader: (): Promise<skill.ProjectCounts> => skill.getProjectCounts(id),
+    }))
+  );
+  const t = sumProjectCounts(rows);
+  const s = (n: number): string => (n === 1 ? '' : 's');
+
+  return (
+    <span className="rail-hide rail-counts">
+      <Cell
+        value={t.runs}
+        tone={t.awaiting > 0 ? 'attention' : t.running > 0 ? 'running' : undefined}
+        title={
+          t.runs === 0
+            ? 'Nothing running in any project'
+            : [
+                `${t.runs} run${s(t.runs)} in play across all projects`,
+                t.running > 0 ? `${t.running} running` : null,
+                t.awaiting > 0 ? `${t.awaiting} waiting on you` : null,
+              ]
+                .filter(Boolean)
+                .join(', ')
+        }
+      />
+      <Cell value={t.chats} title={`${t.chats} open chat${s(t.chats)} across all projects`} />
+      <Cell
+        value={t.issues}
+        title={
+          t.issues === null
+            ? 'Open issues — no project could report them'
+            : `${t.issues} open issue${s(t.issues)} across all projects` +
+              (t.issuesUnknown > 0
+                ? ` (${t.issuesUnknown} project${s(t.issuesUnknown)} could not report)`
+                : '')
         }
       />
     </span>
