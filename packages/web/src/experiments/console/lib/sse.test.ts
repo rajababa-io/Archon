@@ -5,6 +5,7 @@ import {
   conversationStreamKeys,
   runStreamKeys,
   dashboardStreamKeys,
+  conversationFlushKeys,
   type OpenableStream,
 } from './sse';
 import { subscribeKey, get } from '../store/cache';
@@ -336,5 +337,20 @@ describe('stream recovery — the keys each stream keeps live', () => {
 
     for (const unsubscribe of unsubscribes) unsubscribe();
     unsubscribeRun();
+  });
+});
+
+describe('conversationFlushKeys', () => {
+  test("a project's change also refreshes the every-project list the tab badge reads", () => {
+    const keys = conversationFlushKeys(['conversation_changed'], 'proj-a');
+    expect(keys).toContain(K.conversations('proj-a'));
+    expect(keys).toContain(K.allConversations);
+    expect(keys).not.toContain('conversations');
+  });
+
+  test('an unknown project falls back to the family prefix', () => {
+    const keys = conversationFlushKeys(['conversation_lock'], null);
+    expect(keys).toContain('conversations');
+    expect(keys).toContain(K.activeChats);
   });
 });

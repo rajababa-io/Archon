@@ -15,8 +15,6 @@ import { EmptyState } from '../components/EmptyState';
 import { StreamContextProvider } from '../lib/stream-context';
 import { useConversationSSE, type NextMessageSuggestion } from '../lib/sse';
 import { useLiveChats } from '../lib/live-chats';
-import { useTabSignal } from '../lib/use-tab-signal';
-import { chatStatuses } from '../primitives/tab-signal';
 import { useEntity, invalidate } from '../store/cache';
 import { ALL_SCOPE, K } from '../store/keys';
 import { getDisplayName, projectLabel } from '../lib/display-name';
@@ -199,6 +197,9 @@ export function ChatPage(): ReactElement {
     // A chat changed from the every-project list is also in its own
     // project's list, which the project header's count reads.
     if (everyProject && projectId !== undefined) invalidate(K.conversations(projectId));
+    // The tab badge counts every project's chats, so a read or unread mark
+    // made here has to reach that list too.
+    invalidate(K.allConversations);
   };
   invalidateConversationsRef.current = invalidateConversations;
 
@@ -542,9 +543,8 @@ export function ChatPage(): ReactElement {
   }, [liveIds, activeConvId, working]);
 
   /**
-   * Every status input, built once. The rail's dots, the status bar under the
-   * open chat and the tab badge all read THIS object — none of them assembles
-   * its own — so the bar cannot say one thing while the dot beside it says
+   * Every status input, built once. The rail's dots and the status bar under
+   * the open chat both read THIS object — neither assembles its own — so the bar cannot say one thing while the dot beside it says
    * another (#217).
    *
    * The chat on screen is included in `unread` rather than exempted: being open
@@ -562,18 +562,6 @@ export function ChatPage(): ReactElement {
     [conversations, railLiveIds, awaitingIds, runningIds, ciWaiting]
   );
   const unread = statusSets.unread;
-
-  // The tab badge and the opt-in notification. Clicking a notification opens
-  // its chat here.
-  const railStatuses = useMemo(
-    () => chatStatuses(conversations ?? [], statusSets),
-    [conversations, statusSets]
-  );
-  const railTitles = useMemo(
-    () => new Map((conversations ?? []).map(c => [c.id, c.title] as const)),
-    [conversations]
-  );
-  useTabSignal(railStatuses, railTitles, selectConversation);
 
   /** The status of the chat being READ — the same call, on the same sets, as
    * its row in the rail. */

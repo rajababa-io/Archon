@@ -28,6 +28,7 @@ import { invalidate } from './store/cache';
 import { K } from './store/keys';
 import { useKeymap, type Binding } from './lib/keymap';
 import { useDashboardSSE } from './lib/sse';
+import { useTabSignal } from './lib/use-tab-signal';
 import { SHORTCUTS } from './lib/shortcuts';
 import './theme.css';
 import './rail.css';
@@ -38,6 +39,8 @@ export function ConsoleApp(): ReactElement {
   // existed on the routes that happened to show runs left those numbers frozen
   // everywhere else while still looking live. One connection, always open.
   useDashboardSSE();
+  // The tab's badge and notifications speak for every project, on every page.
+  useTabSignal();
 
   const [addOpen, setAddOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
