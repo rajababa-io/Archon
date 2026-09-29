@@ -24,6 +24,7 @@ import {
   decidePolicy,
   deployedAt,
   deployNow,
+  getProjectDeployView,
   HISTORY_PAGE,
   isCancellable,
   waitingFromHistory,
@@ -272,7 +273,7 @@ describe('cancelDeploy', () => {
 
 describe('deployNow', () => {
   const codebase = { id: 'p', default_cwd: '/src' } as never;
-  const setting = { branch: 'dev' } as never;
+  const setting = { method: 'archon-host', branch: 'dev' } as never;
 
   test('records the request before writing it, and hands the script its id', async () => {
     const d = trackTempRoot(mkdtempSync(join(tmpdir(), 'deploy-now-')));
@@ -308,5 +309,33 @@ describe('deployNow', () => {
     const result = await deployNow(codebase, setting, TIP, 'you', run);
     expect(result).toMatchObject({ ok: false, status: 409 });
     expect(run).not.toHaveBeenCalled();
+  });
+
+  test('a deploy that follows the deploy pointer is refused, and nothing is recorded', async () => {
+    const d = trackTempRoot(mkdtempSync(join(tmpdir(), 'deploy-now-')));
+    process.env.ARCHON_HOME = d;
+    mockRecordEvent.mockClear();
+    const run = mock(async () => ({ code: 0, stderr: '' }));
+    const pointer = { method: 'archon-host', branch: 'deploy' } as never;
+    const result = await deployNow(codebase, pointer, TIP, 'you', run);
+    expect(result).toMatchObject({ ok: false, status: 409 });
+    expect(run).not.toHaveBeenCalled();
+    expect(mockRecordEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe('getProjectDeployView', () => {
+  test('a row following the deploy pointer says so instead of listing a short waiting list', async () => {
+    const d = trackTempRoot(mkdtempSync(join(tmpdir(), 'deploy-view-')));
+    const shaFile = join(d, 'sha');
+    writeFileSync(shaFile, `${LIVE}\n`);
+    process.env.ARCHON_DEPLOYED_SHA_FILE = shaFile;
+    const view = await getProjectDeployView(
+      { id: 'p', default_cwd: '/src' } as never,
+      { method: 'archon-host', branch: 'deploy', deployOnMerge: false } as never,
+      d
+    );
+    expect(view.waiting).toBeNull();
+    expect(view.waitingReason).toBe('branch-is-deploy-pointer');
   });
 });

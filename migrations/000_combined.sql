@@ -30,6 +30,7 @@
 --   14. remote_agent_deploy_runs
 --   15. remote_agent_push_subscriptions
 --   16. remote_agent_notify_prefs
+--   17. remote_agent_deploy_not_started
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -841,6 +842,20 @@ CREATE TABLE IF NOT EXISTS remote_agent_notify_prefs (
 COMMENT ON TABLE remote_agent_notify_prefs IS
   'Push preferences: per-chat default/muted/following, per-project mute, and the global triggers.';
 
+-- A merge that should have started a project's deploy and did not (#236). See
+-- migrations/041_deploy_not_started.sql.
+CREATE TABLE IF NOT EXISTS remote_agent_deploy_not_started (
+  id UUID PRIMARY KEY,
+  codebase_id UUID NOT NULL REFERENCES remote_agent_codebases(id) ON DELETE CASCADE,
+  sha VARCHAR(64) NOT NULL,
+  trigger_ref TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE remote_agent_deploy_not_started IS
+  'Merges that should have started a project''s deploy and did not, with the reason. Read into the project''s deploy log.';
+
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases
 -- created the narrow CHECK; re-adding the named constraint converges them. Every
@@ -1006,6 +1021,8 @@ CREATE INDEX IF NOT EXISTS idx_deploy_events_codebase
   ON remote_agent_deploy_events(codebase_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_deploy_runs_codebase
   ON remote_agent_deploy_runs(codebase_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_deploy_not_started_codebase
+  ON remote_agent_deploy_not_started(codebase_id, created_at);
 COMMENT ON COLUMN remote_agent_project_deploy.workflow_name IS
   'The workflow a workflow-method deploy runs, by name. NULL for archon-host, which runs none.';
 

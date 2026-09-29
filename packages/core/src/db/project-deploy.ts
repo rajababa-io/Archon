@@ -10,6 +10,9 @@
  * The deploy's own verdicts (held, OK, failed, killed) are not stored here. The
  * host writes them to `deploy-history`, and the Overview log merges that file
  * with these rows at read time.
+ *
+ * What needs no database — the stored event kinds, the deploy pointer — is in
+ * `project-deploy-rules.ts`, so a caller that mocks this module still gets it.
  */
 import { createLogger } from '@archon/paths';
 
@@ -19,6 +22,7 @@ import {
 } from '@archon/workflows/schemas/workflow-run';
 
 import { pool, getDialect } from './connection';
+import type { DeployEventKind } from './project-deploy-rules';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
@@ -185,14 +189,6 @@ export async function setDeployOnMerge(
   return { before: current.deployOnMerge, after };
 }
 
-export const DEPLOY_EVENT_KINDS = [
-  'toggle_on',
-  'toggle_off',
-  'deploy_requested',
-  'deploy_cancelled',
-] as const;
-export type DeployEventKind = (typeof DEPLOY_EVENT_KINDS)[number];
-
 export interface DeployEvent {
   id: string;
   codebaseId: string;
@@ -324,4 +320,62 @@ export async function listDeployRuns(codebaseId: string, limit = 50): Promise<De
     });
   }
   return runs;
+}
+
+// ─── Deploys that did not start ──────────────────────────────────────────────
+
+/**
+ * Record that a merge should have started this project's deploy and did not
+ * (#236), with the reason the person would have been shown. Its own table,
+ * because `remote_agent_deploy_events.kind` is a shipped CHECK list and
+ * `deploy_requested` there is the host's proof that a person asked.
+ */
+export async function recordDeployNotStarted(
+  codebaseId: string,
+  sha: string,
+  trigger: string,
+  reason: string
+): Promise<void> {
+  const dialect = getDialect();
+  await pool.query(
+    `INSERT INTO remote_agent_deploy_not_started (id, codebase_id, sha, trigger_ref, reason, created_at)
+     VALUES ($1, $2, $3, $4, $5, ${dialect.now()})`,
+    [dialect.generateUuid(), codebaseId, sha, trigger, reason]
+  );
+}
+
+export interface DeployNotStarted {
+  sha: string;
+  /** What asked for the deploy, e.g. `owner/repo#123` for a merged PR. */
+  trigger: string;
+  reason: string;
+  at: string;
+}
+
+interface DeployNotStartedRow {
+  sha: string;
+  trigger_ref: string;
+  reason: string;
+  created_at: string | Date;
+}
+
+/** This project's deploys that did not start, newest first. Another project's never appear. */
+export async function listDeployNotStarted(
+  codebaseId: string,
+  limit = 50
+): Promise<DeployNotStarted[]> {
+  const res = await pool.query<DeployNotStartedRow>(
+    `SELECT sha, trigger_ref, reason, created_at
+       FROM remote_agent_deploy_not_started
+      WHERE codebase_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [codebaseId, limit]
+  );
+  return res.rows.map(row => ({
+    sha: row.sha,
+    trigger: row.trigger_ref,
+    reason: row.reason,
+    at: iso(row.created_at),
+  }));
 }

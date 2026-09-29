@@ -9,6 +9,7 @@ import {
 } from '../skills/deploy';
 import {
   blockedTitle,
+  DEPLOY_LOG_LABEL,
   deployConfirm,
   deployProgress,
   deployProgressText,
@@ -252,6 +253,31 @@ describe('parsing', () => {
         ],
       })
     ).toEqual([{ at: '2026-09-27T11:00:00Z', kind: 'ok', actor: null, sha: LIVE, detail: null }]);
+  });
+
+  test('a merge that did not deploy keeps its reason and the merge that asked', () => {
+    const entry = {
+      at: '2026-09-27T12:00:00Z',
+      kind: 'not_started',
+      actor: 'rajababa-io/atlas#12',
+      sha: LIVE,
+      detail: 'This project has no workflow named "deploy".',
+    };
+    expect(parseDeployLog({ entries: [entry] })).toEqual([entry]);
+    expect(DEPLOY_LOG_LABEL.not_started).toBe("Merge didn't deploy");
+  });
+
+  test('a deploy following the deploy branch says so, never Up to date', () => {
+    const view = deployRowView(
+      deploy({ branch: 'deploy', waitingReason: 'branch-is-deploy-pointer' }),
+      undefined,
+      NOW
+    );
+    expect(view.kind === 'idle' ? view.right : null).toEqual({
+      kind: 'unknown',
+      label: 'Watching the deploy branch, not the one merges land on',
+      reason: 'branch-is-deploy-pointer',
+    });
   });
 });
 

@@ -73,11 +73,20 @@ const setting = (codebaseId: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 let mergeDeploys: ReturnType<typeof setting>[] = [];
+type NotStarted = { sha: string; trigger: string; reason: string; at: string };
+let notStartedByProject: Record<string, NotStarted[]> = {};
+const mockRecordNotStarted = mock(
+  async (id: string, sha: string, trigger: string, reason: string) => {
+    (notStartedByProject[id] ??= []).unshift({ sha, trigger, reason, at: '2026-09-28T01:00:00Z' });
+  }
+);
 mock.module('@archon/core/db/project-deploy', () => ({
   listDeployRuns: mockListDeployRuns,
   recordDeployRun: mockRecordDeployRun,
   recordDeployEvent: mockRecordEvent,
   listDeployEvents: mockListEvents,
+  recordDeployNotStarted: mockRecordNotStarted,
+  listDeployNotStarted: mock(async (id: string) => notStartedByProject[id] ?? []),
   listMergeDeploysOnBranch: mock(async (branch: string) =>
     mergeDeploys.filter(d => d.branch === branch && d.deployOnMerge)
   ),
@@ -165,12 +174,14 @@ beforeEach(() => {
   bindingStatus = 'complete';
   runsByProject = {};
   mergeDeploys = [];
+  notStartedByProject = {};
   discovered = [
     { name: 'deploy', source: 'project' },
     { name: 'archon-assist', source: 'bundled' },
   ];
   mockRecordDeployRun.mockClear();
   mockRecordEvent.mockClear();
+  mockRecordNotStarted.mockClear();
   mockCancelWorkflow.mockClear();
 });
 
@@ -329,6 +340,7 @@ describe('a merged pull request', () => {
     await deployMergedBranch(merge(), host);
     expect(drains).toEqual([]);
     expect(mockRecordDeployRun).not.toHaveBeenCalled();
+    expect(mockRecordNotStarted).not.toHaveBeenCalled();
   });
 
   test('starts nothing when no person owns the switch', async () => {
@@ -336,6 +348,8 @@ describe('a merged pull request', () => {
     await deployMergedBranch(merge(), host);
     expect(accepted).toHaveLength(0);
     expect(mockRecordDeployRun).not.toHaveBeenCalled();
+    // Not silent: the project's log says the merge did not deploy, and why.
+    expect(notStartedByProject[ATLAS.id]?.[0]?.reason).toContain('no owner');
   });
 
   test('a deploy that did not start fails the merge, so a redelivery can try again', async () => {
@@ -343,6 +357,32 @@ describe('a merged pull request', () => {
     discovered = [];
     await expect(deployMergedBranch(merge(), host)).rejects.toThrow(ATLAS.id);
     expect(accepted).toHaveLength(0);
+  });
+
+  test("a deploy that did not start is in that project's log with the reason, and in no other's", async () => {
+    mergeDeploys = [setting(ATLAS.id), setting(VAULT.id)];
+    discovered = [];
+    await expect(deployMergedBranch(merge(), host)).rejects.toThrow(ATLAS.id);
+
+    expect(await getWorkflowDeployLog(ATLAS.id)).toEqual([
+      {
+        at: '2026-09-28T01:00:00Z',
+        kind: 'not_started',
+        actor: 'rajababa-io/atlas#12',
+        sha: TIP,
+        detail: 'This project has no workflow named "deploy".',
+      },
+    ]);
+    expect(await getWorkflowDeployLog(VAULT.id)).toEqual([]);
+  });
+
+  test('a log that cannot be written still fails the merge, so a redelivery can try again', async () => {
+    mergeDeploys = [setting(ATLAS.id)];
+    discovered = [];
+    mockRecordNotStarted.mockImplementationOnce(async () => {
+      throw new Error('db down');
+    });
+    await expect(deployMergedBranch(merge(), host)).rejects.toThrow(ATLAS.id);
   });
 });
 

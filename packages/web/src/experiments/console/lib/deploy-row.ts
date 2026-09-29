@@ -75,6 +75,8 @@ export function waitingUnknownLabel(reason: string): string {
       return 'No GitHub token';
     case 'live-unknown':
       return 'Live commit unknown';
+    case 'branch-is-deploy-pointer':
+      return 'Watching the deploy branch, not the one merges land on';
     default:
       return "Can't check for merged PRs";
   }
@@ -325,6 +327,7 @@ export const DEPLOY_LOG_LABEL: Record<DeployLogKind, string> = {
   deploy_requested: 'Deploy now pressed',
   deploy_cancelled: 'Cancel deploy pressed',
   started: 'Deploy started',
+  not_started: "Merge didn't deploy",
   held: 'Held',
   ok: 'Deployed',
   failed: 'Failed',
