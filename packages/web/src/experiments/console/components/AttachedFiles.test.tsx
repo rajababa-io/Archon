@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { AttachedFiles } from './AttachedFiles';
+import { AttachedFiles, AttachedFilesView } from './AttachedFiles';
 
 const noop = (): void => undefined;
 const file = (name: string): File => new File(['x'], name, { type: 'text/plain' });
@@ -33,5 +33,21 @@ describe('AttachedFiles', () => {
       />
     );
     expect(html).toContain('larger than 10 MB');
+  });
+
+  // The object URLs exist only in a browser, so the view is fed them directly.
+  test('an image with a preview shows its picture; other files stay name and size', () => {
+    const html = renderToStaticMarkup(
+      <AttachedFilesView
+        files={[file('shot.png'), file('notes.md')]}
+        previews={['blob:shot', null]}
+        error={null}
+        onRemove={noop}
+      />
+    );
+    expect(html).toContain('src="blob:shot"');
+    expect(html).toContain('alt="shot.png"');
+    expect(html.match(/<img/g)?.length).toBe(1);
+    expect(html).toContain('notes.md');
   });
 });
