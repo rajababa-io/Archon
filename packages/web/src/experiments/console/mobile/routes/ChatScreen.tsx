@@ -24,7 +24,11 @@ import { EmptyState } from '../../components/EmptyState';
 import { chatStatus } from '../../primitives/chat-status';
 import { baselineUserIds, echoHasLanded } from '../../primitives/pending-echo';
 import { reduceLive, type LiveEvent, type LiveSegment } from '../../primitives/live-text';
-import { renderedMessages, type PendingUser } from '../../primitives/rendered-messages';
+import {
+  renderedMessages,
+  withoutThinking,
+  type PendingUser,
+} from '../../primitives/rendered-messages';
 import type { InlineToolCall, Message } from '../../primitives/message';
 import type { ConversationSummary } from '../../primitives/conversation';
 import { sentHistory } from '../../lib/composer-history';
@@ -345,7 +349,10 @@ function ChatView({
 
   const messageList = useMemo(() => shownMessages ?? [], [shownMessages]);
   const rendered = useMemo(
-    () => renderedMessages(messageList, pendingUser, liveSegments, new Date().toISOString()),
+    () =>
+      withoutThinking(
+        renderedMessages(messageList, pendingUser, liveSegments, new Date().toISOString())
+      ),
     [messageList, pendingUser, liveSegments]
   );
 

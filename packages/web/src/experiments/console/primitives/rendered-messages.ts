@@ -14,7 +14,7 @@ const LIVE_PREFIX = 'live-';
  * Whether this message is a streamed preview rather than a stored row.
  *
  * Owned here because this module mints the preview ids, so the prefix is
- * stated once. The chat reads it to keep a reply's working notes open only
+ * stated once. The chat reads it to keep a reply's thinking open only
  * while that reply is still arriving.
  */
 export function isLivePreview(message: Pick<Message, 'id'>): boolean {
@@ -78,4 +78,14 @@ export function renderedMessages(
     );
   });
   return out;
+}
+
+/**
+ * The same transcript with thinking removed — the phone shows replies only
+ * (#307). A small screen has no room for a second, quieter stream, and a
+ * message that carried only thinking then has nothing left to draw, which
+ * `ChatStream` already drops.
+ */
+export function withoutThinking(messages: Message[]): Message[] {
+  return messages.map(m => (m.thinking === null ? m : { ...m, thinking: null }));
 }

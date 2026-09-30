@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { renderedMessages } from './rendered-messages';
+import { renderedMessages, withoutThinking } from './rendered-messages';
 import type { LiveSegment } from './live-text';
 import type { Message } from './message';
 
@@ -54,5 +54,15 @@ describe('renderedMessages', () => {
     const files = [{ name: 'a.png', mimeType: 'image/png', size: 3 }];
     const out = renderedMessages([], { content: 'look', files }, [], NOW);
     expect(out[0]?.files).toEqual(files);
+  });
+});
+
+describe('withoutThinking', () => {
+  test('clears thinking and keeps everything else', () => {
+    const withNotes = { ...row('a1', 'assistant', 'Done.'), thinking: 'checking the title' };
+    const plain = row('u1', 'user', 'hi');
+    const out = withoutThinking([plain, withNotes]);
+    expect(out[0]).toBe(plain);
+    expect(out[1]).toEqual({ ...withNotes, thinking: null });
   });
 });
