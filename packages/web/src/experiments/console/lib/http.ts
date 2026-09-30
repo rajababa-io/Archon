@@ -35,6 +35,25 @@ export class HttpError extends Error {
 }
 
 /**
+ * An API read that was answered with a redirect. Archon's API never redirects,
+ * so the redirect came from an auth proxy in front of it (Cloudflare Access,
+ * an OAuth gateway) whose sign-in has run out. Followed, it lands on the
+ * proxy's login page on another origin and fails as a CORS error with no
+ * status — indistinguishable from the server being down. Only a top-level
+ * navigation can go through that login, so the remedy is reloading the page.
+ */
+export class SignInRequired extends Error {
+  readonly path: string;
+  constructor(path: string) {
+    super(
+      `Sign-in needed: a proxy in front of Archon redirected ${path}. Reload the page to sign in.`
+    );
+    this.name = 'SignInRequired';
+    this.path = path;
+  }
+}
+
+/**
  * The path to name in an error. `window` is absent under the test runner, and
  * a helper that can only report a URL inside a browser is a helper whose error
  * paths never get tested - which is how both of them stayed untested here.
@@ -113,9 +132,11 @@ export async function requestJson<T>(url: string, options?: RequestInit): Promis
   );
   const res = await fetch(url, {
     credentials: 'same-origin',
+    redirect: 'manual',
     ...options,
     headers,
   });
+  if (res.type === 'opaqueredirect') throw new SignInRequired(pathOf(url));
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     const truncated = body.length > 200 ? `${body.slice(0, 200)}...` : body;

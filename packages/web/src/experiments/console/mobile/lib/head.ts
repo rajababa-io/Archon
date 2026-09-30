@@ -26,10 +26,21 @@ function addToHead(tag: 'link' | 'meta', attrs: Record<string, string>): HTMLEle
   return el;
 }
 
+/**
+ * A manifest is fetched without cookies unless the link asks for them. Behind
+ * an auth proxy (Cloudflare Access) a cookieless fetch gets the login redirect
+ * instead, and the Home Screen install loses its name, icons and scope.
+ */
+export const MANIFEST_LINK = {
+  rel: 'manifest',
+  href: MANIFEST_PATH,
+  crossorigin: 'use-credentials',
+} as const;
+
 export function useMobileHead(): void {
   useEffect(() => {
     const added = [
-      addToHead('link', { rel: 'manifest', href: MANIFEST_PATH }),
+      addToHead('link', MANIFEST_LINK),
       addToHead('link', { rel: 'apple-touch-icon', href: `${ICON_DIR}apple-touch-icon.png` }),
       addToHead('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' }),
       addToHead('meta', { name: 'apple-mobile-web-app-title', content: 'Archon' }),

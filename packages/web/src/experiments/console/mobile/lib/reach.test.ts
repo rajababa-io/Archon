@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { HttpError } from '../../lib/http';
+import { HttpError, SignInRequired } from '../../lib/http';
 import { reachOf } from './reach';
 
 const status = (code: number): HttpError => new HttpError(code, '/api/conversations', '');
@@ -21,6 +21,11 @@ describe('reachOf', () => {
 
   test("Archon's own error is an answer: reachable, and the screen reports it", () => {
     for (const code of [400, 401, 404, 500]) expect(reachOf(true, status(code))).toBe('online');
+  });
+
+  test('an auth proxy turning the list away means signed out, not unreachable', () => {
+    expect(reachOf(true, new SignInRequired('/api/conversations'))).toBe('signed-out');
+    expect(reachOf(false, new SignInRequired('/api/conversations'))).toBe('offline');
   });
 
   test('a clean read is online', () => {
