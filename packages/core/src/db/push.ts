@@ -37,23 +37,28 @@ function toSubscription(row: PushSubscriptionRow): PushSubscriptionRecord {
 }
 
 /**
- * Store a browser's subscription. Subscribing again from the same browser
- * returns the same endpoint, possibly with new keys, so the endpoint is the
- * identity and the keys are replaced.
+ * Store a browser's subscription, answering its row id. Subscribing again from
+ * the same browser returns the same endpoint, possibly with new keys, so the
+ * endpoint is the identity, the keys are replaced, and the id stays the one
+ * first stored.
  */
 export async function savePushSubscription(input: {
   endpoint: string;
   p256dh: string;
   auth: string;
   userAgent: string | null;
-}): Promise<void> {
-  await pool.query(
+}): Promise<string> {
+  const res = await pool.query<{ id: string }>(
     `INSERT INTO remote_agent_push_subscriptions (id, endpoint, p256dh, auth, user_agent)
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (endpoint) DO UPDATE
-       SET p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent`,
+       SET p256dh = excluded.p256dh, auth = excluded.auth, user_agent = excluded.user_agent
+     RETURNING id`,
     [randomUUID(), input.endpoint, input.p256dh, input.auth, input.userAgent]
   );
+  const row = res.rows[0];
+  if (row === undefined) throw new Error('Storing the push subscription returned no row');
+  return row.id;
 }
 
 /** Forget a subscription. True when there was one to forget. */
@@ -62,6 +67,49 @@ export async function deletePushSubscription(endpoint: string): Promise<boolean>
     endpoint,
   ]);
   return res.rowCount > 0;
+}
+
+/** Forget one subscription by its row id. True when there was one to forget. */
+export async function deletePushSubscriptionById(id: string): Promise<boolean> {
+  const res = await pool.query('DELETE FROM remote_agent_push_subscriptions WHERE id = $1', [id]);
+  return res.rowCount > 0;
+}
+
+/**
+ * A registered browser as Settings lists it: no endpoint or keys, which only
+ * the browser that subscribed should hold.
+ */
+export interface PushDevice {
+  id: string;
+  userAgent: string | null;
+  createdAt: string;
+  /** When a push service last accepted a push for it; null if none ever has. */
+  lastSuccessAt: string | null;
+}
+
+interface PushDeviceRow {
+  id: string;
+  user_agent: string | null;
+  // SQLite answers TEXT, Postgres a Date.
+  created_at: string | Date;
+  last_success_at: string | Date | null;
+}
+
+function iso(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+export async function listPushDevices(): Promise<PushDevice[]> {
+  const res = await pool.query<PushDeviceRow>(
+    `SELECT id, user_agent, created_at, last_success_at FROM remote_agent_push_subscriptions
+     ORDER BY created_at ASC`
+  );
+  return res.rows.map(row => ({
+    id: row.id,
+    userAgent: row.user_agent,
+    createdAt: iso(row.created_at),
+    lastSuccessAt: row.last_success_at === null ? null : iso(row.last_success_at),
+  }));
 }
 
 export async function listPushSubscriptions(): Promise<PushSubscriptionRecord[]> {

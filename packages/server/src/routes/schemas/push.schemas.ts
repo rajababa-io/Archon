@@ -34,6 +34,32 @@ export const pushSubscribeBodySchema = z
   })
   .openapi('PushSubscribeBody');
 
+/** POST /api/push/subscribe — the stored row's id, so the browser can find itself in the list. */
+export const pushSubscribeResponseSchema = z
+  .object({ success: z.boolean(), id: z.string() })
+  .openapi('PushSubscribeResponse');
+
+/**
+ * One registered browser in GET /api/push/subscriptions. Never its endpoint
+ * or keys: those belong to the browser that subscribed.
+ */
+export const pushDeviceSchema = z
+  .object({
+    id: z.string(),
+    /** Derived from the user agent it subscribed with, e.g. "iPhone · Safari". */
+    label: z.string(),
+    created_at: z.string(),
+    /** When a push service last accepted a push for it; null if none ever has. */
+    last_success_at: z.string().nullable(),
+  })
+  .openapi('PushDevice');
+
+export const pushDeviceListSchema = z
+  .object({ devices: z.array(pushDeviceSchema) })
+  .openapi('PushDeviceList');
+
+export const pushDeviceIdParamsSchema = z.object({ id: z.string() });
+
 /** DELETE /api/push/subscribe. */
 export const pushUnsubscribeBodySchema = z
   .object({ endpoint: z.string().min(1) })

@@ -4606,7 +4606,7 @@ export interface paths {
             [name: string]: unknown;
           };
           content: {
-            'application/json': components['schemas']['PushOkResponse'];
+            'application/json': components['schemas']['PushSubscribeResponse'];
           };
         };
         /** @description Push is not configured on this server */
@@ -4641,6 +4641,89 @@ export interface paths {
           };
           content: {
             'application/json': components['schemas']['PushOkResponse'];
+          };
+        };
+      };
+    };
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/push/subscriptions': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Every browser registered for push */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path?: never;
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushDeviceList'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/push/subscriptions/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Forget one registered browser */
+    delete: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description Forgotten */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['PushOkResponse'];
+          };
+        };
+        /** @description No registered browser has this id */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
           };
         };
       };
@@ -6841,8 +6924,9 @@ export interface components {
           missing: string[];
           problem: string | null;
         };
-    PushOkResponse: {
+    PushSubscribeResponse: {
       success: boolean;
+      id: string;
     };
     PushSubscribeBody: {
       /** Format: uri */
@@ -6852,8 +6936,20 @@ export interface components {
         auth: string;
       };
     };
+    PushOkResponse: {
+      success: boolean;
+    };
     PushUnsubscribeBody: {
       endpoint: string;
+    };
+    PushDeviceList: {
+      devices: components['schemas']['PushDevice'][];
+    };
+    PushDevice: {
+      id: string;
+      label: string;
+      created_at: string;
+      last_success_at: string | null;
     };
     PushPrefs: {
       triggers: components['schemas']['PushTriggers'];

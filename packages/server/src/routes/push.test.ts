@@ -24,20 +24,38 @@ const PREFS = {
   mutedProjects: [],
   conversations: {},
 };
-const mockSave = mock(async (_input: unknown) => undefined);
+const mockSave = mock(async (_input: unknown) => 'sub-1');
 const mockDelete = mock(async (_endpoint: string) => true);
+const mockDeleteById = mock(async (id: string) => id === 'sub-1');
+const mockListDevices = mock(async () => [
+  {
+    id: 'sub-1',
+    userAgent:
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+    createdAt: '2026-09-28 10:00:00',
+    lastSuccessAt: null,
+  },
+  {
+    id: 'sub-2',
+    userAgent: null,
+    createdAt: '2026-09-30T08:00:00.000Z',
+    lastSuccessAt: '2026-09-30T09:00:00.000Z',
+  },
+]);
 const mockSetTriggers = mock(async (_t: unknown) => undefined);
 const mockSetMode = mock(async (_t: unknown) => undefined);
 mock.module('@archon/core/db/push', () => ({
   NOTIFY_MODES: ['default', 'muted', 'following'],
   savePushSubscription: mockSave,
   deletePushSubscription: mockDelete,
+  deletePushSubscriptionById: mockDeleteById,
+  listPushDevices: mockListDevices,
   readNotifyPrefs: async () => PREFS,
   setNotifyTriggers: mockSetTriggers,
   setNotifyMode: mockSetMode,
 }));
 
-const { registerPushRoutes } = await import('./push');
+const { registerPushRoutes, deviceLabel } = await import('./push');
 const { ChatPresence } = await import('../services/push-presence');
 const { validationErrorHook } = await import('./openapi-defaults');
 
@@ -81,6 +99,7 @@ const SUBSCRIPTION = {
 
 beforeEach(() => {
   mockSave.mockClear();
+  mockDeleteById.mockClear();
   mockSetTriggers.mockClear();
   mockSetMode.mockClear();
   deliver.mockClear();
@@ -122,6 +141,7 @@ describe('push on', () => {
   test('a subscription is stored with the browser it came from', async () => {
     const res = await send(app(true).app, 'POST', '/api/push/subscribe', SUBSCRIPTION);
     expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, id: 'sub-1' });
     expect(mockSave).toHaveBeenCalledWith({
       endpoint: SUBSCRIPTION.endpoint,
       p256dh: SUBSCRIPTION.keys.p256dh,
@@ -167,6 +187,66 @@ describe('push on', () => {
   test('a test push reports what the push services said', async () => {
     const res = await send(app(true).app, 'POST', '/api/push/test');
     expect(await res.json()).toEqual({ delivered: 1, failed: 0, removed: 0 });
+  });
+});
+
+describe('devices', () => {
+  test('the list names each browser and its dates, and never its endpoint or keys', async () => {
+    const res = await send(app(true).app, 'GET', '/api/push/subscriptions');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      devices: [
+        {
+          id: 'sub-1',
+          label: 'iPhone · Home Screen app',
+          created_at: '2026-09-28 10:00:00',
+          last_success_at: null,
+        },
+        {
+          id: 'sub-2',
+          label: 'Unknown device',
+          created_at: '2026-09-30T08:00:00.000Z',
+          last_success_at: '2026-09-30T09:00:00.000Z',
+        },
+      ],
+    });
+  });
+
+  test('removing one forgets exactly that id', async () => {
+    const res = await send(app(true).app, 'DELETE', '/api/push/subscriptions/sub-1');
+    expect(res.status).toBe(200);
+    expect(mockDeleteById).toHaveBeenCalledTimes(1);
+    expect(mockDeleteById).toHaveBeenCalledWith('sub-1');
+  });
+
+  test('removing an id nobody has is a 404', async () => {
+    const res = await send(app(true).app, 'DELETE', '/api/push/subscriptions/gone');
+    expect(res.status).toBe(404);
+  });
+
+  test('labels come from the user agent', () => {
+    const cases: [string | null, string][] = [
+      [
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+        'iPhone · Safari',
+      ],
+      [
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+        'Mac · Chrome',
+      ],
+      [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.0.0',
+        'Windows · Edge',
+      ],
+      [
+        'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+        'Android · Chrome',
+      ],
+      ['Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0', 'Linux · Firefox'],
+      ['curl/8.0', 'Unknown device'],
+      [null, 'Unknown device'],
+    ];
+    for (const [ua, label] of cases) expect(deviceLabel(ua)).toBe(label);
   });
 });
 

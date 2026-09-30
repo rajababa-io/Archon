@@ -4,6 +4,8 @@
  *   GET    /api/push/vapid-key   the key a browser subscribes with, or why push is off
  *   POST   /api/push/subscribe   store this browser's subscription
  *   DELETE /api/push/subscribe   forget it
+ *   GET    /api/push/subscriptions       every registered browser, without endpoints
+ *   DELETE /api/push/subscriptions/{id}  forget one of them
  *   GET    /api/push/prefs       global triggers, muted projects, per-chat modes
  *   PUT    /api/push/prefs       change one of those
  *   POST   /api/push/test        push a test notification to every subscribed browser
@@ -18,11 +20,14 @@ import { createRoute, type OpenAPIHono } from '@hono/zod-openapi';
 import * as pushDb from '@archon/core/db/push';
 import { errorSchema } from './schemas/common.schemas';
 import {
+  pushDeviceIdParamsSchema,
+  pushDeviceListSchema,
   pushOkResponseSchema,
   pushPrefsChangeSchema,
   pushPrefsSchema,
   pushPresenceBodySchema,
   pushSubscribeBodySchema,
+  pushSubscribeResponseSchema,
   pushTestResponseSchema,
   pushUnsubscribeBodySchema,
   pushVapidKeyResponseSchema,
@@ -57,7 +62,7 @@ const subscribeRoute = createRoute({
   summary: "Store this browser's push subscription",
   request: jsonBody(pushSubscribeBodySchema),
   responses: {
-    200: json(pushOkResponseSchema, 'Stored'),
+    200: json(pushSubscribeResponseSchema, 'Stored'),
     503: json(errorSchema, 'Push is not configured on this server'),
   },
 });
@@ -69,6 +74,26 @@ const unsubscribeRoute = createRoute({
   summary: "Forget this browser's push subscription",
   request: jsonBody(pushUnsubscribeBodySchema),
   responses: { 200: json(pushOkResponseSchema, 'Forgotten, or was never stored') },
+});
+
+const listDevicesRoute = createRoute({
+  method: 'get',
+  path: '/api/push/subscriptions',
+  tags: ['Push'],
+  summary: 'Every browser registered for push',
+  responses: { 200: json(pushDeviceListSchema, 'OK') },
+});
+
+const removeDeviceRoute = createRoute({
+  method: 'delete',
+  path: '/api/push/subscriptions/{id}',
+  tags: ['Push'],
+  summary: 'Forget one registered browser',
+  request: { params: pushDeviceIdParamsSchema },
+  responses: {
+    200: json(pushOkResponseSchema, 'Forgotten'),
+    404: json(errorSchema, 'No registered browser has this id'),
+  },
 });
 
 const getPrefsRoute = createRoute({
@@ -108,6 +133,46 @@ const presenceRoute = createRoute({
   responses: { 200: json(pushOkResponseSchema, 'Recorded') },
 });
 
+/**
+ * A person-readable name for a browser, from the user agent it subscribed
+ * with: "iPhone · Safari", "Mac · Chrome". An iOS Home Screen app sends
+ * WebKit's user agent without Safari's token, which is how it is told apart
+ * from Safari in a tab.
+ */
+export function deviceLabel(userAgent: string | null): string {
+  if (userAgent === null || userAgent.trim() === '') return 'Unknown device';
+  const ua = userAgent;
+  const device = /iPhone|iPod/.test(ua)
+    ? 'iPhone'
+    : ua.includes('iPad')
+      ? 'iPad'
+      : ua.includes('Android')
+        ? 'Android'
+        : ua.includes('CrOS')
+          ? 'Chromebook'
+          : ua.includes('Macintosh')
+            ? 'Mac'
+            : ua.includes('Windows')
+              ? 'Windows'
+              : ua.includes('Linux')
+                ? 'Linux'
+                : null;
+  const ios = device === 'iPhone' || device === 'iPad';
+  const browser = /Edg(e|A|iOS)?\//.test(ua)
+    ? 'Edge'
+    : /Firefox\/|FxiOS\//.test(ua)
+      ? 'Firefox'
+      : /Chrome\/|CriOS\//.test(ua)
+        ? 'Chrome'
+        : ua.includes('Safari/')
+          ? 'Safari'
+          : ios && ua.includes('AppleWebKit/')
+            ? 'Home Screen app'
+            : null;
+  const parts = [device, browser].filter((p): p is string => p !== null);
+  return parts.length > 0 ? parts.join(' · ') : 'Unknown device';
+}
+
 /** Why push is off, as one sentence for a 503. */
 function disabledReason(vapid: Extract<VapidConfig, { enabled: false }>): string {
   if (vapid.problem !== null) return `Push is off: ${vapid.problem}`;
@@ -129,17 +194,40 @@ export function registerPushRoutes(app: OpenAPIHono, deps: PushRoutesDeps): void
   app.openapi(subscribeRoute, async c => {
     if (!vapid.enabled) return c.json({ error: disabledReason(vapid) }, 503);
     const body = c.req.valid('json');
-    await pushDb.savePushSubscription({
+    const id = await pushDb.savePushSubscription({
       endpoint: body.endpoint,
       p256dh: body.keys.p256dh,
       auth: body.keys.auth,
       userAgent: c.req.header('user-agent') ?? null,
     });
-    return c.json({ success: true }, 200);
+    return c.json({ success: true, id }, 200);
   });
 
   app.openapi(unsubscribeRoute, async c => {
     await pushDb.deletePushSubscription(c.req.valid('json').endpoint);
+    return c.json({ success: true }, 200);
+  });
+
+  app.openapi(listDevicesRoute, async c => {
+    const devices = await pushDb.listPushDevices();
+    return c.json(
+      {
+        devices: devices.map(d => ({
+          id: d.id,
+          label: deviceLabel(d.userAgent),
+          created_at: d.createdAt,
+          last_success_at: d.lastSuccessAt,
+        })),
+      },
+      200
+    );
+  });
+
+  app.openapi(removeDeviceRoute, async c => {
+    const { id } = c.req.valid('param');
+    if (!(await pushDb.deletePushSubscriptionById(id))) {
+      return c.json({ error: 'No registered browser has this id' }, 404);
+    }
     return c.json({ success: true }, 200);
   });
 

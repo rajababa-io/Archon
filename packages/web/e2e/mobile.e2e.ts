@@ -665,6 +665,21 @@ test('Settings switches push on, or says how to install first on an iPhone', asy
   await expect(section.getByRole('checkbox', { name: 'A chat needs you' })).toBeChecked();
 });
 
+test('Settings lists the devices with push on, and Remove forgets exactly one', async ({
+  page,
+}) => {
+  await open(page, '/m/settings');
+  const devices = page.getByRole('list', { name: 'Devices with push on' });
+  await expect(devices.getByRole('listitem')).toHaveCount(2);
+  await expect(devices).toContainText('iPhone · Home Screen app');
+  await expect(devices).toContainText('no push has got through yet');
+
+  await devices.getByRole('button', { name: 'Remove iPhone · Home Screen app' }).tap();
+  await expect(devices.getByRole('listitem')).toHaveCount(1);
+  await expect(devices).toContainText('Android · Chrome');
+  await expect.poll(() => server.controls).toContain('forget push device push-old');
+});
+
 test('a chat read once is still readable when Archon cannot be reached', async ({ page }) => {
   await open(page, chatPath(CHAT_ID));
   await expect(page.getByText(ASSISTANT_PROSE)).toBeVisible();

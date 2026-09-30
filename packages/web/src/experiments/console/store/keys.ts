@@ -98,7 +98,8 @@ export const K = {
   providerConnections: 'provider-connections' as const,
   userAiPrefs: 'user-ai-prefs' as const,
   piModels: 'pi-models' as const,
-  /** Web Push: whether the server can push, and what to be told about. */
+  /** Web Push: whether the server can push, what to be told about, and the browsers registered. */
   pushKey: 'push-key' as const,
   pushPrefs: 'push-prefs' as const,
+  pushDevices: 'push-devices' as const,
 } as const;

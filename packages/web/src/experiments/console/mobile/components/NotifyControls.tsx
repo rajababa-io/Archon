@@ -2,9 +2,10 @@ import { useState, type ReactElement } from 'react';
 import { Link } from 'react-router';
 import { Bell, BellOff, BellRing } from 'lucide-react';
 import { resolveChatMode } from '@archon/awaiting';
-import type { PushPrefsChange } from '../../skills';
+import type { PushDevice, PushPrefsChange } from '../../skills';
+import { relativeTime } from '../../lib/format';
 import { SETTINGS_PATH } from '../lib/paths';
-import { usePushDevice, usePushPrefs } from '../lib/use-push';
+import { usePushDevice, usePushDevices, usePushPrefs } from '../lib/use-push';
 import { Sheet, SheetRow } from './Sheet';
 
 type ChatMode = Extract<PushPrefsChange, { scope: 'conversation' }>['mode'];
@@ -123,5 +124,109 @@ export function ProjectMute({ projectId }: { projectId: string }): ReactElement 
         <Bell aria-hidden className="h-5 w-5" />
       )}
     </button>
+  );
+}
+
+/**
+ * The registered browsers, one row each: its label, when it was added, when a
+ * push last got through, and Remove. Rows act on the server's id, never on a
+ * label, so two browsers that read alike cannot be confused.
+ */
+export function PushDeviceRows({
+  devices,
+  thisDeviceId,
+  removing,
+  onRemove,
+  now = Date.now(),
+}: {
+  devices: readonly PushDevice[];
+  thisDeviceId: string | null;
+  /** The id being removed, if any; every Remove waits for it. */
+  removing: string | null;
+  onRemove: (id: string) => void;
+  now?: number;
+}): ReactElement {
+  if (devices.length === 0) {
+    return <p className="mobile-note">No device has push on.</p>;
+  }
+  return (
+    <ul aria-label="Devices with push on" className="flex flex-col">
+      {devices.map(d => {
+        const here = d.id === thisDeviceId;
+        return (
+          <li key={d.id} className="mobile-row flex items-center gap-3 px-4">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-body text-text-primary">
+                {d.label}
+                {here ? <span className="text-accent-bright"> · this device</span> : null}
+              </span>
+              <span className="text-small text-text-tertiary">
+                Added {relativeTime(d.created_at, now)} ·{' '}
+                {d.last_success_at === null
+                  ? 'no push has got through yet'
+                  : `last push ${relativeTime(d.last_success_at, now)}`}
+              </span>
+            </div>
+            <button
+              type="button"
+              disabled={removing !== null}
+              aria-label={`Remove ${d.label}${here ? ' (this device)' : ''}`}
+              onClick={() => {
+                onRemove(d.id);
+              }}
+              className="mobile-tap shrink-0 text-body text-text-secondary disabled:opacity-45"
+            >
+              {removing === d.id ? 'Removing…' : 'Remove'}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * Every browser registered for push, for Settings. Removing this device turns
+ * push off here too: forgetting it on the server alone would be undone the
+ * next time this browser reports the subscription it still holds.
+ */
+export function PushDevices({
+  thisDeviceId,
+  onRemoveThisDevice,
+}: {
+  thisDeviceId: string | null;
+  onRemoveThisDevice: () => Promise<void>;
+}): ReactElement {
+  const { devices, error, removing, failure, remove } = usePushDevices();
+  const [removingHere, setRemovingHere] = useState(false);
+  if (error !== undefined) {
+    return (
+      <p className="mobile-note text-error">Couldn&apos;t list the devices: {error.message}</p>
+    );
+  }
+  if (devices === undefined) return <p className="mobile-note">Loading devices…</p>;
+  return (
+    <>
+      <PushDeviceRows
+        devices={devices}
+        thisDeviceId={thisDeviceId}
+        removing={removingHere ? thisDeviceId : removing}
+        onRemove={id => {
+          if (id !== thisDeviceId) {
+            void remove(id);
+            return;
+          }
+          setRemovingHere(true);
+          void onRemoveThisDevice().finally(() => {
+            setRemovingHere(false);
+          });
+        }}
+      />
+      {failure !== null ? (
+        <p role="alert" className="mobile-note text-error">
+          {failure}
+        </p>
+      ) : null}
+    </>
   );
 }

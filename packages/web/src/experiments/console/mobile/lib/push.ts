@@ -88,23 +88,23 @@ async function currentSubscription(): Promise<PushSubscription | null> {
 }
 
 /**
- * Whether push is on for this device. A subscription the browser holds is
- * registered with the server again (it stores by endpoint, so this is
- * idempotent); a server that cannot take it makes this reject rather than
- * answer "on".
+ * The server's id for this device, or null when push is off here. A
+ * subscription the browser holds is registered with the server again (it
+ * stores by endpoint, so this is idempotent and the id is stable); a server
+ * that cannot take it makes this reject rather than answer "on".
  */
-export async function pushIsOn(): Promise<boolean> {
+export async function thisPushDevice(): Promise<string | null> {
   const subscription = await currentSubscription();
-  if (subscription === null) return false;
-  await skill.savePushSubscription(subscription.toJSON());
-  return true;
+  if (subscription === null) return null;
+  return skill.savePushSubscription(subscription.toJSON());
 }
 
 /**
- * Ask, subscribe, and register the subscription with the server. Must run
- * from a tap: iOS refuses a permission prompt that no gesture started.
+ * Ask, subscribe, and register the subscription with the server, answering
+ * the server's id for this device. Must run from a tap: iOS refuses a
+ * permission prompt that no gesture started.
  */
-export async function enablePush(publicKey: string): Promise<void> {
+export async function enablePush(publicKey: string): Promise<string> {
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') {
     throw new Error(
@@ -126,7 +126,7 @@ export async function enablePush(publicKey: string): Promise<void> {
     applicationServerKey: key,
   });
   try {
-    await skill.savePushSubscription(subscription.toJSON());
+    return await skill.savePushSubscription(subscription.toJSON());
   } catch (e) {
     await subscription.unsubscribe();
     throw e;
@@ -137,7 +137,9 @@ export async function disablePush(): Promise<void> {
   const subscription = await currentSubscription();
   if (subscription === null) return;
   await skill.deletePushSubscription(subscription.endpoint);
-  const restore = (): Promise<void> => skill.savePushSubscription(subscription.toJSON());
+  const restore = async (): Promise<void> => {
+    await skill.savePushSubscription(subscription.toJSON());
+  };
   let dropped: boolean;
   try {
     dropped = await subscription.unsubscribe();

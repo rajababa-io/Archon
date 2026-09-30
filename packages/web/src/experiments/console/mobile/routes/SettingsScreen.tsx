@@ -14,7 +14,8 @@ import { presetById } from '../../../../theme/presets';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SheetRow } from '../components/Sheet';
 import { InstallCoachMark } from '../components/InstallCoachMark';
-import { usePushDevice, usePushPrefs } from '../lib/use-push';
+import { PushDevices } from '../components/NotifyControls';
+import { usePushDevice, usePushPrefs, type PushDeviceView } from '../lib/use-push';
 import type { PushTriggers as PushTriggerSet } from '../../skills';
 
 const THEMES: readonly { value: ThemeChoice; label: string }[] = [
@@ -58,19 +59,24 @@ export function SettingsScreen(): ReactElement {
   );
 }
 
-/** Push on this device, and the three things the install pushes about. */
+/**
+ * Push on this device, every device registered, and the three things the
+ * install pushes about. The list stands apart from this device's switch so a
+ * phone that cannot take push here can still forget another one.
+ */
 function PushSection(): ReactElement {
+  const device = usePushDevice();
   return (
     <Section title="Notifications">
-      <PushDeviceControls />
+      <PushDeviceControls device={device} />
+      <PushDevices thisDeviceId={device.deviceId} onRemoveThisDevice={device.disable} />
       <PushTriggers />
     </Section>
   );
 }
 
-function PushDeviceControls(): ReactElement {
+function PushDeviceControls({ device }: { device: PushDeviceView }): ReactElement {
   const { data: key, error } = useEntity(K.pushKey, skill.getPushKey);
-  const device = usePushDevice();
   const [test, setTest] = useState<string | null>(null);
 
   if (error !== undefined) {
