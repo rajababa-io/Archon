@@ -21,11 +21,7 @@ import {
   type ChatStatus,
   type ChatStatusSets,
 } from '../../primitives/chat-status';
-import {
-  chatNotifications,
-  chatStatuses,
-  type ChatNotification,
-} from '../../primitives/tab-signal';
+import { chatNotifications, chatStatuses } from '../../primitives/tab-signal';
 import type { Project } from '../../primitives/project';
 import type { Run } from '../../primitives/run';
 import { reachOf, useOnLine, type Reach } from './reach';
@@ -61,9 +57,7 @@ export interface MobileChats {
   reach: Reach;
   statusSets: ChatStatusSets;
   statuses: ReadonlyMap<string, ChatStatus>;
-  /** Chats that want you, newest first — the list behind the desktop's bell (#289). */
-  notifications: readonly ChatNotification[];
-  /** `notifications.length` — the same count the desktop tab badge shows. */
+  /** How many chats want you — the same count the desktop tab badge shows (#289). */
   needsYou: number;
   /** What each working chat is running right now, when it is inside a tool. */
   liveTools: ReturnType<typeof useLiveChats>['tools'];
@@ -121,8 +115,8 @@ export function useMobileChats(): MobileChats {
     [chats, statusSets]
   );
 
-  const notifications = useMemo(
-    () => chatNotifications(chats ?? [], statuses, statusSets.unread),
+  const needsYou = useMemo(
+    () => chatNotifications(chats ?? [], statuses, statusSets.unread).length,
     [chats, statuses, statusSets.unread]
   );
 
@@ -164,8 +158,7 @@ export function useMobileChats(): MobileChats {
     reach,
     statusSets,
     statuses,
-    notifications,
-    needsYou: notifications.length,
+    needsYou,
     liveTools: live.tools,
     ciWaitingSince: live.ciWaitingSince,
     projectLabel: label,
