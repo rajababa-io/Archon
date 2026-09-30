@@ -1,10 +1,12 @@
 import type { ReactElement } from 'react';
 import * as skill from '../skills';
-import { useEntity } from '../store/cache';
+import { useEntities, useEntity } from '../store/cache';
 import { ALL_SCOPE, K } from '../store/keys';
 import { Link } from 'react-router';
 import { ALL_PROJECTS_SCOPE, writeProjectView, type ProjectView } from '../lib/project-view';
 import type { RunCounts } from '../skills/runs';
+import type { Project } from '../primitives/project';
+import { sumProjectCounts } from './ProjectCountCells';
 
 interface ProjectViewTabsProps {
   projectId: string;
@@ -30,11 +32,13 @@ const TABS: readonly {
 ];
 
 /**
- * The tabs All projects has: the two a project has that make sense across
+ * The tabs All projects has: the ones a project has that make sense across
  * every project, in the project's own order. Drawn by the same `ViewTab`, so
  * the two rows cannot come to look different.
  */
-const ALL_PROJECTS_TABS = TABS.filter(t => t.key === 'chat' || t.key === 'runs');
+const ALL_PROJECTS_TABS = TABS.filter(
+  t => t.key === 'chat' || t.key === 'runs' || t.key === 'issues'
+);
 
 /** One tab: label, its count, and the underline when it is the page. */
 function ViewTab({
@@ -120,13 +124,14 @@ export function ProjectViewTabs({ projectId, active }: ProjectViewTabsProps): Re
 }
 
 /**
- * Chat | Runs across every project. Picking one records it the way a project's
+ * Chat | Runs | Issues across every project. Picking one records it the way a project's
  * tab does, so All projects reopens on it.
  *
  * The counts mean what a project's mean: open chats and runs in play
  * (running, paused or queued, not the lifetime total). The chat count reads the
  * Chat tab's own open list, so the number and the rail beneath it are one
- * answer rather than two that can drift.
+ * answer rather than two that can drift. The issue count is the All projects
+ * rail row's own total, summed from the same per-project entries.
  */
 export function AllProjectsTabs({ active }: { active: ProjectView }): ReactElement {
   const { data: runs } = useEntity<RunCounts>(K.countsGlobal, skill.listGlobalCounts);
@@ -134,9 +139,17 @@ export function AllProjectsTabs({ active }: { active: ProjectView }): ReactEleme
     `${K.conversations(ALL_SCOPE)}:open`,
     () => skill.listConversations(null, 'open')
   );
+  const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
+  const rows = useEntities<skill.ProjectCounts>(
+    (projects ?? []).map(p => ({
+      key: K.projectCounts(p.id),
+      loader: (): Promise<skill.ProjectCounts> => skill.getProjectCounts(p.id),
+    }))
+  );
   const counts: Partial<Record<ProjectView, number | null>> = {
     runs: runs === undefined ? null : runs.running + runs.paused + runs.pending,
     chat: chats?.counts.open ?? null,
+    issues: sumProjectCounts(rows).issues,
   };
 
   return (
