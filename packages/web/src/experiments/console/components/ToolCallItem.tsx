@@ -61,8 +61,6 @@ function ToolCallItemImpl({ call, timestamp }: ToolCallItemProps): ReactElement 
         </time>
         <span
           className="shrink-0 rounded-[5px] border px-[7px] py-[2px] text-mini font-medium"
-          // Inline because the console scope's wildcard border-color rule
-          // repaints Tailwind border utilities (see theme.css).
           style={{
             color: 'var(--accent)',
             background: 'color-mix(in oklch, var(--accent), transparent 86%)',

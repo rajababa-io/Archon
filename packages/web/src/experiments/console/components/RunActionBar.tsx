@@ -111,10 +111,7 @@ export function RunActionBar({ run }: RunActionBarProps): ReactElement | null {
               type="button"
               onClick={() => void call('abandon')}
               disabled={busy !== null}
-              className="rounded-lg border bg-surface-elevated px-[14px] py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
-              // Inline because the console scope's wildcard border-color rule
-              // repaints Tailwind border utilities (see theme.css).
-              style={{ borderColor: 'var(--border-bright)' }}
+              className="rounded-lg border border-border-bright bg-surface-elevated px-[14px] py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary disabled:opacity-50"
             >
               {busy === 'abandon' ? 'Abandoning…' : 'Abandon'}
             </button>

@@ -22,16 +22,8 @@ export function SettingsSection({
   children: ReactNode;
 }): ReactElement {
   return (
-    <section
-      className="overflow-hidden rounded-lg border bg-surface-elevated"
-      // Inline because the console scope's wildcard border-color rule
-      // repaints Tailwind border utilities (see theme.css).
-      style={{ borderColor: 'var(--border)' }}
-    >
-      <header
-        className="flex items-center gap-[9px] border-b px-[11px] py-[7px]"
-        style={{ borderColor: 'var(--border)' }}
-      >
+    <section className="overflow-hidden rounded-lg border bg-surface-elevated">
+      <header className="flex items-center gap-[9px] border-b px-[11px] py-[7px]">
         <h2 className="text-large font-medium leading-[1.55] text-text-primary">{title}</h2>
         {scope !== undefined ? (
           <span className="rounded-[4px] bg-[color:var(--surface-bright,var(--surface-hover))] px-[7px] py-[2px] text-small text-text-secondary">

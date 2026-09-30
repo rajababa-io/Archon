@@ -91,8 +91,6 @@ export function Switch({
         onChange(!checked);
       }}
       className="relative h-[22px] w-[38px] shrink-0 rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-      // Inline because the console scope's wildcard border-color rule repaints
-      // Tailwind border utilities (see theme.css).
       style={{
         background: checked ? 'var(--accent)' : 'var(--surface-bright, var(--surface-hover))',
         borderColor: checked ? 'var(--accent)' : 'var(--border-bright)',

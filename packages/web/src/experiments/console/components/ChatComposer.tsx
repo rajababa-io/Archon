@@ -523,14 +523,11 @@ export function ChatComposer({
                 {stopping ? 'Stopping…' : 'Stop'}
                 {/* Boxed like the key hints under the composer, in the
                     button's red. Hidden on narrow screens, which are the ones
-                    without an Escape key. Dark polarity gets a stronger red; it
-                    needs `!` because theme.css resets every border inside
-                    .console-root to --border outside any layer, which beats
-                    layered utilities. */}
+                    without an Escape key. Dark polarity gets a stronger red. */}
                 {stopping ? null : (
                   <span
                     aria-hidden
-                    className="hidden items-center rounded border border-error/50 px-[0.3125rem] [[data-mode=dark]_&]:border-error/85! py-[0.0625rem] font-mono text-[length:var(--text-micro)] font-normal sm:inline-flex"
+                    className="hidden items-center rounded border border-error/50 px-[0.3125rem] [[data-mode=dark]_&]:border-error/85 py-[0.0625rem] font-mono text-[length:var(--text-micro)] font-normal sm:inline-flex"
                   >
                     esc
                   </span>

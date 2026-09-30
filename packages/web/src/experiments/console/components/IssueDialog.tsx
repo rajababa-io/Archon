@@ -116,10 +116,7 @@ function IssueDialogView({
         onMouseDown={e => {
           e.stopPropagation();
         }}
-        className="relative my-auto w-full max-w-[760px] overflow-hidden rounded-lg border bg-surface-elevated text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)] outline-none"
-        // Inline because the console scope's wildcard border-color rule
-        // repaints Tailwind border utilities (see theme.css).
-        style={{ borderColor: 'var(--border-bright)' }}
+        className="relative my-auto w-full max-w-[760px] overflow-hidden rounded-lg border border-border-bright bg-surface-elevated text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)] outline-none"
       >
         <span aria-hidden className="brand-bar absolute left-0 right-0 top-0 h-[2px] opacity-90" />
 

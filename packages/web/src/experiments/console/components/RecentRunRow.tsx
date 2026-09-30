@@ -189,10 +189,7 @@ export function RecentRunRow({
           }}
           title={`Copy CLI command: archon workflow get ${shortRunId(run.id)}`}
           aria-label="Copy CLI command"
-          className="inline-flex items-center gap-1.5 rounded-[7px] border bg-surface-elevated px-2.5 py-[5px] font-mono text-small font-medium text-text-secondary transition-colors hover:border-accent-bright/50 hover:text-text-primary"
-          // Inline because the console scope's wildcard border-color rule
-          // repaints Tailwind border utilities (see theme.css).
-          style={{ borderColor: 'var(--border-bright)' }}
+          className="inline-flex items-center gap-1.5 rounded-[7px] border border-border-bright bg-surface-elevated px-2.5 py-[5px] font-mono text-small font-medium text-text-secondary transition-colors hover:border-accent-bright/50 hover:text-text-primary"
         >
           <span aria-hidden className="text-mini leading-none">
             ❯_

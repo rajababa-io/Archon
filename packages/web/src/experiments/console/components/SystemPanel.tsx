@@ -61,10 +61,7 @@ export function SystemPanel(): ReactElement {
               platforms.map(pl => (
                 <span
                   key={pl}
-                  className="rounded-md border bg-surface-elevated px-2 py-0.5 text-small font-medium text-text-secondary"
-                  // Inline because the console scope's wildcard border-color
-                  // rule repaints Tailwind border utilities (see theme.css).
-                  style={{ borderColor: 'var(--border-bright)' }}
+                  className="rounded-md border border-border-bright bg-surface-elevated px-2 py-0.5 text-small font-medium text-text-secondary"
                 >
                   {pl}
                 </span>
