@@ -9,7 +9,7 @@ import {
   type ReactElement,
   type Ref,
 } from 'react';
-import { ChevronUp } from 'lucide-react';
+import { ArrowUp, ChevronUp, ListEnd } from 'lucide-react';
 import type { ComposerControl } from '../../components/ChatComposer';
 import { admitFiles, imagesFromClipboard, MAX_FILES } from '../../primitives/file';
 import type { AskSpec } from '@archon/awaiting';
@@ -383,28 +383,34 @@ export function Composer({
             aria-label="Message"
             className="min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-border bg-surface-inset px-3 py-2.5 mobile-input leading-[1.4] text-text-primary outline-none placeholder:text-text-tertiary focus:border-border-bright"
           />
-          <div className="flex shrink-0">
+          {/* Icons, not words: a labelled button took a third of the row from the box. */}
+          <div className="flex shrink-0 gap-1">
             <button
               type="submit"
+              aria-label={sendLabel}
+              title={sendLabel}
               disabled={!canSend}
               onPointerDown={e => {
                 e.preventDefault();
               }}
-              className={`mobile-tap brand-bar px-4 text-body font-medium text-white disabled:opacity-45 ${
-                working ? 'rounded-l-lg' : 'rounded-lg'
-              }`}
+              className="mobile-tap brand-bar flex items-center justify-center rounded-full text-white disabled:opacity-45"
             >
-              {sendLabel}
+              {working ? (
+                <ListEnd aria-hidden className="h-5 w-5" />
+              ) : (
+                <ArrowUp aria-hidden className="h-5 w-5" />
+              )}
             </button>
             {working ? (
               <button
                 type="button"
                 aria-label="More send options"
+                title="More send options"
                 disabled={!canSend}
                 onClick={() => {
                   setSheet('send');
                 }}
-                className="mobile-tap brand-bar flex items-center justify-center rounded-r-lg border-l border-white/25 text-white disabled:opacity-45"
+                className="mobile-tap flex items-center justify-center rounded-full border border-border text-text-secondary disabled:opacity-45"
               >
                 <ChevronUp aria-hidden className="h-4 w-4" />
               </button>
