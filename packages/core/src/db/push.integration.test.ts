@@ -59,6 +59,30 @@ describe('push subscriptions', () => {
     expect(await push.deletePushSubscription('https://push.example/a')).toBe(false);
     expect(await push.listPushSubscriptions()).toEqual([]);
   });
+
+  test('a browser keeps its id across re-subscribing, and removing by id removes only it', async () => {
+    const save = (endpoint: string, userAgent: string): Promise<string> =>
+      push.savePushSubscription({ endpoint, p256dh: 'k', auth: 'a', userAgent });
+    const old = await save('https://push.example/old', 'iPhone');
+    const fresh = await save('https://push.example/new', 'iPhone');
+    expect(await save('https://push.example/old', 'iPhone')).toBe(old);
+    expect(fresh).not.toBe(old);
+
+    await push.markPushDelivered(fresh);
+    const devices = await push.listPushDevices();
+    expect(devices.map(d => d.id).sort()).toEqual([old, fresh].sort());
+    const delivered = devices.find(d => d.id === fresh);
+    expect(delivered?.userAgent).toBe('iPhone');
+    expect(delivered?.createdAt).toEqual(expect.any(String));
+    expect(delivered?.lastSuccessAt).toEqual(expect.any(String));
+    expect(devices.find(d => d.id === old)?.lastSuccessAt).toBeNull();
+    expect(devices[0]).not.toHaveProperty('endpoint');
+
+    expect(await push.deletePushSubscriptionById(old)).toBe(true);
+    expect(await push.deletePushSubscriptionById(old)).toBe(false);
+    expect((await push.listPushDevices()).map(d => d.id)).toEqual([fresh]);
+    await push.deletePushSubscriptionById(fresh);
+  });
 });
 
 describe('notify prefs', () => {

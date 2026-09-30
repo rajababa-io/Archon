@@ -5,7 +5,7 @@ import {
   enablePush,
   isIosDevice,
   pushAvailability,
-  pushIsOn,
+  thisPushDevice,
 } from './push';
 
 const IPHONE =
@@ -107,7 +107,7 @@ describe('the browser and the server agree on whether push is on', () => {
     globalThis.fetch = ((url: string, init?: RequestInit) => {
       calls.push(`${init?.method ?? 'GET'} ${url}`);
       return Promise.resolve(
-        new Response(opts.status === 200 ? '{"success":true}' : '{"error":"down"}', {
+        new Response(opts.status === 200 ? '{"success":true,"id":"sub-1"}' : '{"error":"down"}', {
           status: opts.status,
           headers: { 'content-type': 'application/json' },
         })
@@ -131,12 +131,12 @@ describe('the browser and the server agree on whether push is on', () => {
 
   test('reading "on" registers the subscription again, and a refusal is not "on"', async () => {
     device({ held: true, status: 200 });
-    expect(await pushIsOn()).toBe(true);
+    expect(await thisPushDevice()).toBe('sub-1');
     expect(calls).toEqual(['POST /api/push/subscribe']);
     device({ held: true, status: 503 });
-    await expect(pushIsOn()).rejects.toThrow();
+    await expect(thisPushDevice()).rejects.toThrow();
     device({ held: false, status: 200 });
-    expect(await pushIsOn()).toBe(false);
+    expect(await thisPushDevice()).toBeNull();
     expect(calls).toEqual([]);
   });
 });

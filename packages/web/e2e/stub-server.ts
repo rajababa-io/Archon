@@ -70,7 +70,8 @@ export interface StubServer {
   readonly unhandled: readonly string[];
   /**
    * Actions the console asked for: `steer <queued id>`, `interrupt <chat id>`,
-   * `respond <run id> <decision>`, `deploy <sha>`, `notify <scope> <id> <mode>`.
+   * `respond <run id> <decision>`, `deploy <sha>`, `notify <scope> <id> <mode>`,
+   * `forget push device <id>`.
    */
   readonly controls: readonly string[];
   /** The chat each console last reported on screen (`null`: none), by its client id. */
@@ -133,6 +134,8 @@ interface StubState {
   run: 'none' | 'paused' | 'completed';
   /** What to be told about, as the push routes store it. */
   pushPrefs: components['schemas']['PushPrefs'];
+  /** The browsers registered for push, as the list route answers them. */
+  pushDevices: components['schemas']['PushDevice'][];
   /** The chat each console last reported on screen, by client id. */
   presence: Map<string, string | null>;
 }
@@ -142,6 +145,22 @@ const PUSH_PREFS: components['schemas']['PushPrefs'] = {
   mutedProjects: [],
   conversations: {},
 };
+
+/** A phone app left behind by a reinstall, and the one that replaced it. */
+const PUSH_DEVICES: components['schemas']['PushDevice'][] = [
+  {
+    id: 'push-old',
+    label: 'iPhone · Home Screen app',
+    created_at: '2026-09-28 12:00:00',
+    last_success_at: null,
+  },
+  {
+    id: 'push-new',
+    label: 'Android · Chrome',
+    created_at: '2026-09-30 10:00:00',
+    last_success_at: '2026-09-30 11:00:00',
+  },
+];
 
 type QueuedFile = components['schemas']['QueuedMessage']['files'][number];
 
@@ -455,6 +474,17 @@ function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, state: S
       return;
     }
   }
+  if (method === 'GET' && path === '/api/push/subscriptions') {
+    sendJson(res, { devices: state.pushDevices });
+    return;
+  }
+  if (method === 'DELETE' && path.startsWith('/api/push/subscriptions/')) {
+    const id = decodeURIComponent(path.slice('/api/push/subscriptions/'.length));
+    state.pushDevices = state.pushDevices.filter(d => d.id !== id);
+    state.controls.push(`forget push device ${id}`);
+    sendJson(res, { success: true });
+    return;
+  }
   if (method === 'POST' && path === '/api/push/presence') {
     void readJson(req).then(body => {
       state.presence.set(String(body.clientId), (body.conversationId as string | null) ?? null);
@@ -555,6 +585,7 @@ export async function startStubServer(): Promise<StubServer> {
     controls: [],
     run: 'none',
     pushPrefs: structuredClone(PUSH_PREFS),
+    pushDevices: structuredClone(PUSH_DEVICES),
     presence: new Map(),
   };
   // Held so `close()` can end the event streams: Node's `close` waits for open
@@ -595,6 +626,7 @@ export async function startStubServer(): Promise<StubServer> {
       state.controls.length = 0;
       state.run = 'none';
       state.pushPrefs = structuredClone(PUSH_PREFS);
+      state.pushDevices = structuredClone(PUSH_DEVICES);
       state.presence.clear();
     },
     close: async (): Promise<void> => {
