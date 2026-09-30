@@ -118,7 +118,30 @@ describe('toMessage — attachments', () => {
 
   test('carries the files the server persisted on the message', () => {
     const m = withFiles({ files: [{ name: 'shot.png', mimeType: 'image/png', size: 2048 }] });
-    expect(m.files).toEqual([{ name: 'shot.png', mimeType: 'image/png', size: 2048 }]);
+    expect(m.files).toEqual([
+      { name: 'shot.png', mimeType: 'image/png', size: 2048, imageUrl: null },
+    ]);
+  });
+
+  test('a kept copy becomes the URL the thumbnail loads from', () => {
+    const keptAs = '0b61fe5f-0000-4000-8000-000000000000.png';
+    const m = withFiles({ files: [{ name: 'shot.png', mimeType: 'image/png', size: 2, keptAs }] });
+    expect(m.files[0]?.imageUrl).toBe(`/api/attachments/${keptAs}`);
+  });
+
+  test('a kept name is encoded, so it cannot turn into a different path', () => {
+    const m = withFiles({ files: [{ name: 'x.png', keptAs: '../../etc/passwd' }] });
+    expect(m.files[0]?.imageUrl).toBe('/api/attachments/..%2F..%2Fetc%2Fpasswd');
+  });
+
+  test('a non-string or empty kept name means no thumbnail', () => {
+    const m = withFiles({
+      files: [
+        { name: 'a.png', keptAs: 42 },
+        { name: 'b.png', keptAs: '' },
+      ],
+    });
+    expect(m.files.map(f => f.imageUrl)).toEqual([null, null]);
   });
 
   test('a message with no attachments has an empty list, not undefined', () => {
@@ -143,7 +166,7 @@ describe('toMessage — attachments', () => {
 
   test('a missing size degrades to 0 rather than losing the attachment', () => {
     const m = withFiles({ files: [{ name: 'notes.md' }] });
-    expect(m.files).toEqual([{ name: 'notes.md', mimeType: '', size: 0 }]);
+    expect(m.files).toEqual([{ name: 'notes.md', mimeType: '', size: 0, imageUrl: null }]);
   });
 });
 

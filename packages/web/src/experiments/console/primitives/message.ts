@@ -42,6 +42,12 @@ export interface MessageFile {
   name: string;
   mimeType: string;
   size: number;
+  /**
+   * Where the server's kept copy of this file is served, when it kept one —
+   * images only, and only those sent after copies were kept. Null means there
+   * is nothing to show but the name.
+   */
+  imageUrl: string | null;
 }
 
 export interface WorkflowDispatchMeta {
@@ -150,7 +156,7 @@ interface ParsedMetadata {
   };
   // Written by the server when an upload is saved. Same untrusted-shape caveat
   // as workflowResult: toMessage validates before producing domain values.
-  files?: { name: string; mimeType: string; size: number }[];
+  files?: { name: string; mimeType: string; size: number; keptAs?: unknown }[];
   // Written by the server when a message sent into a running turn is read.
   midTurn?: unknown;
   // Written by the web adapter when the provider streams thinking. Untrusted
@@ -218,13 +224,20 @@ export function toMessage(raw: RawMessage): Message {
   // .filter and throw — taking the whole message history's render down with it.
   const files: MessageFile[] = (Array.isArray(meta.files) ? meta.files : [])
     .filter(
-      (f): f is { name: string; mimeType: string; size: number } =>
+      (f): f is NonNullable<ParsedMetadata['files']>[number] =>
         f != null && typeof f.name === 'string' && f.name.length > 0
     )
     .map(f => ({
       name: f.name,
       mimeType: typeof f.mimeType === 'string' ? f.mimeType : '',
       size: typeof f.size === 'number' ? f.size : 0,
+      // Encoded, not trusted: the server's route refuses anything but a UUID
+      // and a raster extension, and this keeps a bad value from becoming a
+      // different path on the way there.
+      imageUrl:
+        typeof f.keptAs === 'string' && f.keptAs.length > 0
+          ? `/api/attachments/${encodeURIComponent(f.keptAs)}`
+          : null,
     }));
   return {
     id: raw.id,
