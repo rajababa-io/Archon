@@ -53,6 +53,13 @@ const loadSeq = new Map<string, number>();
 // `cache`/`errors` — the age of a warm value is exactly what a later
 // subscriber needs — and released with them by `invalidate()`.
 const fetchedAt = new Map<string, number>();
+// Keys invalidated while a load was already in flight. That load may have read
+// the server before the change that invalidated it, so it owes one more load
+// when it settles — otherwise a second write landing mid-load (two chats
+// closed together) stays invisible until something else refreshes the key
+// (#308). A set, not a counter: any number of invalidations during one load
+// coalesce into a single follow-up.
+const owed = new Set<string>();
 
 /**
  * How long a warm value is served to a new subscriber before `ensureLoad`
@@ -106,7 +113,12 @@ function runLoad(key: string, loader: () => Promise<unknown>): void {
     .finally(() => {
       // Only clear the entry if it's still THIS load's promise — a newer load
       // for the key may already own `inflight[key]`.
-      if (inflight.get(key) === p) inflight.delete(key);
+      if (inflight.get(key) !== p) return;
+      inflight.delete(key);
+      if (owed.delete(key)) {
+        const loader = loaders.get(key);
+        if (loader !== undefined) runLoad(key, loader);
+      }
     });
   inflight.set(key, p);
 }
@@ -189,7 +201,10 @@ function revalidate(key: string): void {
     fetchedAt.delete(key);
     return;
   }
-  if (inflight.has(key)) return; // a revalidation is already in flight
+  if (inflight.has(key)) {
+    owed.add(key); // that load may predate this change — see `owed`
+    return;
+  }
   runLoad(key, loader);
 }
 
@@ -268,6 +283,7 @@ export function subscribeKey(
       // arriving before it settles runs its OWN loader via `ensureLoad` instead
       // of inheriting this abandoned request's eventual result (#2101).
       inflight.delete(key);
+      owed.delete(key); // nothing left to show a follow-up load to
     }
   };
 }
