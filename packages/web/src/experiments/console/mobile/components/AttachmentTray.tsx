@@ -1,6 +1,7 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { X } from 'lucide-react';
 import { formatBytes } from '../../primitives/file';
+import { useImagePreviews } from '../../hooks/useImagePreviews';
 
 interface AttachmentTrayProps {
   files: readonly File[];
@@ -20,15 +21,7 @@ export function AttachmentTray({
   preparing,
   onRemove,
 }: AttachmentTrayProps): ReactElement | null {
-  const [previews, setPreviews] = useState<readonly (string | null)[]>([]);
-  // Created and revoked in one effect, so every URL made is released.
-  useEffect(() => {
-    const urls = files.map(f => (f.type.startsWith('image/') ? URL.createObjectURL(f) : null));
-    setPreviews(urls);
-    return (): void => {
-      for (const url of urls) if (url !== null) URL.revokeObjectURL(url);
-    };
-  }, [files]);
+  const previews = useImagePreviews(files);
 
   if (files.length === 0 && error === null && preparing === 0) return null;
   return (
