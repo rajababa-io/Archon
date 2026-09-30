@@ -591,6 +591,9 @@ Signup uses email + password (no email verification by default). **Signup postur
 | `STALE_THRESHOLD_DAYS` | Days before an inactive worktree is considered stale | `14` |
 | `MAX_WORKTREES_PER_CODEBASE` | Max worktrees per codebase before auto-cleanup | `25` |
 | `CLEANUP_INTERVAL_HOURS` | How often the background cleanup service runs | `6` |
+| `DISK_RECLAIM_IDLE_HOURS` | Hours a worktree must go untouched (no chat activity, no turn in flight, no claimable run) before the hourly disk reclaim removes its `node_modules`. Code and uncommitted changes are never touched; the next install rebuilds it | `24` |
+| `DISK_ALERT_PERCENT` | Disk usage (of the Archon home filesystem) at or above which the hourly disk reclaim reports failure | `85` |
+| `DISK_RECLAIM_PING_URL` | Healthchecks-style URL pinged after every disk reclaim run — success below `DISK_ALERT_PERCENT`, `<url>/fail` at or above it or when the run breaks. Unset means no ping; each run is still appended to `~/.archon/logs/disk-reclaim.log` | — |
 
 ### Docker / Deployment
 

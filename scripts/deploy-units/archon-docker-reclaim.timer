@@ -1,0 +1,24 @@
+# Run archon-docker-reclaim.service once a day.
+#
+# Install, or reinstall after either unit changes (as root, on the host):
+#   sudo cp /opt/archon/scripts/deploy-units/archon-docker-reclaim.* /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now archon-docker-reclaim.timer
+#
+# Enable the .timer, never the .service — the service is what the timer starts.
+#
+# Daily, because each deploy leaves one image behind and deploys run about
+# daily. Persistent= catches up on a run missed while the box was off; the
+# random delay keeps it off the top of the hour where other jobs cluster.
+
+[Unit]
+Description=Reclaim Docker disk left by past Archon deploys, daily
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=1h
+Persistent=true
+Unit=archon-docker-reclaim.service
+
+[Install]
+WantedBy=timers.target

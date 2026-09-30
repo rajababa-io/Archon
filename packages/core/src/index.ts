@@ -156,6 +156,9 @@ export {
   SESSION_RETENTION_DAYS,
 } from './services/cleanup-service';
 
+export { startDiskReclaimScheduler, stopDiskReclaimScheduler } from './services/disk-reclaim';
+export type { DiskReclaimProcessState } from './services/disk-reclaim';
+
 export { generateAndSetTitle } from './services/title-generator';
 
 export {

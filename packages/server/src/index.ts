@@ -120,6 +120,8 @@ import {
   classifyAndFormatError,
   startCleanupScheduler,
   stopCleanupScheduler,
+  startDiskReclaimScheduler,
+  stopDiskReclaimScheduler,
   getDbNotificationListener,
   loadConfig,
   logConfig,
@@ -395,6 +397,18 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   const maxConcurrent = config.concurrency.maxConversations;
   const lockManager = new ConversationLockManager(maxConcurrent);
   getLog().info({ maxConcurrent }, 'lock_manager_initialized');
+
+  // Disk reclaim needs the lock manager: only this process knows which chats
+  // hold a turn right now, and a worktree with a turn in flight is never touched.
+  startDiskReclaimScheduler({
+    isConversationBusy: id =>
+      lockManager.isActive(id) ||
+      lockManager.getStats().queuedByConversation.some(q => q.conversationId === id),
+    isProcessQuiet: () => {
+      const { active, queuedTotal } = lockManager.getStats();
+      return active === 0 && queuedTotal === 0;
+    },
+  });
 
   // Initialize web adapter (always enabled)
   // Note: Circular references between transport/persistence/workflowBridge are safe because:
@@ -1236,6 +1250,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   const shutdown = (): void => {
     getLog().info('server_shutting_down');
     stopCleanupScheduler();
+    stopDiskReclaimScheduler();
     stopWorkflowContinuationScheduler();
     stopCiWatchReconcileScheduler();
     persistence.stopPeriodicFlush();
