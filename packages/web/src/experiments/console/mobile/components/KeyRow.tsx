@@ -1,15 +1,5 @@
 import type { ComponentType, ReactElement } from 'react';
-import {
-  AtSign,
-  Camera,
-  Cpu,
-  History,
-  Images,
-  KeyboardOff,
-  Maximize2,
-  Slash,
-  Square,
-} from 'lucide-react';
+import { AtSign, Camera, Cpu, History, Images, Maximize2, Slash, Square } from 'lucide-react';
 import { tick } from '../lib/haptics';
 
 export type KeyAction =
@@ -29,8 +19,39 @@ interface Key {
   icon: ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
 }
 
+/**
+ * A keyboard with a down arrow under it — the glyph iPad, Android and Gboard
+ * use for putting the keyboard away. lucide has no such icon, and its
+ * KeyboardOff reads as "keyboard disabled", so this one is drawn here to
+ * lucide's grid and stroke.
+ */
+function KeyboardHide({
+  className,
+  'aria-hidden': ariaHidden,
+}: {
+  className?: string;
+  'aria-hidden'?: boolean;
+}): ReactElement {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden={ariaHidden}
+    >
+      <rect x="2" y="2" width="20" height="13" rx="2" />
+      <path d="M6 6h.01M10 6h.01M14 6h.01M18 6h.01M8 9h.01M12 9h.01M16 9h.01M8 12h8" />
+      <path d="m9 19 3 3 3-3" />
+    </svg>
+  );
+}
+
 const KEYS: readonly Key[] = [
-  { action: 'hide-keyboard', label: 'Hide keyboard', icon: KeyboardOff },
+  { action: 'hide-keyboard', label: 'Hide keyboard', icon: KeyboardHide },
   { action: 'commands', label: 'Commands', icon: Slash },
   { action: 'files', label: 'Mention a file', icon: AtSign },
   { action: 'library', label: 'Attach from library', icon: Images },
