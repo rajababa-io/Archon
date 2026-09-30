@@ -5,6 +5,7 @@ import {
   activitySummary,
   allProjectsSubtitle,
   headerPathLabel,
+  showsInstallDeployStrip,
 } from './project-header';
 
 describe('activitySummary', () => {
@@ -91,5 +92,17 @@ describe('activeProjectTab', () => {
 
   test('a run whose id ends in the word chat does not light Chat', () => {
     expect(activeProjectTab('/console/p/abc/r/deadchat')).toBe('runs');
+  });
+});
+
+describe('showsInstallDeployStrip', () => {
+  test('All projects carries the install-wide deploy strip', () => {
+    expect(showsInstallDeployStrip(undefined)).toBe(true);
+  });
+
+  test("a project's page never carries Archon's own deploy status (#319)", () => {
+    // Any project id: another project's page, and the Archon project, whose own
+    // deploy row already reports this deploy.
+    expect(showsInstallDeployStrip('1f419d47-d581-4deb-b803-713f32414ad2')).toBe(false);
   });
 });

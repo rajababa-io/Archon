@@ -83,3 +83,17 @@ export function activeProjectTab(pathname: string): ProjectView {
   // one.
   return 'runs';
 }
+
+/**
+ * Whether the header carries the install-wide deploy strip: Archon's own
+ * deploy, read from `/api/health`. Only on All projects (#319).
+ *
+ * On a project's page the header's top row is read as that project's, so
+ * Archon's "Deploy failed" beside another project's name was taken for that
+ * project's failure. The Archon project needs no strip either: its own deploy
+ * row already reports this deploy. DeployOverlay still interrupts every route
+ * for the phases that stop you typing, so no page loses the urgent half.
+ */
+export function showsInstallDeployStrip(projectId: string | undefined): boolean {
+  return projectId === undefined;
+}
