@@ -474,8 +474,13 @@ export async function setConversationArchived(id: string, archived: boolean): Pr
  */
 export async function setConversationCompleted(id: string, completed: boolean): Promise<void> {
   const dialect = getDialect();
+  // Closing is the human's last word on the chat, so it reads it too (#289):
+  // a chat closed from a menu, without being opened, otherwise stayed unread
+  // forever and every notification count carried it. Reopening leaves the
+  // marker alone — nothing new has happened to be behind on.
+  const read = completed ? `, last_read_at = ${dialect.now()}` : '';
   const result = await pool.query(
-    `UPDATE remote_agent_conversations SET completed_at = ${completed ? dialect.now() : 'NULL'}, updated_at = ${dialect.now()} WHERE id = $1`,
+    `UPDATE remote_agent_conversations SET completed_at = ${completed ? dialect.now() : 'NULL'}${read}, updated_at = ${dialect.now()} WHERE id = $1`,
     [id]
   );
   if (result.rowCount === 0) {

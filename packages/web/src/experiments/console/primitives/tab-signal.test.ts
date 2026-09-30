@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { chatStatusSets, type ChatStatus } from './chat-status';
-import { alertText, badgeText, chatAlerts, chatStatuses, wantingCount } from './tab-signal';
+import { alertText, badgeText, chatAlerts, chatNotifications, chatStatuses } from './tab-signal';
 
 const m = (entries: Record<string, ChatStatus>): Map<string, ChatStatus> =>
   new Map(Object.entries(entries));
@@ -68,22 +68,63 @@ describe('chatStatuses', () => {
   });
 });
 
-describe('wantingCount', () => {
-  test('counts awaiting and unread — never working, done or ready on their own', () => {
-    expect(
-      wantingCount(
-        m({ a: 'awaiting', b: 'idle', c: 'working', d: 'done', e: 'ready' }),
-        new Set(['b'])
-      )
-    ).toBe(2);
-    expect(wantingCount(new Map(), new Set())).toBe(0);
+describe('chatNotifications', () => {
+  const found = (id: string, at: string | null = '2026-09-27T10:00:00Z', projectId = 'p1') => ({
+    chat: { id, title: `chat ${id}`, lastActivityAt: at, completed: false },
+    projectId,
   });
-  // Unread is a set beside the status now (#5), so the two can overlap.
-  test('a chat both awaiting and unread counts once', () => {
-    expect(wantingCount(m({ a: 'awaiting' }), new Set(['a']))).toBe(1);
+
+  test('awaiting and unread — never working, ready or idle on their own', () => {
+    const got = chatNotifications(
+      ['a', 'b', 'c', 'd', 'e'].map(id => found(id)),
+      m({ a: 'awaiting', b: 'idle', c: 'working', d: 'idle', e: 'ready' }),
+      new Set(['b'])
+    );
+    expect(got.map(n => [n.id, n.kind])).toEqual([
+      ['a', 'awaiting'],
+      ['b', 'unread'],
+    ]);
+    expect(chatNotifications([], new Map(), new Set())).toEqual([]);
   });
-  test('an unread chat counts whatever its status', () => {
-    expect(wantingCount(m({ a: 'done', b: 'ready' }), new Set(['a', 'b']))).toBe(2);
+
+  // Unread is a set beside the status (#5), so the two can overlap.
+  test('a chat both awaiting and unread is one notification, and says awaiting', () => {
+    const got = chatNotifications([found('a')], m({ a: 'awaiting' }), new Set(['a']));
+    expect(got.map(n => [n.id, n.kind])).toEqual([['a', 'awaiting']]);
+  });
+
+  test('awaiting leads, then newest first; each carries its own project', () => {
+    const got = chatNotifications(
+      [
+        found('old', '2026-09-27T08:00:00Z'),
+        found('new', '2026-09-27T12:00:00Z', 'p2'),
+        found('ask', '2026-09-27T07:00:00Z'),
+      ],
+      m({ old: 'idle', new: 'idle', ask: 'awaiting' }),
+      new Set(['old', 'new'])
+    );
+    expect(got.map(n => n.id)).toEqual(['ask', 'new', 'old']);
+    expect(got[1]?.projectId).toBe('p2');
+  });
+
+  // The whole of #289: a closed chat that moved after it was last read.
+  test('a closed chat is not a notification, through the real status sets', () => {
+    const rows = [
+      chat('closed', { completed: true, lastReadAt: null }),
+      chat('open', { lastReadAt: null }),
+    ];
+    const sets = chatStatusSets(rows, {
+      working: new Set(),
+      runAwaiting: new Set(),
+      running: new Set(),
+      waiting: new Set(),
+    });
+    const got = chatNotifications(
+      rows.map(r => found(r.id)),
+      chatStatuses(rows, sets),
+      sets.unread
+    );
+    expect(got.map(n => n.id)).toEqual(['open']);
   });
 });
 

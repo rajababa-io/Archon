@@ -26,6 +26,7 @@ import {
 } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router';
 import { Settings, Workflow, type LucideIcon } from 'lucide-react';
+import { NotificationsBell } from './NotificationsBell';
 import { ProjectRow } from './ProjectRow';
 import { ProjectCountHeader, ProjectCountTotals } from './ProjectCountCells';
 import { EnvVarsDialog } from './EnvVarsDialog';
@@ -382,6 +383,7 @@ export function ProjectRail({ drawer, onAddProject, onSearch }: ProjectRailProps
               ⌘K
             </span>
           </button>
+          <NotificationsBell />
         </div>
 
         {/* ALL scope */}

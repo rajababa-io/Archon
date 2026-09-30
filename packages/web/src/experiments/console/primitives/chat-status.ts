@@ -262,12 +262,23 @@ export function askAwaitingIds(
  * An unparseable or absent `lastActivityAt` is NOT unread: the chat has no
  * activity to be behind on. An absent `lastReadAt` with real activity IS
  * unread, which is what a chat nobody has opened should say.
+ *
+ * A closed chat is never unread (#289). Closing is the human's last word on
+ * it, and the server now stamps the read marker when it closes; this covers
+ * the chats closed before it did, which otherwise sat in every count for good
+ * — 46 of a tab badge's 47 when it was measured.
  */
 export function unreadIds(
-  conversations: readonly { id: string; lastActivityAt: string | null; lastReadAt: string | null }[]
+  conversations: readonly {
+    id: string;
+    completed: boolean;
+    lastActivityAt: string | null;
+    lastReadAt: string | null;
+  }[]
 ): Set<string> {
   const out = new Set<string>();
   for (const c of conversations) {
+    if (c.completed) continue;
     const activity = instant(c.lastActivityAt);
     if (activity === null) continue;
     const read = instant(c.lastReadAt);
