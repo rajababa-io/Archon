@@ -65,13 +65,19 @@ export interface MobileChats {
   liveTools: ReturnType<typeof useLiveChats>['tools'];
   ciWaitingSince: ReturnType<typeof useLiveChats>['ciWaitingSince'];
   projectLabel: (projectId: string) => string;
+  /** Every registered project — the desktop's list (`K.projects`), not a second one. */
+  projects: readonly Project[] | undefined;
+  projectsError: Error | undefined;
 }
 
 export function useMobileChats(): MobileChats {
   const { data: all, error } = useEntity(K.allConversations, () =>
     skill.listAllConversations({ signal: AbortSignal.timeout(REACH_TIMEOUT_MS) })
   );
-  const { data: projects } = useEntity<Project[]>(K.projects, skill.listProjects);
+  const { data: projects, error: projectsError } = useEntity<Project[]>(
+    K.projects,
+    skill.listProjects
+  );
   const { data: runFeed } = useEntity<{ runs: Run[] }>(K.runs(ALL_SCOPE), () =>
     skill.listRuns({ limit: skill.RUN_LIMIT })
   );
@@ -144,5 +150,7 @@ export function useMobileChats(): MobileChats {
     liveTools: live.tools,
     ciWaitingSince: live.ciWaitingSince,
     projectLabel: label,
+    projects,
+    projectsError,
   };
 }
