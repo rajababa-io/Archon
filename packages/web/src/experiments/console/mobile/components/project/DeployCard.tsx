@@ -44,15 +44,31 @@ export function DeployCard({
   return <DeployPanel projectId={projectId} projectName={projectName} deploy={answer.deploy} />;
 }
 
-function waitingLine(right: DeployRowRight): string {
+/**
+ * The state line under the branches. Waiting merges take the desktop deploy
+ * row's amber pill, so work not yet live reads as a warning on both surfaces;
+ * every other state stays neutral text.
+ */
+export function WaitingLine({ right }: { right: DeployRowRight }): ReactElement {
   switch (right.kind) {
     case 'waiting':
+      return (
+        <p>
+          <span className="inline-block rounded-full bg-warning/15 px-2.25 py-0.5 text-small text-warning ring-1 ring-inset ring-warning/35">
+            {right.label}
+          </span>
+        </p>
+      );
     case 'unknown':
-      return right.label;
+      return <p className="text-small text-text-secondary">{right.label}</p>;
     case 'up-to-date':
-      return 'Up to date';
+      return <p className="text-small text-text-secondary">Up to date</p>;
     case 'none':
-      return 'Deploy on Merge is on: merges go live by themselves.';
+      return (
+        <p className="text-small text-text-secondary">
+          Deploy on Merge is on: merges go live by themselves.
+        </p>
+      );
   }
 }
 
@@ -125,7 +141,7 @@ function DeployPanel({
         </div>
       ) : (
         <>
-          <p className="text-small text-text-secondary">{waitingLine(view.right)}</p>
+          <WaitingLine right={view.right} />
           {view.right.kind === 'waiting' && confirm !== null ? (
             confirming ? (
               <div role="group" aria-label={confirm.title} className="flex flex-col gap-2">
