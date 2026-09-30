@@ -376,14 +376,14 @@ function ChatView({
   }, [atBottom, rendered.length]);
   const hasNew = !atBottom && rendered.length > seenCount;
 
-  const markDone = (): void => {
+  const closeChat = (): void => {
     void skill
       .setConversationCompleted(conversationId, true)
       .then(() => {
         invalidate(K.allConversations);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'Could not mark the chat done.');
+        setError(e instanceof Error ? e.message : 'Could not close the chat.');
       });
   };
 
@@ -507,10 +507,10 @@ function ChatView({
                   status === 'ready' ? (
                     <button
                       type="button"
-                      onClick={markDone}
+                      onClick={closeChat}
                       className="mobile-tap rounded-full border border-success/50 px-3 text-small font-medium text-success"
                     >
-                      Mark done
+                      Close
                     </button>
                   ) : undefined
                 }
