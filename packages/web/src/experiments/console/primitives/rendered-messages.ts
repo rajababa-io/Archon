@@ -7,6 +7,20 @@
 import type { Message } from './message';
 import { pendingSegments, type LiveSegment } from './live-text';
 
+/** Id prefix of a streamed reply the database has not stored yet. */
+const LIVE_PREFIX = 'live-';
+
+/**
+ * Whether this message is a streamed preview rather than a stored row.
+ *
+ * Owned here because this module mints the preview ids, so the prefix is
+ * stated once. The chat reads it to keep a reply's working notes open only
+ * while that reply is still arriving.
+ */
+export function isLivePreview(message: Pick<Message, 'id'>): boolean {
+  return message.id.startsWith(LIVE_PREFIX);
+}
+
 /** A message this tab sent that the server has not stored yet. */
 export interface PendingUser {
   content: string;
@@ -57,7 +71,7 @@ export function renderedMessages(
   }
   pendingSegments(live, [...stored]).forEach((seg, i) => {
     out.push(
-      synthetic(`live-${String(i)}`, 'assistant', seg.content, now, {
+      synthetic(`${LIVE_PREFIX}${String(i)}`, 'assistant', seg.content, now, {
         category: seg.category,
         thinking: seg.thinking ?? null,
       })
