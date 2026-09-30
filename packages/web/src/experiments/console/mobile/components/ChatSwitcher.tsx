@@ -1,9 +1,7 @@
 import { useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 import { ChevronRight, Settings } from 'lucide-react';
-import { NotificationList } from '../../components/NotificationList';
-import { markAllRead } from '../../lib/use-notifications';
-import { chatPath, projectPath, SETTINGS_PATH } from '../lib/paths';
+import { projectPath, SETTINGS_PATH } from '../lib/paths';
 import { switcherGroups } from '../lib/switcher';
 import { ChatRow } from './ChatRow';
 import { ProjectList } from './ProjectList';
@@ -26,10 +24,9 @@ interface ChatSwitcherProps {
 }
 
 /**
- * What needs you on top — the same notifications list as the desktop rail's
- * bell (#289), under the same count as the header badge — then every open
- * chat, grouped by project, the ones that need you first. A project's heading
- * opens that project; so does every row of the project list beneath.
+ * Every open chat, grouped by project, the ones that need you first. A
+ * project's heading opens that project; so does every row of the project list
+ * beneath.
  */
 export function ChatSwitcher({
   chats,
@@ -53,8 +50,7 @@ export function ChatSwitcher({
 }
 
 function ChatGroups({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
-  const { chats: all, error, reach, statuses, statusSets, projectLabel, notifications } = chats;
-  const navigate = useNavigate();
+  const { chats: all, error, reach, statuses, statusSets, projectLabel } = chats;
   const groups = useMemo(
     () => switcherGroups(all ?? [], statuses, statusSets.unread, projectLabel),
     [all, statuses, statusSets.unread, projectLabel]
@@ -72,45 +68,28 @@ function ChatGroups({ chats, activeId, onPick }: ChatSwitcherProps): ReactElemen
   if (groups.length === 0) return <p className="mobile-note">No open chats.</p>;
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Beside the chat list, not in it: the rows below are every chat, and
-          these are the few that want you. Offline, the saved copies carry no
-          live read state worth acting on. */}
-      {reach === 'online' ? (
-        <NotificationList
-          touch
-          items={notifications}
-          projectLabel={projectLabel}
-          onOpen={item => {
-            onPick?.();
-            void navigate(chatPath(item.id));
-          }}
-          onMarkAllRead={() => markAllRead(notifications)}
-        />
-      ) : null}
-      <nav aria-label="Chats" className="flex flex-col gap-4">
-        {groups.map(group => (
-          <ChatGroupSection
-            key={group.projectId}
-            projectId={group.projectId}
-            label={projectLabel(group.projectId)}
-            onPick={onPick}
-          >
-            {group.rows.map(({ chat, status, unread }) => (
-              <li key={chat.id}>
-                <ChatRow
-                  chat={chat}
-                  status={status}
-                  unread={unread}
-                  current={chat.id === activeId}
-                  onPick={onPick}
-                />
-              </li>
-            ))}
-          </ChatGroupSection>
-        ))}
-      </nav>
-    </div>
+    <nav aria-label="Chats" className="flex flex-col gap-4">
+      {groups.map(group => (
+        <ChatGroupSection
+          key={group.projectId}
+          projectId={group.projectId}
+          label={projectLabel(group.projectId)}
+          onPick={onPick}
+        >
+          {group.rows.map(({ chat, status, unread }) => (
+            <li key={chat.id}>
+              <ChatRow
+                chat={chat}
+                status={status}
+                unread={unread}
+                current={chat.id === activeId}
+                onPick={onPick}
+              />
+            </li>
+          ))}
+        </ChatGroupSection>
+      ))}
+    </nav>
   );
 }
 

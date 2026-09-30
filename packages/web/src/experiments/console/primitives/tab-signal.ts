@@ -25,7 +25,7 @@ export function chatStatuses(
 
 export type ChatNotificationKind = 'awaiting' | 'unread';
 
-/** One chat that wants you, as the notifications list shows it. */
+/** One chat that wants you. */
 export interface ChatNotification {
   id: string;
   projectId: string;
@@ -44,8 +44,8 @@ export interface ChatNotification {
 /**
  * The chats that want you: the ones awaiting you, and the ones you have not
  * read (#289). This list IS the notification count — the favicon badge, the
- * rail's bell, the phone's badge and its Home Screen icon all take `.length`
- * of it, so no surface can show a number the list does not explain.
+ * phone's badge and its Home Screen icon all take `.length` of it, so every
+ * surface shows the same number.
  *
  * Those are the two things that ask a person to come and look. A turn that
  * ends while you are away leaves its chat unread, so this rising is how "done"
