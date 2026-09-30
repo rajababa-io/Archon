@@ -33,6 +33,9 @@
  * surface reports nothing anywhere. DeployOverlay is still mounted app-wide in
  * ConsoleApp, so the two phases that actually stop you still interrupt on every
  * route — it is the ambient half that is project-scoped, not the urgent half.
+ * Within that header it shows only on All projects: beside another project's
+ * name it read as that project's deploy (#319), and the archon-host project's
+ * own deploy row already says the same thing.
  *
  * WHAT IT DROPS ON A NARROW SCREEN. The dot, the phase word and the clock survive
  * every width; the SHA goes below `sm` and the holding sentence below `md`, and

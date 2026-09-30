@@ -79,19 +79,15 @@ export function ProjectHeader(): ReactElement {
     )
   );
   const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
-  const { data: deploy, error: deployError } = useEntity<DeployAnswer | null>(
+  const { data: deploy } = useEntity<DeployAnswer | null>(
     projectId === undefined ? 'noop:all-projects:deploy' : K.projectDeploy(projectId),
     () => (projectId === undefined ? Promise.resolve(null) : skill.getProjectDeploy(projectId))
   );
-  // The install-wide strip is the Archon box's deploy, which the archon-host
-  // project's row already shows, so that project alone shows only the row.
-  // Held back until the answer lands, so it does not flash the strip first; a
-  // failed read falls back to the strip.
-  const showStrip =
-    projectId === undefined ||
-    deployError !== undefined ||
-    (deploy !== undefined &&
-      !(deploy?.kind === 'set-up' && deploy.deploy.method === 'archon-host'));
+  // The install-wide strip is this Archon install's own deploy, so it belongs
+  // only where no project is in view. Beside another project's name it reads as
+  // that project's deploy — a red "Deploy failed" on a project that never
+  // deployed (#319). The archon-host project's own row already carries it.
+  const showStrip = projectId === undefined;
 
   // Renaming in the rail reaches the header through the same override store,
   // so the two can never disagree about what this project is called.
