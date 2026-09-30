@@ -1,0 +1,23 @@
+# Give back the disk Docker holds for past deploys: old app images and stale
+# build cache. Started daily by archon-docker-reclaim.timer; see
+# scripts/docker-reclaim.sh for what it keeps and why.
+#
+# Runs on the HOST — the container has no docker binary and no socket.
+#
+# Watch one: journalctl -u archon-docker-reclaim
+# Run one now: sudo systemctl start archon-docker-reclaim.service
+
+[Unit]
+Description=Reclaim Docker disk left by past Archon deploys
+
+[Service]
+Type=oneshot
+ExecStart=/opt/archon/scripts/docker-reclaim.sh
+
+# HC_PING_URL=<Healthchecks ping URL> lives here, not in this file, because a
+# ping URL is a credential for that check. The leading dash makes a missing
+# file mean "no ping" rather than a unit that cannot start.
+EnvironmentFile=-/etc/archon/docker-reclaim.env
+
+# Pruning a large build cache takes minutes, not the 90s default.
+TimeoutStartSec=1800

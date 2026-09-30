@@ -437,6 +437,47 @@ export async function listAllActiveWithCodebase(): Promise<
 }
 
 /**
+ * The conversations attached to an environment, with how long each has been
+ * idle. Disk reclaim reads it to decide whether a worktree's packages can go:
+ * the platform id is what the conversation lock is keyed by, so the caller can
+ * ask whether a turn is in flight, and the idle time says whether anyone has
+ * touched the chat recently. Deleted and completed rows count too — their
+ * activity still happened in this worktree.
+ */
+export async function getEnvConversationActivity(
+  envId: string
+): Promise<readonly { platform_conversation_id: string; days_idle: number }[]> {
+  const envMatch =
+    getDatabaseType() === 'postgresql' ? 'c.isolation_env_id::text' : 'c.isolation_env_id';
+  const result = await pool.query<{ platform_conversation_id: string; days_idle: number | string }>(
+    `SELECT c.platform_conversation_id,
+            ${getDialect().daysSince('COALESCE(c.last_activity_at, c.created_at)')} AS days_idle
+     FROM remote_agent_conversations c
+     WHERE ${envMatch} = $1`,
+    [envId]
+  );
+  // Postgres returns EXTRACT(...) as a numeric string; SQLite as a number.
+  return result.rows.map(row => ({
+    platform_conversation_id: row.platform_conversation_id,
+    days_idle: Number(row.days_idle),
+  }));
+}
+
+/**
+ * Whether any workflow run is executing or about to. Unlike
+ * `getRunningWorkflows`, a query error propagates: the caller treats this as
+ * "is it safe to delete a shared cache", and an unreadable answer must read as
+ * busy, never as quiet.
+ */
+export async function hasUnfinishedWorkflowRun(): Promise<boolean> {
+  const result = await pool.query<{ id: string }>(
+    "SELECT id FROM remote_agent_workflow_runs WHERE status IN ('running', 'pending') LIMIT 1",
+    []
+  );
+  return result.rows.length > 0;
+}
+
+/**
  * List active environments for a codebase with days since last activity
  * Used for worktree breakdown and limit messaging
  */
