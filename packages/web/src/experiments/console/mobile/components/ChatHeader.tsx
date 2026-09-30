@@ -1,9 +1,11 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Link } from 'react-router';
-import { MessagesSquare } from 'lucide-react';
+import { Menu } from 'lucide-react';
 import { STATUS_COLOR, STATUS_LABEL, type ChatStatus } from '../../primitives/chat-status';
 import { badgeText } from '../../primitives/tab-signal';
 import { projectPath } from '../lib/paths';
+import { useProjectIdentity } from '../../lib/project-identity';
+import { ProjectMark } from './ProjectMark';
 
 interface ChatHeaderProps {
   /** Chats that want you, across every project. */
@@ -27,8 +29,15 @@ export function ChatHeader({
   status,
   bell,
 }: ChatHeaderProps): ReactElement {
+  // The project's colour, icon and name are how you know where you are
+  // (#305): the name is drawn in the colour, and the header's bottom edge is
+  // a line of it. Seeded by the id, so it is right on the first frame.
+  const { color } = useProjectIdentity(projectId ?? '');
   return (
-    <header className="mobile-safe-top flex shrink-0 items-center gap-2 border-b border-border bg-surface px-2 pb-1">
+    <header
+      className="mobile-safe-top flex shrink-0 items-center gap-2 border-b border-border bg-surface px-2 pb-1"
+      style={{ borderBottom: projectId !== null ? `3px solid ${color}` : undefined }}
+    >
       <button
         type="button"
         onClick={onOpenSwitcher}
@@ -37,7 +46,7 @@ export function ChatHeader({
         }
         className="mobile-tap relative flex shrink-0 items-center justify-center text-text-secondary"
       >
-        <MessagesSquare aria-hidden className="h-5 w-5" />
+        <Menu aria-hidden className="h-5 w-5" />
         {needsYou > 0 ? (
           <span
             aria-hidden
@@ -53,12 +62,18 @@ export function ChatHeader({
       {projectId !== null && project !== null ? (
         <Link
           to={projectPath(projectId)}
-          className="group flex min-h-11 min-w-0 flex-1 flex-col justify-center"
+          className="group flex min-h-11 min-w-0 flex-1 items-center gap-2.5"
         >
-          <span className="block truncate text-mini text-text-tertiary underline-offset-2 group-active:underline">
-            {project} ▸
+          <ProjectMark projectId={projectId} size={30} />
+          <span className="flex min-w-0 flex-1 flex-col justify-center">
+            <span
+              className="block truncate text-small font-medium underline-offset-2 group-active:underline"
+              style={{ color }}
+            >
+              {project} ▸
+            </span>
+            <ChatTitle title={title} />
           </span>
-          <ChatTitle title={title} />
         </Link>
       ) : (
         <div className="min-w-0 flex-1">

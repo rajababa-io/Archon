@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type ReactElement } from 'rea
 import { Glyph } from '../lib/glyph';
 import { openInIde, useIdeEnv } from '../lib/health';
 import { setIdentity, useProjectIdentity } from '../lib/project-identity';
-import { pushIdentity } from '../lib/presentation-sync';
+import { pushDisplayName, pushIdentity } from '../lib/presentation-sync';
 import { ProjectCountCells } from './ProjectCountCells';
 import { MenuItem, MenuSeparator, RowMenu, RowMenuButton } from './RowMenu';
 import { projectLabel, useDisplayName, setDisplayName } from '../lib/display-name';
@@ -81,6 +81,7 @@ export function ProjectRow({
   const commit = (): void => {
     if (draft.trim() === project.name) setDisplayName(project.id, '');
     else setDisplayName(project.id, draft);
+    pushDisplayName(project.id);
     setEditing(false);
   };
   const cancel = (): void => {

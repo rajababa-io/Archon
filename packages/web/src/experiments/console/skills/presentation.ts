@@ -13,6 +13,8 @@ import { requestJson } from '../lib/http';
 export interface ProjectPresentation {
   color?: string | null;
   glyph?: string | null;
+  /** The operator's rename; null clears it. Absent means never synced (#305). */
+  displayName?: string | null;
   brief?: { why?: string; doing?: string; where?: string; updatedAt?: number | null } | null;
 }
 

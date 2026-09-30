@@ -12,7 +12,8 @@ import * as skill from '../../skills';
 import { invalidate, useEntity } from '../../store/cache';
 import { ALL_SCOPE, K } from '../../store/keys';
 import { useLiveChats } from '../../lib/live-chats';
-import { getDisplayName, projectLabel } from '../../lib/display-name';
+import { getDisplayName, projectLabel, useDisplayNames } from '../../lib/display-name';
+import { syncPresentation } from '../../lib/presentation-sync';
 import {
   awaitingInputIds,
   chatStatusSets,
@@ -46,6 +47,9 @@ const LIST_POLL_MS = 8000;
  * unbounded read would leave the shell showing neither chats nor the banner.
  */
 const REACH_TIMEOUT_MS = 10_000;
+
+/** The project list the presentation was last pulled for; see `useMobileChats`. */
+let syncedFor = '';
 
 export interface MobileChats {
   /**
@@ -122,6 +126,20 @@ export function useMobileChats(): MobileChats {
     [chats, statuses, statusSets.unread]
   );
 
+  // Colour, icon and rename come down from the server the way the desktop
+  // rail pulls them, so the phone names and paints a project as the desktop
+  // does (#305). Once per project list per page load — every screen calls
+  // this hook, and a navigation is not a reason to ask again. A failure
+  // leaves the local copies.
+  const projectIds = (projects ?? []).map(p => p.id).join(',');
+  useEffect(() => {
+    if (projectIds === '' || projectIds === syncedFor) return;
+    syncedFor = projectIds;
+    void syncPresentation(projectIds.split(','));
+  }, [projectIds]);
+  // A rename that lands re-renders every label below.
+  const namesVersion = useDisplayNames();
+
   const names = useMemo(() => new Map((projects ?? []).map(p => [p.id, p.name])), [projects]);
   const savedLabels = useMemo(
     () => new Map((saved ?? []).map(s => [s.found.projectId, s.projectLabel])),
@@ -136,7 +154,8 @@ export function useMobileChats(): MobileChats {
       }
       return projectLabel(name ?? projectId, getDisplayName(projectId, name ?? projectId));
     },
-    [names, savedLabels]
+    // namesVersion is not read, it is why the label must be rebuilt.
+    [names, savedLabels, namesVersion]
   );
 
   return {

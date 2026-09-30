@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { ChevronRight, Settings } from 'lucide-react';
 import { NotificationList } from '../../components/NotificationList';
@@ -7,6 +7,8 @@ import { chatPath, projectPath, SETTINGS_PATH } from '../lib/paths';
 import { switcherGroups } from '../lib/switcher';
 import { ChatRow } from './ChatRow';
 import { ProjectList } from './ProjectList';
+import { ProjectMark } from './ProjectMark';
+import { useProjectIdentity } from '../../lib/project-identity';
 import type { MobileChats } from '../lib/use-mobile-chats';
 
 interface ChatSwitcherProps {
@@ -15,6 +17,13 @@ interface ChatSwitcherProps {
   activeId?: string;
   /** Picking a chat; the link itself navigates. */
   onPick?: () => void;
+  /** The project on screen, marked in the project list. */
+  currentProjectId?: string;
+  /**
+   * Projects above the chats — the drawer, which is the phone's form of the
+   * desktop rail. The home list keeps chats first: that is what it is for.
+   */
+  projectsFirst?: boolean;
 }
 
 /**
@@ -23,13 +32,23 @@ interface ChatSwitcherProps {
  * chat, grouped by project, the ones that need you first. A project's heading
  * opens that project; so does every row of the project list beneath.
  */
-export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
+export function ChatSwitcher({
+  chats,
+  activeId,
+  onPick,
+  currentProjectId,
+  projectsFirst = false,
+}: ChatSwitcherProps): ReactElement {
+  // Every project, chats or none — the chat groups only name projects that
+  // have chats, which left a quiet project unreachable (#292).
+  const projects = (
+    <ProjectList chats={chats} currentProjectId={currentProjectId} onPick={onPick} />
+  );
   return (
     <div className="flex flex-col gap-4">
+      {projectsFirst ? projects : null}
       <ChatGroups chats={chats} activeId={activeId} onPick={onPick} />
-      {/* Every project, chats or none — the groups above only name projects
-          that have chats, which left a quiet project unreachable (#292). */}
-      <ProjectList chats={chats} onPick={onPick} />
+      {projectsFirst ? null : projects}
     </div>
   );
 }
@@ -72,34 +91,64 @@ function ChatGroups({ chats, activeId, onPick }: ChatSwitcherProps): ReactElemen
       ) : null}
       <nav aria-label="Chats" className="flex flex-col gap-4">
         {groups.map(group => (
-          <section key={group.projectId} aria-label={projectLabel(group.projectId)}>
-            <h2>
-              <Link
-                to={projectPath(group.projectId)}
-                onClick={onPick}
-                className="flex min-h-11 items-center gap-1 px-4 text-mini font-medium text-text-tertiary uppercase"
-              >
-                {projectLabel(group.projectId)}
-                <ChevronRight aria-hidden className="h-3 w-3" />
-              </Link>
-            </h2>
-            <ul>
-              {group.rows.map(({ chat, status, unread }) => (
-                <li key={chat.id}>
-                  <ChatRow
-                    chat={chat}
-                    status={status}
-                    unread={unread}
-                    current={chat.id === activeId}
-                    onPick={onPick}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
+          <ChatGroupSection
+            key={group.projectId}
+            projectId={group.projectId}
+            label={projectLabel(group.projectId)}
+            onPick={onPick}
+          >
+            {group.rows.map(({ chat, status, unread }) => (
+              <li key={chat.id}>
+                <ChatRow
+                  chat={chat}
+                  status={status}
+                  unread={unread}
+                  current={chat.id === activeId}
+                  onPick={onPick}
+                />
+              </li>
+            ))}
+          </ChatGroupSection>
         ))}
       </nav>
     </div>
+  );
+}
+
+/**
+ * One project's chats under its coloured icon and name — the same mark the
+ * rail and the chat header wear, so a group reads as a place (#305). The
+ * line down the left keeps the project's colour beside every chat in it.
+ */
+function ChatGroupSection({
+  projectId,
+  label,
+  onPick,
+  children,
+}: {
+  projectId: string;
+  label: string;
+  onPick?: () => void;
+  children: ReactNode;
+}): ReactElement {
+  const { color } = useProjectIdentity(projectId);
+  return (
+    <section aria-label={label}>
+      <h2>
+        <Link
+          to={projectPath(projectId)}
+          onClick={onPick}
+          className="flex min-h-11 items-center gap-2.5 px-4 text-body font-medium text-text-primary"
+        >
+          <ProjectMark projectId={projectId} size={28} />
+          <span className="min-w-0 truncate">{label}</span>
+          <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-text-tertiary" />
+        </Link>
+      </h2>
+      <ul className="ml-[29px] border-l-2" style={{ borderColor: color }}>
+        {children}
+      </ul>
+    </section>
   );
 }
 
@@ -149,7 +198,7 @@ export function SwitcherSheet({ open, onClose, ...list }: SwitcherSheetProps): R
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-6">
-          <ChatSwitcher {...list} onPick={onClose} />
+          <ChatSwitcher {...list} onPick={onClose} projectsFirst />
         </div>
       </div>
       <button

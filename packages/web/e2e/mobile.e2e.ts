@@ -393,7 +393,7 @@ test('the switcher lists chats by status and opens the one tapped', async ({ pag
   await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
 });
 
-test('every project is listed, one with no chats included, and opens its screen', async ({
+test('every project is listed with its icon and server-side rename, and opens its screen', async ({
   page,
 }) => {
   // A second registered project nobody is chatting in: the chat groups never
@@ -403,14 +403,27 @@ test('every project is listed, one with no chats included, and opens its screen'
     url => url.pathname === '/api/codebases',
     route => route.fulfill({ json: [PROJECT, quiet] })
   );
+  // Renamed on another machine: the phone has never seen it, so the name can
+  // only have come from the server's presentation (#305).
+  await page.route(
+    url => url.pathname === `/api/projects/${quiet.id}/presentation`,
+    route =>
+      route.fulfill({
+        json: {
+          presentation: { color: 'plum', glyph: 'key-round', displayName: 'Quiet Renamed' },
+          sortOrder: null,
+        },
+      })
+  );
   await open(page, '/m');
 
   const projects = page.getByRole('navigation', { name: 'Projects' }).getByRole('link');
   await expect(projects).toHaveCount(2);
   await expect(projects.nth(0)).toContainText(PROJECT_SHORT_NAME);
-  await expect(projects.nth(0)).toContainText('2 open chats');
-  await expect(projects.nth(1)).toContainText('quiet-e2e');
-  await expect(projects.nth(1)).toContainText('No open chats');
+  await expect(projects.nth(1)).toContainText('Quiet Renamed');
+  // Every row wears its project's icon, as the desktop rail does.
+  await expect(projects.nth(0).locator('svg').first()).toBeVisible();
+  await expect(projects.nth(1).locator('svg').first()).toBeVisible();
 
   await projects.nth(1).tap();
   await expect(page).toHaveURL(/\/m\/p\/proj-quiet-e2e$/);

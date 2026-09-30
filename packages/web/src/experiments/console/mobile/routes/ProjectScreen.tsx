@@ -37,6 +37,7 @@ export function ProjectScreen(): ReactElement {
         }
         context={project?.name ?? null}
         trailing={<ProjectMute projectId={projectId} />}
+        projectId={projectId}
       />
       <nav
         aria-label="Project"

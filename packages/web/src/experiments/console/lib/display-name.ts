@@ -1,12 +1,19 @@
 /**
- * Per-project display-name overrides. Lives in localStorage so the rename is
- * scoped to the spike and survives reloads without backend changes.
+ * Per-project display-name overrides.
+ *
+ * localStorage is the synchronous copy every label reads on its first frame;
+ * the server's presentation blob is the shared one, so a rename made on the
+ * desktop names the project the same way on the phone (#305).
+ * `presentation-sync.ts` moves values between the two.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 const key = (projectId: string): string => `console:displayName:${projectId}`;
 
 const listeners = new Set<() => void>();
+
+/** Bumped on every write, so `useDisplayNames` has a snapshot to compare. */
+let version = 0;
 
 // localStorage can throw SecurityError in private-browsing modes or
 // when storage is disabled by policy. Treat any failure as "no override
@@ -19,6 +26,15 @@ export function getDisplayName(projectId: string, fallback: string): string {
   }
 }
 
+/** The override itself, or null when the project goes by its repo name. */
+export function storedDisplayName(projectId: string): string | null {
+  try {
+    return localStorage.getItem(key(projectId));
+  } catch {
+    return null;
+  }
+}
+
 export function setDisplayName(projectId: string, value: string): void {
   const trimmed = value.trim();
   try {
@@ -28,6 +44,7 @@ export function setDisplayName(projectId: string, value: string): void {
     // Override won't persist; UI still updates for the current session
     // because the listeners below still fire.
   }
+  version++;
   for (const l of listeners) l();
 }
 
@@ -44,6 +61,24 @@ export function useDisplayName(projectId: string, fallback: string): string {
     };
   }, [projectId, fallback]);
   return value;
+}
+
+/**
+ * Re-renders the caller whenever any project is renamed.
+ *
+ * For callers that read names through `getDisplayName` inside a callback — a
+ * label function handed to a list — rather than one project at a time.
+ */
+export function useDisplayNames(): number {
+  return useSyncExternalStore(
+    listener => {
+      listeners.add(listener);
+      return (): void => {
+        listeners.delete(listener);
+      };
+    },
+    () => version
+  );
 }
 
 /**
