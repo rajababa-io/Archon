@@ -23,6 +23,37 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/*
+ * The phone's type size. The console's scale was set for a desk, where body
+ * text is 13px; at arm's length on a phone that is too small to read. 17px is
+ * Telegram's message text on iOS, so body is scaled from 13 to 17 and every
+ * other size moves with it. On the ROOT, not on .mobile-root's tokens: the
+ * text-size setting (--ui-scale, tokens.css) already works there, so the
+ * phone's steps are the desktop's steps times this one number rather than a
+ * second scale restated beside the first. `:has` rather than a class set from
+ * script, so the right size is there on the first paint of /m.
+ */
+html:has(.mobile-root) {
+  font-size: calc(16px * 17 / 13 * var(--ui-scale, 1));
+}
+
+/*
+ * Text grows; the frame around it does not. Tailwind's spacing unit is rem,
+ * so without this every padding, gap and icon grew with the text too, and at
+ * the larger sizes the header and the composer's toolbar ran off the screen.
+ * 4px is the unit's desktop value (0.25rem of 16px). Telegram's text-size
+ * slider works the same way: messages get bigger, the bars stay put.
+ */
+.mobile-root {
+  --spacing: 4px;
+}
+
+/* A text field under 16px makes iOS zoom the page when it takes focus; at
+   every step above XS the body size is already past that. */
+.mobile-input {
+  font-size: max(16px, var(--text-body));
+}
+
 .mobile-root > * {
   flex: 1 1 auto;
   min-height: 0;
@@ -55,11 +86,11 @@
   min-width: 44px;
 }
 .mobile-row {
-  padding-block: 0.375rem;
+  padding-block: calc(var(--spacing) * 1.5);
 }
 
 .mobile-note {
-  padding: 0.5rem 1rem;
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
   font-size: var(--text-small);
   color: var(--text-tertiary);
 }
@@ -87,7 +118,7 @@
 .mobile-approval [data-approval-actions] > input {
   flex-basis: 100%;
   min-height: 44px;
-  font-size: 16px;
+  font-size: max(16px, var(--text-body));
 }
 .mobile-approval [data-approval-actions] > button {
   flex: 1 1 0;

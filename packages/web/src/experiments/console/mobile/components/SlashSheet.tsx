@@ -66,7 +66,7 @@ function SlashList({
           placeholder="Search commands and workflows"
           aria-label="Search commands"
           autoComplete="off"
-          className="min-h-11 w-full rounded-lg border border-border bg-surface-inset px-3 text-[16px] text-text-primary outline-none placeholder:text-text-tertiary"
+          className="min-h-11 w-full rounded-lg border border-border bg-surface-inset px-3 mobile-input text-text-primary outline-none placeholder:text-text-tertiary"
         />
       </div>
       {notice !== null ? <p className="mobile-note">{notice}</p> : null}
@@ -83,7 +83,7 @@ function SlashList({
           {matches.map((entry, i) => (
             <Fragment key={entry.id}>
               {grouped && entry.group !== matches[i - 1]?.group ? (
-                <li className="px-4 pt-3 pb-1 font-mono text-[10px] tracking-[0.06em] text-text-tertiary uppercase">
+                <li className="px-4 pt-3 pb-1 font-mono text-mini tracking-[0.06em] text-text-tertiary uppercase">
                   {entry.group}
                 </li>
               ) : null}

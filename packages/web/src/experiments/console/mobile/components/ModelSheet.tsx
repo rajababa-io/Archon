@@ -4,7 +4,7 @@ import { useChatModelPin } from '../../hooks/useChatModelPin';
 import { Sheet, SheetRow } from './Sheet';
 
 const SECTION_CLASS =
-  'px-4 pt-3 pb-1 font-mono text-[10px] tracking-[0.06em] text-text-tertiary uppercase';
+  'px-4 pt-3 pb-1 font-mono text-mini tracking-[0.06em] text-text-tertiary uppercase';
 
 interface ModelSheetProps {
   open: boolean;
@@ -83,7 +83,7 @@ function ModelChoices({ conversationId }: { conversationId: string }): ReactElem
           aria-label="Other model"
           autoComplete="off"
           autoCapitalize="off"
-          className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface-inset px-3 font-mono text-[16px] text-text-primary placeholder:text-text-tertiary"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface-inset px-3 font-mono mobile-input text-text-primary placeholder:text-text-tertiary"
         />
         <button type="submit" className="mobile-tap text-body text-text-secondary">
           Set
