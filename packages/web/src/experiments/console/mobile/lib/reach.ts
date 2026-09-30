@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { HttpError } from '../../lib/http';
+import { HttpError, SignInRequired } from '../../lib/http';
 
 /**
  * Whether the shell can talk to Archon right now.
@@ -8,8 +8,10 @@ import { HttpError } from '../../lib/http';
  * - `unreachable` — the phone has a network, but the chat list, the read every
  *   screen depends on, got no answer from Archon: the tailnet or VPN is down,
  *   or the server is.
+ * - `signed-out` — an auth proxy in front of Archon (Cloudflare Access) turned
+ *   the chat list away to its login page: the sign-in ran out.
  */
-export type Reach = 'online' | 'offline' | 'unreachable';
+export type Reach = 'online' | 'offline' | 'unreachable' | 'signed-out';
 
 /**
  * A proxy in front of Archon answering for it — Tailscale Serve, a reverse
@@ -27,6 +29,7 @@ const GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 export function reachOf(onLine: boolean, listError: Error | undefined): Reach {
   if (!onLine) return 'offline';
   if (listError === undefined) return 'online';
+  if (listError instanceof SignInRequired) return 'signed-out';
   if (listError instanceof HttpError && !GATEWAY_STATUSES.has(listError.status)) return 'online';
   return 'unreachable';
 }

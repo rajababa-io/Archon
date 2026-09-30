@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { HttpError, errorDetail, requestJson } from './http';
+import { HttpError, SignInRequired, errorDetail, requestJson } from './http';
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
@@ -35,6 +35,20 @@ describe('requestJson', () => {
     reply('nope', {});
     const err = (await requestJson('/api/thing').catch((e: unknown) => e)) as HttpError;
     expect(err.bodySnippet).toContain('no content-type');
+  });
+
+  test('an auth proxy redirect is a sign-in error, not followed and not a network failure', async () => {
+    // Followed, the redirect lands on the proxy's login page on another origin
+    // and fails as a CORS TypeError — the same thing a dead server looks like.
+    let seen: RequestInit | undefined;
+    globalThis.fetch = ((_input: RequestInfo | URL, init?: RequestInit) => {
+      seen = init;
+      return Promise.resolve({ type: 'opaqueredirect', ok: false, status: 0 } as Response);
+    }) as unknown as typeof fetch;
+    const err = await requestJson('/api/conversations').catch((e: unknown) => e);
+    expect(seen?.redirect).toBe('manual');
+    expect(err).toBeInstanceOf(SignInRequired);
+    expect((err as SignInRequired).path).toBe('/api/conversations');
   });
 
   test('a non-2xx still reports its status and body', async () => {
