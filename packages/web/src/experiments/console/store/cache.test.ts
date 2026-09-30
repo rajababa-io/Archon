@@ -545,3 +545,61 @@ describe("invalidate cannot write one project's counts under another's key", () 
     unsubscribe();
   });
 });
+
+describe('invalidate — during an in-flight load (#308)', () => {
+  test('reloads once more after the in-flight load settles', async () => {
+    const key = 'test:invalidate-during-load';
+    const resolvers: ((v: string) => void)[] = [];
+    const unsubscribe = subscribeKey(
+      key,
+      () => {},
+      () =>
+        new Promise<string>(resolve => {
+          resolvers.push(resolve);
+        })
+    );
+    resolvers[0]('initial');
+    await flush();
+
+    // Two writes land back to back, each invalidating. The first starts a load
+    // that read the server before the second write committed.
+    invalidate(key);
+    expect(resolvers.length).toBe(2);
+    invalidate(key);
+    invalidate(key);
+    expect(resolvers.length).toBe(2); // coalesced — no request per invalidate
+
+    resolvers[1]('after first write');
+    await flush();
+    expect(get(key)).toBe('after first write'); // still on screen meanwhile
+    expect(resolvers.length).toBe(3); // exactly one follow-up for the burst
+
+    resolvers[2]('after both writes');
+    await flush();
+    expect(get(key)).toBe('after both writes');
+    expect(resolvers.length).toBe(3);
+
+    unsubscribe();
+  });
+
+  test('an invalidate owed to a key that lost its subscriber is not run', async () => {
+    const key = 'test:invalidate-during-load-unsub';
+    const resolvers: ((v: string) => void)[] = [];
+    const unsubscribe = subscribeKey(
+      key,
+      () => {},
+      () =>
+        new Promise<string>(resolve => {
+          resolvers.push(resolve);
+        })
+    );
+    resolvers[0]('v1');
+    await flush();
+    invalidate(key);
+    invalidate(key); // owed a follow-up
+    unsubscribe(); // ...but nothing is watching any more
+    resolvers[1]('v2');
+    await flush();
+    expect(resolvers.length).toBe(2);
+  });
+});
