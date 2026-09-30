@@ -393,6 +393,18 @@ export function useEntity<T>(key: string, loader: () => Promise<T>): EntityView<
  * request — the load is shared through `inflight` and the cache.
  */
 export function useEntities<T>(items: readonly KeyedLoader<T>[]): (T | undefined)[] {
+  return useEntityViews(items).map(v => v.data);
+}
+
+/** One entry as {@link useEntityViews} reports it: `useEntity`'s view, minus the refetch. */
+export type EntrySnapshot<T> = Pick<EntityView<T>, 'data' | 'error' | 'fetchedAt'>;
+
+/**
+ * {@link useEntities} with each entry's error and freshness as well, for a view
+ * that must say WHICH of many reads failed rather than only total the ones
+ * that landed — a board across every project.
+ */
+export function useEntityViews<T>(items: readonly KeyedLoader<T>[]): EntrySnapshot<T>[] {
   const latest = useRef(items);
   latest.current = items;
   const keysSig = items.map(i => i.key).join('\n');
@@ -414,5 +426,9 @@ export function useEntities<T>(items: readonly KeyedLoader<T>[]): (T | undefined
   const snapshot = (): string => latest.current.map(i => versionOf(i.key)).join(',');
   useSyncExternalStore(subscribe, snapshot, snapshot);
 
-  return items.map(i => cache.get(i.key) as T | undefined);
+  return items.map(i => ({
+    data: cache.get(i.key) as T | undefined,
+    error: errors.get(i.key),
+    fetchedAt: fetchedAt.get(i.key),
+  }));
 }

@@ -171,6 +171,7 @@ export function ConsoleApp(): ReactElement {
             <Route element={<ProjectLayout />}>
               <Route index element={<RunsPage />} />
               <Route path="chat" element={<ChatPage />} />
+              <Route path="issues" element={<IssuesPage />} />
               <Route path="p/:projectId" element={<RunsPage />} />
               <Route path="p/:projectId/chat" element={<ChatPage />} />
               <Route path="p/:projectId/issues" element={<IssuesPage />} />

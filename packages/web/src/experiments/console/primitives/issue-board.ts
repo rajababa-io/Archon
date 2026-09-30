@@ -162,10 +162,71 @@ export function issueAreas(issue: GithubIssue): { name: string; color: string }[
     .map(l => ({ name: l.name.replace(AREA_PREFIX, ''), color: `#${l.color}` }));
 }
 
+/**
+ * One project's issues, as the board takes them. A board over one project has
+ * one of these; the All projects board has one per project.
+ */
+export interface ProjectIssues {
+  projectId: string;
+  issues: readonly GithubIssue[];
+}
+
+/** A card: the issue, its column, and the project it lives in. */
+export interface BoardCard extends PlacedIssue {
+  projectId: string;
+}
+
+/**
+ * Every project's issues on one board. Each project is placed against ITS OWN
+ * running runs — issue numbers are per repository, so `#12` named by a run in
+ * one project says nothing about `#12` in another.
+ *
+ * Across more than one project, each column is ordered by last update, newest
+ * first, so the projects interleave rather than stacking one after another.
+ * One project keeps the order it came in, which is already that.
+ */
+export function boardByColumn(
+  sources: readonly ProjectIssues[],
+  runs: readonly RunForIssues[],
+  typeFilter: string | null = null
+): Map<IssueColumn, BoardCard[]> {
+  const running = runningIssuesByProject(runs);
+  const out = new Map<IssueColumn, BoardCard[]>(ISSUE_COLUMNS.map(c => [c.key, []]));
+  for (const { projectId, issues } of sources) {
+    const placed = issuesByColumn(issues, running.get(projectId) ?? new Set(), typeFilter);
+    for (const [column, cards] of placed) {
+      out.get(column)?.push(...cards.map(c => ({ ...c, projectId })));
+    }
+  }
+  if (sources.length > 1) {
+    for (const cards of out.values()) {
+      cards.sort((a, b) => b.issue.updatedAt.localeCompare(a.issue.updatedAt));
+    }
+  }
+  return out;
+}
+
+/** What {@link runningIssues} reads from a run. */
+export interface RunForIssues {
+  status: string;
+  userMessage?: string | null;
+  projectId?: string | null;
+}
+
+/** {@link runningIssues}, per project. A run with no project names nothing. */
+export function runningIssuesByProject(runs: readonly RunForIssues[]): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  for (const r of runs) {
+    if (r.projectId === null || r.projectId === undefined) continue;
+    const mine = out.get(r.projectId) ?? new Set<number>();
+    for (const n of runningIssues([r])) mine.add(n);
+    out.set(r.projectId, mine);
+  }
+  return out;
+}
+
 /** Issue numbers named by a run that is executing right now. */
-export function runningIssues(
-  runs: readonly { status: string; userMessage?: string | null }[]
-): Set<number> {
+export function runningIssues(runs: readonly RunForIssues[]): Set<number> {
   const out = new Set<number>();
   for (const r of runs) {
     if (r.status !== 'running') continue;

@@ -323,9 +323,10 @@ export function RunsPage(): ReactElement {
     const land = (): void => {
       if (!here) return;
       if (projectId === undefined) {
-        if (readProjectView(ALL_PROJECTS_SCOPE) === 'chat') {
+        const view = readProjectView(ALL_PROJECTS_SCOPE);
+        if (view === 'chat' || view === 'issues') {
           here = false;
-          void navigate('/console/chat', { replace: true });
+          void navigate(`/console/${view}`, { replace: true });
         }
         return;
       }

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { GithubIssue } from '../skills';
 import {
+  boardByColumn,
   COLUMN_EMPTY,
   ISSUE_COLUMNS,
   issuePlacement,
@@ -131,5 +132,60 @@ describe('issuesByColumn', () => {
       'Bug'
     );
     expect((board.get('todo') ?? []).map(p => p.issue.number)).toEqual([1]);
+  });
+});
+
+describe('boardByColumn', () => {
+  test("a run marks its own project's issue, never the same number in another project", () => {
+    const board = boardByColumn(
+      [
+        { projectId: 'archon', issues: [issue({ number: 12 })] },
+        { projectId: 'atlas', issues: [issue({ number: 12 })] },
+      ],
+      [{ status: 'running', userMessage: 'fix #12', projectId: 'atlas' }]
+    );
+    expect(board.get('prog')?.map(c => c.projectId)).toEqual(['atlas']);
+    expect(board.get('todo')?.map(c => c.projectId)).toEqual(['archon']);
+  });
+
+  test('across projects, a column is newest first so the projects interleave', () => {
+    const board = boardByColumn(
+      [
+        {
+          projectId: 'a',
+          issues: [
+            issue({ number: 1, updatedAt: '2026-09-03T00:00:00Z' }),
+            issue({ number: 2, updatedAt: '2026-09-01T00:00:00Z' }),
+          ],
+        },
+        { projectId: 'b', issues: [issue({ number: 3, updatedAt: '2026-09-02T00:00:00Z' })] },
+      ],
+      []
+    );
+    expect(board.get('todo')?.map(c => c.issue.number)).toEqual([1, 3, 2]);
+  });
+
+  test('one project keeps the order it was given', () => {
+    const board = boardByColumn(
+      [
+        {
+          projectId: 'a',
+          issues: [
+            issue({ number: 1, updatedAt: '2026-09-01T00:00:00Z' }),
+            issue({ number: 2, updatedAt: '2026-09-03T00:00:00Z' }),
+          ],
+        },
+      ],
+      []
+    );
+    expect(board.get('todo')?.map(c => c.issue.number)).toEqual([1, 2]);
+  });
+
+  test('a run with no project names nothing', () => {
+    const board = boardByColumn(
+      [{ projectId: 'a', issues: [issue({ number: 5 })] }],
+      [{ status: 'running', userMessage: '#5', projectId: null }]
+    );
+    expect(board.get('prog')).toEqual([]);
   });
 });
