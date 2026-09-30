@@ -49,18 +49,27 @@ function FileChips({ files }: { files: Message['files'] }): ReactElement {
 }
 
 /**
- * A line the agent wrote on its way to the answer, shown as one muted line.
+ * Muted text folded to its first line; a click opens it in full.
  *
- * Folded rather than dropped: it is still what the agent said, so a click
- * opens it in full. Only the first line shows while folded, because that is
- * where the agent puts its headline, and the headline is exactly what made a
- * note read as a second reply (#125).
+ * Only the first line shows while folded, because that is where the agent puts
+ * its headline — enough to tell what is inside without a label saying what
+ * kind of thing it is. Shared by progress notes and thinking so the two fold
+ * the same way.
  */
-function ProgressNote({ content }: { content: string }): ReactElement {
+function FoldedLine({
+  content,
+  hideLabel,
+  italic = false,
+}: {
+  content: string;
+  /** Screen-reader name of the button while open, when no line is showing. */
+  hideLabel: string;
+  italic?: boolean;
+}): ReactElement {
   const [open, setOpen] = useState(false);
   const firstLine = content.split('\n', 1)[0] ?? '';
   return (
-    <div className="max-w-[74ch] min-w-0 text-small text-text-tertiary">
+    <div className={`max-w-[74ch] min-w-0 text-small text-text-tertiary ${italic ? 'italic' : ''}`}>
       <button
         type="button"
         aria-expanded={open}
@@ -69,11 +78,11 @@ function ProgressNote({ content }: { content: string }): ReactElement {
         }}
         className="flex w-full min-w-0 items-baseline gap-[0.4rem] text-left hover:text-text-secondary"
       >
-        <span aria-hidden className="shrink-0">
+        <span aria-hidden className="shrink-0 not-italic">
           {open ? '▾' : '▸'}
         </span>
         {open ? (
-          <span className="sr-only">Hide progress note</span>
+          <span className="sr-only">{hideLabel}</span>
         ) : (
           <span className="truncate">{firstLine}</span>
         )}
@@ -88,39 +97,40 @@ function ProgressNote({ content }: { content: string }): ReactElement {
 }
 
 /**
- * What the agent thought before this message — its "working notes" — directly
- * above the reply it led to.
+ * A line the agent wrote on its way to the answer, shown as one muted line.
+ *
+ * Folded rather than dropped: it is still what the agent said, so a click
+ * opens it in full. The folded headline is exactly what made a note read as a
+ * second reply (#125).
+ */
+function ProgressNote({ content }: { content: string }): ReactElement {
+  return <FoldedLine content={content} hideLabel="Hide progress note" />;
+}
+
+/**
+ * What the agent thought before this message, directly above the reply it led
+ * to.
  *
  * Open while the reply is still streaming, folded once its stored row lands
- * (#284). A wrong turn shows up in the notes before it shows up in the work,
- * so they stay visible while that warning is still useful; once the answer is
- * written they were a wall of grey burying it. Folded, not dropped: one click
- * brings the text back.
+ * (#284). A wrong turn shows up in the thinking before it shows up in the work,
+ * so it stays visible while that warning is still useful; once the answer is
+ * written it was a wall of grey burying it.
+ *
+ * Folded to its first line in italics, with no chip or label (#307): a column
+ * of identical "Working notes" chips said nothing about what each held.
  */
-function WorkingNotes({ text, live }: { text: string; live: boolean }): ReactElement {
-  const [open, setOpen] = useState(false);
-  const body = (
-    <div className="max-w-[74ch] min-w-0 text-small whitespace-pre-wrap text-text-tertiary">
-      {text.trim()}
-    </div>
-  );
-  if (live) return body;
-  return (
-    <div className="flex flex-col gap-[0.25rem]">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => {
-          setOpen(v => !v);
-        }}
-        className="flex w-max items-center gap-[0.35rem] rounded-full border border-border px-[0.6rem] py-[0.1rem] text-small text-text-tertiary hover:text-text-secondary"
-      >
-        <span aria-hidden>{open ? '▾' : '▸'}</span>
-        Working notes
-      </button>
-      {open ? <div className="border-l border-border pl-[0.75rem]">{body}</div> : null}
-    </div>
-  );
+function Thinking({ text, live }: { text: string; live: boolean }): ReactElement | null {
+  const content = text.trim();
+  // Stored rows already drop blank thinking (`message.ts`), but a streamed
+  // thinking event can arrive with no text, and it would draw an empty line.
+  if (content.length === 0) return null;
+  if (live)
+    return (
+      <div className="max-w-[74ch] min-w-0 text-small whitespace-pre-wrap text-text-tertiary">
+        {content}
+      </div>
+    );
+  return <FoldedLine content={content} hideLabel="Hide thinking" italic />;
 }
 
 function ErrorBlock({ message }: { message: string }): ReactElement {
@@ -258,7 +268,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
             className="flex flex-col gap-[var(--msg-gap)]"
           >
             {message.thinking !== null ? (
-              <WorkingNotes text={message.thinking} live={isLivePreview(message)} />
+              <Thinking text={message.thinking} live={isLivePreview(message)} />
             ) : null}
             {notes.has(message.id) ? (
               <ProgressNote content={content} />
