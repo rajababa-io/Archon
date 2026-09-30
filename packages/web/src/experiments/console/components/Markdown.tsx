@@ -1,9 +1,10 @@
-import { createContext, useContext, type ReactElement } from 'react';
+import { createContext, useContext, useState, type ReactElement } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import rehypeHighlight from 'rehype-highlight';
 import { CodeBlock } from './CodeBlock';
+import { sameOriginFallback } from '../lib/published-image';
 
 /**
  * Markdown rendered in the console's own type scale, not a prose stylesheet's.
@@ -25,9 +26,24 @@ const INSIDE_LINK = createContext(false);
  * diagram's labels are unreadable, and whether it could be opened used to
  * depend on each agent remembering to wrap it in a link.
  */
-function LinkedImage({ src, alt }: { src?: string; alt?: string }): ReactElement {
+function LinkedImage({ src: written, alt }: { src?: string; alt?: string }): ReactElement {
   const insideLink = useContext(INSIDE_LINK);
-  const img = <img src={src} alt={alt ?? ''} />;
+  // A published file on another address of this server falls back to this
+  // page's origin once — see `sameOriginFallback`. The link follows, so a tap
+  // opens the copy that loaded.
+  // Keyed by the address it replaces: a streaming message can change `src`
+  // under the same element, and the old fallback must not outlive it.
+  const [fallback, setFallback] = useState<{ from: string; to: string } | null>(null);
+  const retried = fallback !== null && fallback.from === written;
+  const src = retried ? fallback.to : written;
+  const onError =
+    written && !retried
+      ? (): void => {
+          const to = sameOriginFallback(written, window.location.origin);
+          if (to !== null) setFallback({ from: written, to });
+        }
+      : undefined;
+  const img = <img src={src} alt={alt ?? ''} onError={onError} />;
   if (insideLink || !src) return img;
   return (
     <a href={src} target="_blank" rel="noreferrer" className="cursor-zoom-in">
