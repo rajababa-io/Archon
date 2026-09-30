@@ -114,6 +114,7 @@ export function ChatScreen(): ReactElement {
         onClose={closeSwitcher}
         chats={chats}
         activeId={conversationId}
+        currentProjectId={found?.projectId}
       />
     </div>
   );

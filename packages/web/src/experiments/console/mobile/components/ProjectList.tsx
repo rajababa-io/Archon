@@ -1,31 +1,34 @@
 import { useMemo, type ReactElement } from 'react';
 import { Link } from 'react-router';
-import { ChevronRight } from 'lucide-react';
+import { applyManualOrder } from '../../lib/chat-order';
+import { readProjectOrder } from '../../lib/project-order';
+import { useProjectIdentity } from '../../lib/project-identity';
+import { ProjectCountCells, ProjectCountHeader } from '../../components/ProjectCountCells';
+import { groupByOwner } from '../../primitives/project';
 import { projectPath } from '../lib/paths';
-import { projectRows } from '../lib/switcher';
+import { ProjectMark } from './ProjectMark';
 import type { MobileChats } from '../lib/use-mobile-chats';
 
 /**
- * Every registered project, each a way into its screen (#292). The chat list
- * below only names projects that have chats, so without this a quiet project
- * cannot be reached from the phone at all.
+ * Every registered project, laid out as the desktop rail lays it out (#305):
+ * the rail's order, grouped by owner, each row the project's coloured icon,
+ * its name, and the rail's three counts — chats, runs, open issues. Every
+ * project is here, chats or none, so a quiet one still has a way in (#292).
  */
 interface ProjectListProps {
   chats: MobileChats;
+  /** The project you are in, marked in its own colour. */
+  currentProjectId?: string;
   /** Picking a project; the link itself navigates. */
   onPick?: () => void;
 }
 
-export function ProjectList({ chats, onPick }: ProjectListProps): ReactElement {
+export function ProjectList({ chats, currentProjectId, onPick }: ProjectListProps): ReactElement {
   const { projects, projectsError, reach, projectLabel } = chats;
-  const rows = useMemo(
-    () =>
-      projectRows(
-        (projects ?? []).map(p => p.id),
-        chats.chats ?? [],
-        projectLabel
-      ),
-    [projects, chats.chats, projectLabel]
+  // The rail's own order and grouping, so the two surfaces list projects alike.
+  const groups = useMemo(
+    () => groupByOwner(applyManualOrder(projects ?? [], readProjectOrder())),
+    [projects]
   );
 
   let body: ReactElement;
@@ -41,38 +44,68 @@ export function ProjectList({ chats, onPick }: ProjectListProps): ReactElement {
       ) : (
         <p className="mobile-note">Loading projects…</p>
       );
-  } else if (rows.length === 0) {
+  } else if (groups.length === 0) {
     body = <p className="mobile-note">No projects registered.</p>;
   } else {
     body = (
-      <ul>
-        {rows.map(({ projectId, open }) => (
-          <li key={projectId}>
-            <Link
-              to={projectPath(projectId)}
-              onClick={onPick}
-              className="mobile-row flex items-center gap-3 px-4"
-            >
-              <span className="min-w-0 flex-1 truncate text-body text-text-primary">
-                {projectLabel(projectId)}
-              </span>
-              <span className="shrink-0 text-small text-text-tertiary">
-                {open === 0 ? 'No open chats' : open === 1 ? '1 open chat' : `${open} open chats`}
-              </span>
-              <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-text-tertiary" />
-            </Link>
-          </li>
+      <>
+        {groups.map(group => (
+          <section key={group.owner} aria-label={group.owner}>
+            <h3 className="px-4 pt-2 pb-1 text-small font-medium text-text-tertiary">
+              {group.owner}
+            </h3>
+            <ul>
+              {group.items.map(project => (
+                <li key={project.id}>
+                  <ProjectListRow
+                    projectId={project.id}
+                    label={projectLabel(project.id)}
+                    current={project.id === currentProjectId}
+                    onPick={onPick}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
         ))}
-      </ul>
+      </>
     );
   }
 
   return (
     <nav aria-label="Projects">
-      <h2 className="flex min-h-11 items-center px-4 text-mini font-medium text-text-tertiary uppercase">
-        Projects
+      <h2 className="flex min-h-11 items-center gap-2 pr-4 pl-4 text-mini font-medium text-text-tertiary uppercase">
+        <span className="flex-1">Projects</span>
+        {projects !== undefined && groups.length > 0 ? <ProjectCountHeader /> : null}
       </h2>
       {body}
     </nav>
+  );
+}
+
+function ProjectListRow({
+  projectId,
+  label,
+  current,
+  onPick,
+}: {
+  projectId: string;
+  label: string;
+  current: boolean;
+  onPick?: () => void;
+}): ReactElement {
+  const { color } = useProjectIdentity(projectId);
+  return (
+    <Link
+      to={projectPath(projectId)}
+      onClick={onPick}
+      aria-current={current ? 'page' : undefined}
+      className="mobile-row mx-2 flex items-center gap-3 rounded-[10px] px-2 aria-[current=page]:bg-surface-elevated"
+      style={current ? { boxShadow: `inset 4px 0 0 ${color}` } : undefined}
+    >
+      <ProjectMark projectId={projectId} />
+      <span className="min-w-0 flex-1 truncate text-body text-text-primary">{label}</span>
+      <ProjectCountCells projectId={projectId} />
+    </Link>
   );
 }

@@ -1,7 +1,7 @@
 /**
  * Keeps the local presentation stores and the server in step.
  *
- * The icon and the rail order are read SYNCHRONOUSLY during render — the rail
+ * The icon, the rename and the rail order are read SYNCHRONOUSLY during render — the rail
  * draws a glyph on its first frame — so they stay in localStorage. This pushes
  * every change up and pulls the server's copy down, which is what makes them
  * follow you to another machine.
@@ -18,6 +18,7 @@
  */
 import * as skill from '../skills';
 import { getIdentity, setIdentity } from './project-identity';
+import { setDisplayName, storedDisplayName } from './display-name';
 import { readProjectOrder, writeProjectOrder } from './project-order';
 
 const MIGRATED = 'archon.console.presentationMigrated';
@@ -28,6 +29,42 @@ export function pushIdentity(projectId: string): void {
   void skill
     .savePresentation(projectId, { presentation: { color: id.color, glyph: id.glyph } })
     .catch(() => undefined);
+}
+
+/** Fire-and-forget, like `pushIdentity`. null clears the rename everywhere. */
+export function pushDisplayName(projectId: string): void {
+  void skill
+    .savePresentation(projectId, {
+      presentation: { displayName: storedDisplayName(projectId) },
+    })
+    .catch(() => undefined);
+}
+
+export type DisplayNameStep =
+  | { kind: 'apply'; value: string | null }
+  | { kind: 'push' }
+  | { kind: 'none' };
+
+/**
+ * Which way a rename travels for one project.
+ *
+ * The server wins as soon as it holds the key at all — null included, since
+ * that is a rename someone cleared. Until then, only a browser that HAS a
+ * rename pushes it. A browser with none must not push null: the phone would
+ * then sync first after a deploy and wipe the desktop's names before the
+ * desktop ever uploaded them. That is also why this does not ride the
+ * per-project `migrated` flag — every project is already marked migrated for
+ * the icon, so the flag would stop the rename ever going up.
+ */
+export function displayNameStep(
+  server: skill.ProjectPresentation | null,
+  local: string | null
+): DisplayNameStep {
+  if (server !== null && 'displayName' in server) {
+    const value = server.displayName ?? null;
+    return value === local ? { kind: 'none' } : { kind: 'apply', value };
+  }
+  return local !== null ? { kind: 'push' } : { kind: 'none' };
 }
 
 /** The rail order is a list, so it is written as a position per project. */
@@ -76,6 +113,10 @@ export async function syncPresentation(projectIds: readonly string[]): Promise<v
     } else if (!migrated[projectId]) {
       pushIdentity(projectId);
     }
+
+    const name = displayNameStep(p, storedDisplayName(projectId));
+    if (name.kind === 'apply') setDisplayName(projectId, name.value ?? '');
+    else if (name.kind === 'push') pushDisplayName(projectId);
 
     if (remote.sortOrder !== null) serverOrder.push({ id: projectId, at: remote.sortOrder });
     migrated[projectId] = true;
