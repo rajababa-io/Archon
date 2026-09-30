@@ -16,53 +16,22 @@
  * Decisions live in `primitives/tab-signal`; this is the wiring to the document
  * and the Notification API.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router';
-import * as skill from '../skills';
-import { useEntity } from '../store/cache';
-import { ALL_SCOPE, K } from '../store/keys';
-import { awaitingInputIds, chatStatusSets, runningRunIds } from '../primitives/chat-status';
 import type { ChatStatus } from '../primitives/chat-status';
-import type { Run } from '../primitives/run';
-import {
-  alertText,
-  badgeText,
-  chatAlerts,
-  chatStatuses,
-  wantingCount,
-} from '../primitives/tab-signal';
+import { alertText, badgeText, chatAlerts } from '../primitives/tab-signal';
 import { useFaviconBadge } from './favicon-badge';
-import { useLiveChats } from './live-chats';
 import { notifyState } from './notify';
 import type { OpenChatRequest } from './open-chat';
+import { useNotifications } from './use-notifications';
 
 export function useTabSignal(): void {
-  const { data: all } = useEntity(K.allConversations, () => skill.listAllConversations());
-  const { data: runFeed } = useEntity<{ runs: Run[] }>(K.runs(ALL_SCOPE), () =>
-    skill.listRuns({ limit: skill.RUN_LIMIT })
-  );
-  const live = useLiveChats();
+  const { found, statuses, items } = useNotifications();
 
-  const chats = useMemo(() => (all?.chats ?? []).map(f => f.chat), [all]);
-  const sets = useMemo(
-    () =>
-      chatStatusSets(chats, {
-        working: live.ids,
-        runAwaiting: awaitingInputIds(runFeed?.runs ?? []),
-        running: runningRunIds(runFeed?.runs ?? []),
-        waiting: live.ciWaiting,
-      }),
-    [chats, live.ids, live.ciWaiting, runFeed?.runs]
-  );
-  const statuses = useMemo<ReadonlyMap<string, ChatStatus>>(
-    () => chatStatuses(chats, sets),
-    [chats, sets]
-  );
+  useFaviconBadge(badgeText(items.length));
 
-  useFaviconBadge(badgeText(wantingCount(statuses, sets.unread)));
-
-  const foundRef = useRef(all?.chats ?? []);
-  foundRef.current = all?.chats ?? [];
+  const foundRef = useRef(found);
+  foundRef.current = found;
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;

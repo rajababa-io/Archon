@@ -1,7 +1,9 @@
 import { useEffect, useMemo, type ReactElement } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ChevronRight, Settings } from 'lucide-react';
-import { projectPath, SETTINGS_PATH } from '../lib/paths';
+import { NotificationList } from '../../components/NotificationList';
+import { markAllRead } from '../../lib/use-notifications';
+import { chatPath, projectPath, SETTINGS_PATH } from '../lib/paths';
 import { switcherGroups } from '../lib/switcher';
 import { ChatRow } from './ChatRow';
 import type { MobileChats } from '../lib/use-mobile-chats';
@@ -15,11 +17,14 @@ interface ChatSwitcherProps {
 }
 
 /**
- * Every open chat, grouped by project, the ones that need you first. A
- * project's heading opens that project.
+ * What needs you on top — the same notifications list as the desktop rail's
+ * bell (#289), under the same count as the header badge — then every open
+ * chat, grouped by project, the ones that need you first. A project's heading
+ * opens that project.
  */
 export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
-  const { chats: all, error, reach, statuses, statusSets, projectLabel } = chats;
+  const { chats: all, error, reach, statuses, statusSets, projectLabel, notifications } = chats;
+  const navigate = useNavigate();
   const groups = useMemo(
     () => switcherGroups(all ?? [], statuses, statusSets.unread, projectLabel),
     [all, statuses, statusSets.unread, projectLabel]
@@ -37,35 +42,52 @@ export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): Re
   if (groups.length === 0) return <p className="mobile-note">No open chats.</p>;
 
   return (
-    <nav aria-label="Chats" className="flex flex-col gap-4">
-      {groups.map(group => (
-        <section key={group.projectId} aria-label={projectLabel(group.projectId)}>
-          <h2>
-            <Link
-              to={projectPath(group.projectId)}
-              onClick={onPick}
-              className="flex min-h-11 items-center gap-1 px-4 text-mini font-medium text-text-tertiary uppercase"
-            >
-              {projectLabel(group.projectId)}
-              <ChevronRight aria-hidden className="h-3 w-3" />
-            </Link>
-          </h2>
-          <ul>
-            {group.rows.map(({ chat, status, unread }) => (
-              <li key={chat.id}>
-                <ChatRow
-                  chat={chat}
-                  status={status}
-                  unread={unread}
-                  current={chat.id === activeId}
-                  onPick={onPick}
-                />
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
-    </nav>
+    <div className="flex flex-col gap-4">
+      {/* Beside the chat list, not in it: the rows below are every chat, and
+          these are the few that want you. Offline, the saved copies carry no
+          live read state worth acting on. */}
+      {reach === 'online' ? (
+        <NotificationList
+          touch
+          items={notifications}
+          projectLabel={projectLabel}
+          onOpen={item => {
+            onPick?.();
+            void navigate(chatPath(item.id));
+          }}
+          onMarkAllRead={() => markAllRead(notifications)}
+        />
+      ) : null}
+      <nav aria-label="Chats" className="flex flex-col gap-4">
+        {groups.map(group => (
+          <section key={group.projectId} aria-label={projectLabel(group.projectId)}>
+            <h2>
+              <Link
+                to={projectPath(group.projectId)}
+                onClick={onPick}
+                className="flex min-h-11 items-center gap-1 px-4 text-mini font-medium text-text-tertiary uppercase"
+              >
+                {projectLabel(group.projectId)}
+                <ChevronRight aria-hidden className="h-3 w-3" />
+              </Link>
+            </h2>
+            <ul>
+              {group.rows.map(({ chat, status, unread }) => (
+                <li key={chat.id}>
+                  <ChatRow
+                    chat={chat}
+                    status={status}
+                    unread={unread}
+                    current={chat.id === activeId}
+                    onPick={onPick}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </nav>
+    </div>
   );
 }
 

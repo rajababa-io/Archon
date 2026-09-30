@@ -105,6 +105,21 @@ test('opening a chat shows its transcript', async ({ page }) => {
   await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
 });
 
+test("the rail's bell lists the unread chat and opens it (#289)", async ({ page }) => {
+  await openChatScreen(page);
+
+  // The fixture's other chat moved after it was last read: one notification,
+  // the same one the favicon badge counts.
+  await page.getByRole('button', { name: 'Notifications, 1 need you' }).click();
+  const panel = page.getByRole('dialog', { name: 'Notifications' });
+  await expect(panel.getByRole('region', { name: 'New reply' })).toContainText(OTHER_CHAT_TITLE);
+  await expect(panel.getByRole('button', { name: 'Mark all read' })).toBeVisible();
+
+  await panel.getByRole('button', { name: new RegExp(OTHER_CHAT_TITLE) }).click();
+  await expect(panel).toBeHidden();
+  await expect(page.getByText(OTHER_CHAT_TEXT)).toBeVisible();
+});
+
 test('the composer accepts text and enables Send only once there is some', async ({ page }) => {
   await openChatScreen(page);
 

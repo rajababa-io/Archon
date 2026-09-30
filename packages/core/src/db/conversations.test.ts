@@ -627,6 +627,19 @@ describe('conversations', () => {
       expect(String(mockQuery.mock.calls[0]?.[0])).toContain('completed_at = NULL');
     });
 
+    test('closing marks the chat read; reopening leaves the read marker alone', async () => {
+      // A chat closed from a menu without being opened stayed unread for good,
+      // and the tab badge counted every one of them (#289).
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationCompleted('conv-1', true);
+      expect(String(mockQuery.mock.calls[0]?.[0])).toContain('last_read_at = NOW()');
+
+      mockQuery.mockClear();
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await setConversationCompleted('conv-1', false);
+      expect(String(mockQuery.mock.calls[0]?.[0])).not.toContain('last_read_at');
+    });
+
     test('it never touches deleted_at — done and archived are separate', async () => {
       mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
       await setConversationCompleted('conv-1', true);

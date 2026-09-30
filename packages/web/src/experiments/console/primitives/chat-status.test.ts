@@ -334,10 +334,18 @@ describe('chatStatus when the working signal is missing', () => {
 });
 
 describe('unreadIds', () => {
-  const chat = (id: string, activity: string | null, read: string | null) => ({
+  const chat = (id: string, activity: string | null, read: string | null, completed = false) => ({
     id,
+    completed,
     lastActivityAt: activity,
     lastReadAt: read,
+  });
+
+  test('a closed chat is never unread, however far behind it is (#289)', () => {
+    expect([...unreadIds([chat('a', '2026-09-25T10:00:00Z', null, true)])]).toEqual([]);
+    expect([
+      ...unreadIds([chat('a', '2026-09-25T10:00:00Z', '2026-09-25T09:00:00Z', true)]),
+    ]).toEqual([]);
   });
 
   test('activity after the read marker is unread', () => {

@@ -23,26 +23,76 @@ export function chatStatuses(
   return out;
 }
 
+export type ChatNotificationKind = 'awaiting' | 'unread';
+
+/** One chat that wants you, as the notifications list shows it. */
+export interface ChatNotification {
+  id: string;
+  projectId: string;
+  title: string | null;
+  /** Awaiting wins over unread: the question is the part that needs you. */
+  kind: ChatNotificationKind;
+  lastActivityAt: string | null;
+  /**
+   * Closed. Never true for an unread one (`unreadIds`), but a run paused on a
+   * gate can still ask from a closed chat, and opening it has to look in the
+   * Closed list.
+   */
+  completed: boolean;
+}
+
 /**
- * How many chats want you: the ones awaiting you, and the ones you have not
- * read.
+ * The chats that want you: the ones awaiting you, and the ones you have not
+ * read (#289). This list IS the notification count — the favicon badge, the
+ * rail's bell, the phone's badge and its Home Screen icon all take `.length`
+ * of it, so no surface can show a number the list does not explain.
  *
  * Those are the two things that ask a person to come and look. A turn that
  * ends while you are away leaves its chat unread, so this rising is how "done"
  * reaches a tab you are not looking at. Unread is a set beside the statuses
- * rather than one of them (#5), so a chat that is both counts once.
+ * rather than one of them (#5), so a chat that is both is one notification.
+ * Closed chats are never unread (`unreadIds`), which is what keeps this a
+ * to-do list rather than a history.
  *
  * Working is deliberately not counted, and nothing in the tab says a chat is
  * merely working: from another tab the only question worth answering is
  * whether something needs you.
+ *
+ * Awaiting first, then newest activity first: your move outranks news.
  */
-export function wantingCount(
+export function chatNotifications(
+  found: readonly {
+    chat: {
+      id: string;
+      title: string | null;
+      lastActivityAt: string | null;
+      completed: boolean;
+    };
+    projectId: string;
+  }[],
   statuses: ReadonlyMap<string, ChatStatus>,
   unread: ReadonlySet<string>
-): number {
-  let n = 0;
-  for (const [id, s] of statuses) if (s === 'awaiting' || unread.has(id)) n += 1;
-  return n;
+): ChatNotification[] {
+  const out: ChatNotification[] = [];
+  for (const { chat, projectId } of found) {
+    const awaiting = statuses.get(chat.id) === 'awaiting';
+    if (!awaiting && !unread.has(chat.id)) continue;
+    out.push({
+      id: chat.id,
+      projectId,
+      title: chat.title,
+      kind: awaiting ? 'awaiting' : 'unread',
+      lastActivityAt: chat.lastActivityAt,
+      completed: chat.completed,
+    });
+  }
+  const at = (n: ChatNotification): number => {
+    const ms = n.lastActivityAt === null ? Number.NaN : Date.parse(n.lastActivityAt);
+    return Number.isNaN(ms) ? 0 : ms;
+  };
+  return out.sort(
+    (a, b) => Number(b.kind === 'awaiting') - Number(a.kind === 'awaiting') || at(b) - at(a)
+  );
 }
 
 /**
