@@ -9,6 +9,7 @@ import { AskErrorCard } from './AskErrorCard';
 import { formatBytes } from '../primitives/file';
 import { progressNoteIds, type MessageGroup } from '../primitives/message-groups';
 import type { Message } from '../primitives/message';
+import { isLivePreview } from '../primitives/rendered-messages';
 
 interface ChatGroupProps {
   group: MessageGroup;
@@ -87,17 +88,37 @@ function ProgressNote({ content }: { content: string }): ReactElement {
 }
 
 /**
- * What the agent thought before this message, shown open in small grey text
- * directly above the reply it led to.
+ * What the agent thought before this message — its "working notes" — directly
+ * above the reply it led to.
  *
- * Not folded and not labelled: a wrong turn shows up in the thinking before it
- * shows up in the work, and a click per message meant it went unread. The size
- * and colour are what set it apart from the answer, so no heading is needed.
+ * Open while the reply is still streaming, folded once its stored row lands
+ * (#284). A wrong turn shows up in the notes before it shows up in the work,
+ * so they stay visible while that warning is still useful; once the answer is
+ * written they were a wall of grey burying it. Folded, not dropped: one click
+ * brings the text back.
  */
-function ThinkingBlock({ text }: { text: string }): ReactElement {
-  return (
+function WorkingNotes({ text, live }: { text: string; live: boolean }): ReactElement {
+  const [open, setOpen] = useState(false);
+  const body = (
     <div className="max-w-[74ch] min-w-0 text-small whitespace-pre-wrap text-text-tertiary">
       {text.trim()}
+    </div>
+  );
+  if (live) return body;
+  return (
+    <div className="flex flex-col gap-[0.25rem]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => {
+          setOpen(v => !v);
+        }}
+        className="flex w-max items-center gap-[0.35rem] rounded-full border border-border px-[0.6rem] py-[0.1rem] text-small text-text-tertiary hover:text-text-secondary"
+      >
+        <span aria-hidden>{open ? '▾' : '▸'}</span>
+        Working notes
+      </button>
+      {open ? <div className="border-l border-border pl-[0.75rem]">{body}</div> : null}
     </div>
   );
 }
@@ -236,7 +257,9 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
             data-message-id={message.id}
             className="flex flex-col gap-[var(--msg-gap)]"
           >
-            {message.thinking !== null ? <ThinkingBlock text={message.thinking} /> : null}
+            {message.thinking !== null ? (
+              <WorkingNotes text={message.thinking} live={isLivePreview(message)} />
+            ) : null}
             {notes.has(message.id) ? (
               <ProgressNote content={content} />
             ) : content.length > 0 ? (
