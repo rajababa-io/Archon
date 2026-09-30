@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { projectChatRows, switcherGroups } from './switcher';
+import { projectChatRows, projectRows, switcherGroups } from './switcher';
 import type { ChatStatus } from '../../primitives/chat-status';
 import type { FoundChat } from '../../skills/conversations';
 
@@ -134,6 +134,22 @@ describe('projectChatRows', () => {
       ['asks', 'awaiting'],
       ['new', 'idle'],
       ['old', 'idle'],
+    ]);
+  });
+});
+
+describe('projectRows', () => {
+  test('names every registered project, one with no chats included, by label', () => {
+    const chats = [
+      found('b1', 'b', '2026-09-01T00:00:00Z'),
+      found('b2', 'b', '2026-09-02T00:00:00Z'),
+      found('b-closed', 'b', '2026-09-03T00:00:00Z', true),
+      found('elsewhere', 'gone', '2026-09-03T00:00:00Z'),
+    ];
+    expect(projectRows(['b', 'quiet', 'a'], chats, label)).toEqual([
+      { projectId: 'a', open: 0 },
+      { projectId: 'b', open: 2 },
+      { projectId: 'quiet', open: 0 },
     ]);
   });
 });

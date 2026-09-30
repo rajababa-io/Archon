@@ -6,6 +6,7 @@ import { markAllRead } from '../../lib/use-notifications';
 import { chatPath, projectPath, SETTINGS_PATH } from '../lib/paths';
 import { switcherGroups } from '../lib/switcher';
 import { ChatRow } from './ChatRow';
+import { ProjectList } from './ProjectList';
 import type { MobileChats } from '../lib/use-mobile-chats';
 
 interface ChatSwitcherProps {
@@ -20,9 +21,20 @@ interface ChatSwitcherProps {
  * What needs you on top — the same notifications list as the desktop rail's
  * bell (#289), under the same count as the header badge — then every open
  * chat, grouped by project, the ones that need you first. A project's heading
- * opens that project.
+ * opens that project; so does every row of the project list beneath.
  */
 export function ChatSwitcher({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
+  return (
+    <div className="flex flex-col gap-4">
+      <ChatGroups chats={chats} activeId={activeId} onPick={onPick} />
+      {/* Every project, chats or none — the groups above only name projects
+          that have chats, which left a quiet project unreachable (#292). */}
+      <ProjectList chats={chats} onPick={onPick} />
+    </div>
+  );
+}
+
+function ChatGroups({ chats, activeId, onPick }: ChatSwitcherProps): ReactElement {
   const { chats: all, error, reach, statuses, statusSets, projectLabel, notifications } = chats;
   const navigate = useNavigate();
   const groups = useMemo(

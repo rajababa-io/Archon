@@ -99,3 +99,28 @@ export function projectChatRows(
     }))
     .sort(byUrgency);
 }
+
+export interface ProjectRow {
+  projectId: string;
+  /** Open chats in it — zero is a row too, which is the point of the list (#292). */
+  open: number;
+}
+
+/**
+ * Every registered project, by name, each with its count of open chats. Built
+ * from the project list, not from the chats, so a project nobody is chatting in
+ * still has a way in from the phone.
+ */
+export function projectRows(
+  projectIds: readonly string[],
+  chats: readonly FoundChat[],
+  projectLabel: (projectId: string) => string
+): ProjectRow[] {
+  const open = new Map<string, number>();
+  for (const { chat, projectId } of chats) {
+    if (!chat.completed) open.set(projectId, (open.get(projectId) ?? 0) + 1);
+  }
+  return projectIds
+    .map(projectId => ({ projectId, open: open.get(projectId) ?? 0 }))
+    .sort((a, b) => projectLabel(a.projectId).localeCompare(projectLabel(b.projectId)));
+}

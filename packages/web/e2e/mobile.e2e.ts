@@ -23,6 +23,7 @@ import {
   OTHER_CHAT_TEXT,
   OTHER_CHAT_TITLE,
   OPEN_ISSUE_TITLE,
+  PROJECT,
   PROJECT_ID,
   PROJECT_SHORT_NAME,
   README_HEADING,
@@ -370,7 +371,7 @@ test('the switcher lists chats by status and opens the one tapped', async ({ pag
   // a list in any order. Unread is not a status (#5): both rows say Idle, and
   // only the unread one's title is bold.
   // The chat rows only: the sheet also links to Settings and to each project.
-  const rows = sheet.getByRole('list').getByRole('link');
+  const rows = sheet.getByRole('navigation', { name: 'Chats' }).getByRole('list').getByRole('link');
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText(OTHER_CHAT_TITLE);
   await expect(rows.nth(0)).toContainText('Idle');
@@ -390,6 +391,29 @@ test('the switcher lists chats by status and opens the one tapped', async ({ pag
   await expect(page).toHaveURL(new RegExp(`${chatPath(OTHER_CHAT_ID)}$`));
   await expect(page.getByText(OTHER_CHAT_TEXT)).toBeVisible();
   await expect(page.getByText(USER_TURN_TEXT)).toHaveCount(0);
+});
+
+test('every project is listed, one with no chats included, and opens its screen', async ({
+  page,
+}) => {
+  // A second registered project nobody is chatting in: the chat groups never
+  // name it, so the Projects list is its only way in from the phone (#292).
+  const quiet = { ...PROJECT, id: 'proj-quiet-e2e', name: 'rajababa-io/quiet-e2e' };
+  await page.route(
+    url => url.pathname === '/api/codebases',
+    route => route.fulfill({ json: [PROJECT, quiet] })
+  );
+  await open(page, '/m');
+
+  const projects = page.getByRole('navigation', { name: 'Projects' }).getByRole('link');
+  await expect(projects).toHaveCount(2);
+  await expect(projects.nth(0)).toContainText(PROJECT_SHORT_NAME);
+  await expect(projects.nth(0)).toContainText('2 open chats');
+  await expect(projects.nth(1)).toContainText('quiet-e2e');
+  await expect(projects.nth(1)).toContainText('No open chats');
+
+  await projects.nth(1).tap();
+  await expect(page).toHaveURL(/\/m\/p\/proj-quiet-e2e$/);
 });
 
 test("a chat's project opens from its header, and every tab shows its part", async ({ page }) => {
