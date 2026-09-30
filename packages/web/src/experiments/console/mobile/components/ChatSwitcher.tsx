@@ -8,7 +8,6 @@ import { switcherGroups } from '../lib/switcher';
 import { ChatRow } from './ChatRow';
 import { ProjectList } from './ProjectList';
 import { ProjectMark } from './ProjectMark';
-import { useProjectIdentity } from '../../lib/project-identity';
 import type { MobileChats } from '../lib/use-mobile-chats';
 
 interface ChatSwitcherProps {
@@ -117,8 +116,7 @@ function ChatGroups({ chats, activeId, onPick }: ChatSwitcherProps): ReactElemen
 
 /**
  * One project's chats under its coloured icon and name — the same mark the
- * rail and the chat header wear, so a group reads as a place (#305). The
- * line down the left keeps the project's colour beside every chat in it.
+ * rail and the chat header wear, so a group reads as a place (#305).
  */
 function ChatGroupSection({
   projectId,
@@ -131,7 +129,6 @@ function ChatGroupSection({
   onPick?: () => void;
   children: ReactNode;
 }): ReactElement {
-  const { color } = useProjectIdentity(projectId);
   return (
     <section aria-label={label}>
       <h2>
@@ -145,9 +142,7 @@ function ChatGroupSection({
           <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-text-tertiary" />
         </Link>
       </h2>
-      <ul className="ml-[29px] border-l-2" style={{ borderColor: color }}>
-        {children}
-      </ul>
+      <ul className="ml-[29px]">{children}</ul>
     </section>
   );
 }
