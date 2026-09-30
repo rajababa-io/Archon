@@ -64,7 +64,7 @@ function FileSearch({
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          className="min-h-11 w-full rounded-lg border border-border bg-surface-inset px-3 text-[16px] text-text-primary outline-none placeholder:text-text-tertiary"
+          className="min-h-11 w-full rounded-lg border border-border bg-surface-inset px-3 mobile-input text-text-primary outline-none placeholder:text-text-tertiary"
         />
       </div>
       {error !== undefined ? (

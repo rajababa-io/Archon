@@ -74,7 +74,7 @@ export function FullScreenEditor({
         }}
         aria-label="Message"
         placeholder="Message the agent…"
-        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 text-[16px] leading-[1.5] text-text-primary outline-none placeholder:text-text-tertiary"
+        className="min-h-0 flex-1 resize-none bg-transparent px-4 py-3 mobile-input leading-[1.5] text-text-primary outline-none placeholder:text-text-tertiary"
       />
     </div>
   );

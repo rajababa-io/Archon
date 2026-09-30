@@ -381,7 +381,7 @@ export function Composer({
             rows={1}
             placeholder={placeholder}
             aria-label="Message"
-            className="min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-border bg-surface-inset px-3 py-2.5 text-[16px] leading-[1.4] text-text-primary outline-none placeholder:text-text-tertiary focus:border-border-bright"
+            className="min-h-11 min-w-0 flex-1 resize-none rounded-lg border border-border bg-surface-inset px-3 py-2.5 mobile-input leading-[1.4] text-text-primary outline-none placeholder:text-text-tertiary focus:border-border-bright"
           />
           <div className="flex shrink-0">
             <button

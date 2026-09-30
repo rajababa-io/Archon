@@ -4,7 +4,12 @@ import { invalidate, useEntity } from '../../store/cache';
 import { K } from '../../store/keys';
 import { errorDetail } from '../../lib/http';
 import { curatedOptionsForAgent } from '../../lib/model-options';
-import { setAppearance, useAppearance, type ThemeChoice } from '../../../../theme/appearance';
+import {
+  setAppearance,
+  useAppearance,
+  type TextSize,
+  type ThemeChoice,
+} from '../../../../theme/appearance';
 import { presetById } from '../../../../theme/presets';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SheetRow } from '../components/Sheet';
@@ -38,6 +43,7 @@ export function SettingsScreen(): ReactElement {
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto overscroll-contain py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <PushSection />
         <DefaultModelSection />
+        <TextSizeSection />
         <ThemeSection />
         <Section title="Everything else">
           <a
@@ -291,7 +297,7 @@ function DefaultModelSection(): ReactElement {
           aria-label="Other default model"
           autoComplete="off"
           autoCapitalize="off"
-          className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface-inset px-3 font-mono text-[16px] text-text-primary placeholder:text-text-tertiary"
+          className="min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-surface-inset px-3 font-mono mobile-input text-text-primary placeholder:text-text-tertiary"
         />
         <button
           type="submit"
@@ -307,6 +313,63 @@ function DefaultModelSection(): ReactElement {
         </p>
       ) : null}
       <p className="mobile-note">For every new chat on this install.</p>
+    </Section>
+  );
+}
+
+/** Smallest to largest — the slider's order. Labels are what a screen reader says. */
+const TEXT_SIZES: readonly { value: TextSize; label: string }[] = [
+  { value: 'xs', label: 'Extra small' },
+  { value: 's', label: 'Small' },
+  { value: 'm', label: 'Default' },
+  { value: 'l', label: 'Large' },
+  { value: 'xl', label: 'Extra large' },
+];
+
+/**
+ * Telegram's Text Size: a slider between a small A and a big A, with a
+ * message under it that changes as it moves. The whole phone UI resizes live,
+ * so the preview is the screen itself as much as the sample bubble.
+ */
+function TextSizeSection(): ReactElement {
+  const { text } = useAppearance();
+  const index = Math.max(
+    0,
+    TEXT_SIZES.findIndex(s => s.value === text)
+  );
+  return (
+    <Section title="Text size">
+      <div className="flex items-center gap-3 px-4">
+        <span aria-hidden="true" className="text-small text-text-tertiary">
+          A
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={TEXT_SIZES.length - 1}
+          step={1}
+          value={index}
+          aria-label="Text size"
+          aria-valuetext={TEXT_SIZES[index]?.label}
+          onChange={e => {
+            const next = TEXT_SIZES[Number(e.target.value)];
+            if (next !== undefined) setAppearance({ text: next.value });
+          }}
+          className="mobile-tap flex-1 accent-accent"
+        />
+        <span aria-hidden="true" className="text-title text-text-tertiary">
+          A
+        </span>
+      </div>
+      <div className="mx-4 mt-2 flex flex-col gap-1 rounded-xl border border-border bg-surface-inset p-3">
+        <p className="self-end rounded-2xl bg-surface-hover px-3 py-2 text-body text-text-primary">
+          Is this easy to read?
+        </p>
+        <p className="self-start rounded-2xl bg-surface px-3 py-2 text-body text-text-primary">
+          {TEXT_SIZES[index]?.label} — every screen on this phone uses this size.
+        </p>
+      </div>
+      <p className="mobile-note">This phone only. The desktop has its own.</p>
     </Section>
   );
 }
