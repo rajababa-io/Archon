@@ -112,9 +112,7 @@ export function ActiveRunCard({
       } ${selected ? 'ring-2 ring-accent-bright/40' : ''} ${
         canOpen ? 'cursor-pointer focus-visible:outline-none' : ''
       }`}
-      // Inline because the console scope's wildcard border-color rule
-      // repaints Tailwind border utilities (see theme.css). Running cards
-      // get the design's amber tint.
+      // Running cards get the design's amber tint.
       style={{
         borderColor: selected
           ? 'color-mix(in oklch, var(--accent-bright), transparent 30%)'

@@ -54,10 +54,7 @@ export function EnvVarsDialog({
         onMouseDown={e => {
           e.stopPropagation();
         }}
-        className="relative w-full max-w-[560px] overflow-hidden rounded-lg border bg-surface-elevated p-[22px] text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)]"
-        // Inline because the console scope's wildcard border-color rule
-        // repaints Tailwind border utilities (see theme.css).
-        style={{ borderColor: 'var(--border-bright)' }}
+        className="relative w-full max-w-[560px] overflow-hidden rounded-lg border border-border-bright bg-surface-elevated p-[22px] text-text-primary shadow-[0_30px_80px_-24px_rgba(0,0,0,0.8)]"
       >
         <span aria-hidden className="brand-bar absolute left-0 right-0 top-0 h-[2px] opacity-90" />
         <EnvVarsBody projectId={projectId} projectName={projectName} onClose={onClose} />

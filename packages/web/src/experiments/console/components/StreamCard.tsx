@@ -21,10 +21,6 @@ interface StreamCardProps {
 // (presence / authorship); the agent's voice reads as teal (execution).
 // Tool/system/artifact/error stay semantic — they signal kind-of-event, not
 // who-is-speaking.
-//
-// border-color is set inline (not via Tailwind class) because the console's
-// wildcard `border-color: var(--border)` rule outweighs utility-class color
-// in the cascade and would otherwise repaint everything charcoal.
 interface KindStyle {
   label: string;
   pill: string;

@@ -561,12 +561,7 @@ export function RunsPage(): ReactElement {
           <FilterChips value={filter} onChange={setFilter} counts={counts} />
         </div>
         <div className="shrink-0 py-1.25">
-          <div
-            className="flex h-[38px] w-[300px] max-w-[34vw] shrink-0 items-center gap-2 rounded-lg border bg-surface-elevated px-3 text-text-tertiary transition-colors focus-within:text-text-secondary"
-            // Inline because the console scope's wildcard border-color rule
-            // repaints Tailwind border utilities (see theme.css).
-            style={{ borderColor: 'var(--border)' }}
-          >
+          <div className="flex h-[38px] w-[300px] max-w-[34vw] shrink-0 items-center gap-2 rounded-lg border bg-surface-elevated px-3 text-text-tertiary transition-colors focus-within:text-text-secondary">
             <span aria-hidden className="text-body leading-none">
               ⌕
             </span>

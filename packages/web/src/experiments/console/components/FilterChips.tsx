@@ -50,9 +50,6 @@ export function FilterChips({ value, onChange, counts }: FilterChipsProps): Reac
                   ? 'border-transparent bg-accent-bright/20 text-text-primary'
                   : 'bg-surface-elevated text-text-secondary'
               }`}
-              // Inline because the console scope's wildcard border-color rule
-              // repaints Tailwind border utilities (see theme.css).
-              style={{ borderColor: active ? 'transparent' : 'var(--border)' }}
             >
               {n}
             </span>

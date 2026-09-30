@@ -139,11 +139,25 @@
 }
 
 /* Override the global `* { @apply border-border ... }` rule's effect inside
-   the console so bare borders pick up our charcoal border color. */
-.console-root *,
-.console-root *::before,
-.console-root *::after {
-  border-color: var(--border);
+   the console so bare borders pick up our charcoal border color. In `base`
+   like that rule, never unlayered: an unlayered rule beats every Tailwind
+   utility whatever its specificity, which silently turned each
+   `border-<colour>` class in the console grey (#272). */
+@layer base {
+  .console-root *,
+  .console-root *::before,
+  .console-root *::after {
+    border-color: var(--border);
+  }
+}
+
+/* React Flow's own stylesheet is unlayered, so once the reset above moved into
+   `base` its handle and zoom-button borders stopped being --border and fell
+   back to xyflow's defaults (white, near-black). Hand it our colour through
+   the variables it reads. */
+.console-root {
+  --xy-handle-border-color: var(--border);
+  --xy-controls-button-border-color: var(--border);
 }
 
 .console-root ::selection {
