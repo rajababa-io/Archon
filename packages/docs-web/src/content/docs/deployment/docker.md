@@ -495,10 +495,10 @@ mkdir -p /opt/archon-user-home
 sudo chown -R 1001:1001 /opt/archon-user-home
 ```
 
-The entrypoint fixes ownership on every container start, touching only files whose owner is wrong, so startup stays fast even on large volumes. Subsequent rebuilds work without re-running `chown`.
+The entrypoint fixes ownership on the first container start, touching only files whose owner is wrong, and records a completed pass in `.archon-ownership-verified` at the root of each volume. Later starts skip the walk, which on a volume with millions of files takes minutes. Subsequent rebuilds work without re-running `chown`. If something outside the container writes root-owned files into a volume, delete that volume's `.archon-ownership-verified` and restart to force a full pass.
 
 :::caution
-Bind-mount paths do **not** inherit the image's baked `~/.gitconfig` (Docker only copies image content into named volumes on first creation, never into bind mounts). The entrypoint still registers git `safe.directory` entries for `/.archon/workspaces` and `/.archon/worktrees` repos at runtime, so functionality is preserved — but a bind-mounted `~/.gitconfig` starts empty and any author identity / signing config you want must be set explicitly with `git config --global` inside the container.
+Bind-mount paths do **not** inherit the image's baked `~/.gitconfig` (Docker only copies image content into named volumes on first creation, never into bind mounts). When the ownership fix cannot run (the root fallback below, or a container started as a non-root user), the entrypoint registers git `safe.directory` entries for the repos under `/.archon` at runtime, so functionality is preserved — but a bind-mounted `~/.gitconfig` starts empty and any author identity / signing config you want must be set explicitly with `git config --global` inside the container.
 :::
 
 If `ARCHON_USER_HOME` is not set, Docker manages the volume automatically (`archon_user_home`) — config persists across restarts and rebuilds but lives inside Docker's storage. To wipe it: `docker compose down && docker volume rm archon_archon_user_home`.
@@ -516,7 +516,7 @@ This must be set before the container starts; the Pi SDK reads the variable on e
 
 ### Root fallback for macOS bind mounts (opt-in)
 
-On every start the entrypoint fixes ownership of `/.archon` and `/home/appuser` so they are writable by `appuser` (UID 1001), then drops privileges. On **macOS bind mounts (VirtioFS)** this ownership fix always fails — the host controls file ownership and refuses to remap host UIDs to the container's UID 1001 — so the container exits 1 and crash-loops. Read-only mounts and SELinux/AppArmor denials on Linux fail the same way.
+On start the entrypoint fixes ownership of `/.archon` and `/home/appuser` so they are writable by `appuser` (UID 1001), then drops privileges. On **macOS bind mounts (VirtioFS)** this ownership fix always fails — the host controls file ownership and refuses to remap host UIDs to the container's UID 1001 — so the container exits 1 and crash-loops. Read-only mounts and SELinux/AppArmor denials on Linux fail the same way.
 
 `ARCHON_ALLOW_ROOT_FALLBACK` is the explicit escape hatch for this case:
 

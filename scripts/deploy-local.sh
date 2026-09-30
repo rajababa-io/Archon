@@ -456,11 +456,14 @@ DRAIN_ARMED=0
 # given up on it, and is what the box has been serving since. Two consecutive
 # false failures, on a report whose whole job is to say what is running.
 #
-# The number is a symptom, not the cause: every deploy up to 07b39255 (18:00Z)
-# went healthy inside 120s, so something in the commits after it made the boot
-# slower and nobody has measured what. Raised rather than diagnosed, and said so
-# here — if this trips again, find what the boot spends its time on before
-# raising it a second time.
+# Measured when it tripped again (#320): the server itself was not slow. The
+# entrypoint walked every inode on both volumes before starting it — ~9M files
+# of worktrees and node_modules, three passes, 437s of a 420s budget — and the
+# volumes only grow. The entrypoint now records a completed ownership pass and
+# skips the walk after it, so the boot is back to the server's own start-up.
+# 420s is left as headroom, not need: if this trips again, the time is going
+# somewhere new — measure it (container start vs the server process's start
+# time) before touching the number.
 HEALTH_WAIT=${HEALTH_WAIT:-420}
 waited=0
 last_health_error=""

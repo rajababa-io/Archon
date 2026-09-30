@@ -21,9 +21,24 @@ if [ "$(id -u)" = "0" ]; then
   # look identical from inside the container, so we cannot auto-distinguish.
   # Failures are accumulated (not exited inline) so we can branch once below
   # on the explicit ARCHON_ALLOW_ROOT_FALLBACK opt-in.
+  #
+  # Touching only wrong files still stats every inode, and a volume full of
+  # worktrees and node_modules grows without bound: at ~9M files the walk took
+  # over 7 minutes and failed a deploy's health wait (#320). So a pass that
+  # succeeds leaves a mark in the volume, and later starts skip the walk while
+  # the mark and the volume root are both still appuser's. Everything in the
+  # container writes as appuser after the first pass, so what the skip can miss
+  # is a file root wrote from outside it — delete the mark to force a full pass.
+  # A new volume, or one remounted under another UID mapping, has no mark or a
+  # wrong-owned one, and gets the full pass.
   chown_failed=0
+  appuser_ids="$(id -u appuser):$(id -g appuser)"
   fix_ownership() {
-    local err
+    local err mark="$1/.archon-ownership-verified"
+    if [ -f "$mark" ] && [ "$(stat -c %u:%g "$1" "$mark" | sort -u)" = "$appuser_ids" ]; then
+      return 0
+    fi
+    echo "[archon] fixing ownership of $1 (full walk; later starts skip it)" >&2
     # -o is correct: we want appuser:appuser on both, not "either matches".
     if ! err=$(find "$1" \( ! -user appuser -o ! -group appuser \) -exec chown -h appuser:appuser {} + 2>&1 >/dev/null); then
       if [ -n "$err" ]; then
@@ -31,7 +46,10 @@ if [ "$(id -u)" = "0" ]; then
       fi
       echo "ERROR: Failed to fix ownership of $1 — volume may be read-only or mounted with incompatible options" >&2
       chown_failed=1
+      return 0
     fi
+    touch "$mark" && chown appuser:appuser "$mark" ||
+      echo "WARNING: could not record the ownership pass in $mark — the next start walks $1 again" >&2
   }
   fix_ownership /.archon
   # /home/appuser is persisted to a named volume (or bind-mounted via
@@ -75,12 +93,17 @@ fi
 # With /home/appuser now persisted, ~/.gitconfig survives across restarts —
 # so we must check before --add or duplicate safe.directory lines accumulate
 # every boot.
-find /.archon -name ".git" -prune -print 2>/dev/null | while IFS= read -r git_dir; do
-  repo_dir="$(dirname "$git_dir")"
-  if ! $RUNNER git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$repo_dir"; then
-    $RUNNER git config --global --add safe.directory "$repo_dir"
-  fi
-done
+# Skipped when the ownership pass above succeeded: every repo is then appuser's
+# and git runs as appuser, so git has no dubious ownership to reject — and the
+# find is another walk of every inode under /.archon (#320).
+if [ "$RUNNER" != "gosu appuser" ]; then
+  find /.archon -name ".git" -prune -print 2>/dev/null | while IFS= read -r git_dir; do
+    repo_dir="$(dirname "$git_dir")"
+    if ! $RUNNER git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$repo_dir"; then
+      $RUNNER git config --global --add safe.directory "$repo_dir"
+    fi
+  done
+fi
 
 # Configure git to use GH_TOKEN for HTTPS clones via credential helper
 # Uses a helper function so the token stays in the environment, not in ~/.gitconfig.
