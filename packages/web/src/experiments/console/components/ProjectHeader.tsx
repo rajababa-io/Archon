@@ -20,6 +20,7 @@ import {
   activitySummary,
   allProjectsSubtitle,
   headerPathLabel,
+  showsInstallDeployStrip,
 } from '../lib/project-header';
 
 interface FeedShape {
@@ -79,19 +80,11 @@ export function ProjectHeader(): ReactElement {
     )
   );
   const { data: projects } = useEntity<Project[]>(K.projects, () => skill.listProjects());
-  const { data: deploy, error: deployError } = useEntity<DeployAnswer | null>(
+  const { data: deploy } = useEntity<DeployAnswer | null>(
     projectId === undefined ? 'noop:all-projects:deploy' : K.projectDeploy(projectId),
     () => (projectId === undefined ? Promise.resolve(null) : skill.getProjectDeploy(projectId))
   );
-  // The install-wide strip is the Archon box's deploy, which the archon-host
-  // project's row already shows, so that project alone shows only the row.
-  // Held back until the answer lands, so it does not flash the strip first; a
-  // failed read falls back to the strip.
-  const showStrip =
-    projectId === undefined ||
-    deployError !== undefined ||
-    (deploy !== undefined &&
-      !(deploy?.kind === 'set-up' && deploy.deploy.method === 'archon-host'));
+  const showStrip = showsInstallDeployStrip(projectId);
 
   // Renaming in the rail reaches the header through the same override store,
   // so the two can never disagree about what this project is called.
@@ -122,9 +115,10 @@ export function ProjectHeader(): ReactElement {
           {projectId !== undefined ? <ProjectStateChip projectId={projectId} /> : null}
         </span>
 
-        {/* Install-wide, in space this row was already spending on nothing.
-            See components/DeployStrip for why it is here rather than in a band
-            of its own, and what that placement costs. */}
+        {/* Install-wide, in space this row was already spending on nothing, and
+            only on All projects — see showsInstallDeployStrip. See
+            components/DeployStrip for why it is here rather than in a band of
+            its own, and what that placement costs. */}
         {showStrip ? <DeployStrip /> : null}
 
         {activity !== null ? (

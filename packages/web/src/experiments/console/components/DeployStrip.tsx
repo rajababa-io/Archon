@@ -25,14 +25,16 @@
  * truncates, the strip takes the slack as `flex-1`) nor change the row's height.
  * Rendering nothing is the same shape as rendering something.
  *
- * WHAT IT COSTS. `ProjectHeader` mounts under `ProjectLayout`, which covers the
- * index and every project-scoped route, but not Settings, the Builder, the
- * preview page, or a project-less run detail. On those four the deploy is
- * unreported. That is a real narrowing from the band, taken deliberately: a
- * surface that shifts the page on every load gets dismissed, and a dismissed
- * surface reports nothing anywhere. DeployOverlay is still mounted app-wide in
- * ConsoleApp, so the two phases that actually stop you still interrupt on every
- * route — it is the ambient half that is project-scoped, not the urgent half.
+ * WHAT IT COSTS. `ProjectHeader` draws it on All projects only (#319): on a
+ * project's page the row reads as that project's, and Archon's "Deploy failed"
+ * beside another project's name was taken for that project's failure. The
+ * Archon project's own deploy row reports the same deploy, so the ambient half
+ * lives on those two screens and nowhere else. That is a real narrowing from
+ * the band, taken deliberately: a surface that shifts the page on every load
+ * gets dismissed, and a dismissed surface reports nothing anywhere.
+ * DeployOverlay is still mounted app-wide in ConsoleApp, so the two phases that
+ * actually stop you still interrupt on every route — it is the ambient half
+ * that is scoped, not the urgent half.
  *
  * WHAT IT DROPS ON A NARROW SCREEN. The dot, the phase word and the clock survive
  * every width; the SHA goes below `sm` and the holding sentence below `md`, and
