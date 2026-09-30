@@ -32,6 +32,7 @@ const attachedFilesSchema = z.array(
     name: z.string(),
     mimeType: z.string(),
     size: z.number(),
+    keptAs: z.string().optional(),
   })
 );
 

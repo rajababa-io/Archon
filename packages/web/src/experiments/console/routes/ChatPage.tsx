@@ -674,7 +674,13 @@ export function ChatPage(): ReactElement {
     pendingBaseRef.current = baselineUserIds(messages ?? []);
     setPendingUser({
       content: text,
-      files: (files ?? []).map(f => ({ name: f.name, mimeType: f.type, size: f.size })),
+      // No thumbnail until the server has kept its copy; the stored row brings it.
+      files: (files ?? []).map(f => ({
+        name: f.name,
+        mimeType: f.type,
+        size: f.size,
+        imageUrl: null,
+      })),
     });
     void (async (): Promise<void> => {
       try {

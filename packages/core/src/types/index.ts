@@ -42,6 +42,13 @@ export interface AttachedFile {
   name: string;
   mimeType: string;
   size: number;
+  /**
+   * File name of the copy kept for the transcript, under `attachments/` in
+   * ARCHON_HOME. Only images get one: `path` is deleted once the agent has
+   * read it, and a sent screenshot is worth seeing again. Absent for every
+   * other file, and for anything uploaded before copies were kept.
+   */
+  keptAs?: string;
 }
 
 export interface HandleMessageContext {

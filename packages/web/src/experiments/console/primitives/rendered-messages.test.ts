@@ -51,7 +51,7 @@ describe('renderedMessages', () => {
   });
 
   test('the echo carries its attachments', () => {
-    const files = [{ name: 'a.png', mimeType: 'image/png', size: 3 }];
+    const files = [{ name: 'a.png', mimeType: 'image/png', size: 3, imageUrl: null }];
     const out = renderedMessages([], { content: 'look', files }, [], NOW);
     expect(out[0]?.files).toEqual(files);
   });

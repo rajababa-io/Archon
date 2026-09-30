@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { describe, test, expect, mock, beforeAll, afterAll, beforeEach } from 'bun:test';
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -1270,6 +1271,71 @@ describe('POST /api/conversations with file attachments', () => {
     expect(lastCall[3]).toEqual({
       files: [{ name: 'notes.md', mimeType: 'text/markdown', size: 5 }],
     });
+  });
+
+  test('keeps a copy of an image, records its name, and serves it (#318)', async () => {
+    const app = new OpenAPIHono({ defaultHook: validationErrorHook });
+    registerApiRoutes(app, mockWebAdapter, mockLockManager);
+
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+    const form = new FormData();
+    form.append('message', 'why does it say the deploy failed');
+    form.append('files', new File([png], 'shot.png', { type: 'image/png' }), 'shot.png');
+
+    const response = await app.request('/api/conversations', { method: 'POST', body: form });
+    expect(response.status).toBe(200);
+
+    const lastCall = mockAddMessage.mock.calls.at(-1) as unknown as unknown[];
+    const meta = lastCall[3] as {
+      files: { name: string; mimeType: string; size: number; keptAs?: string }[];
+    };
+    const keptAs = meta.files[0]?.keptAs ?? '';
+    expect(keptAs).toMatch(/^[0-9a-f-]{36}\.png$/);
+    expect(meta.files[0]).toEqual({ name: 'shot.png', mimeType: 'image/png', size: 7, keptAs });
+
+    // The agent's upload is cleaned up exactly as before; the kept copy is not.
+    const { conversationId } = (await response.json()) as { conversationId: string };
+    expect(existsSync(join(tmpHome, 'artifacts', 'uploads', conversationId))).toBe(false);
+    expect(existsSync(join(tmpHome, 'attachments', keptAs))).toBe(true);
+
+    const served = await app.request(`/api/attachments/${keptAs}`);
+    expect(served.status).toBe(200);
+    expect(served.headers.get('Content-Type')).toBe('image/png');
+    expect(served.headers.get('X-Content-Type-Options')).toBe('nosniff');
+    expect(new Uint8Array(await served.arrayBuffer())).toEqual(png);
+  });
+
+  test('keeps no copy of a file that is not an image', async () => {
+    const app = new OpenAPIHono({ defaultHook: validationErrorHook });
+    registerApiRoutes(app, mockWebAdapter, mockLockManager);
+
+    const form = new FormData();
+    form.append('message', 'read this');
+    form.append('files', new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' }), 'doc.pdf');
+
+    const response = await app.request('/api/conversations', { method: 'POST', body: form });
+    expect(response.status).toBe(200);
+    const lastCall = mockAddMessage.mock.calls.at(-1) as unknown as unknown[];
+    expect(lastCall[3]).toEqual({
+      files: [{ name: 'doc.pdf', mimeType: 'application/pdf', size: 4 }],
+    });
+  });
+
+  test('the attachment route refuses any name but a UUID and an image extension', async () => {
+    const app = new OpenAPIHono({ defaultHook: validationErrorHook });
+    registerApiRoutes(app, mockWebAdapter, mockLockManager);
+
+    for (const name of [
+      '..%2F..%2Fetc%2Fpasswd',
+      'notes.md',
+      '0b61fe5f-0000-4000-8000-000000000000.svg',
+      '0b61fe5f-0000-4000-8000-000000000000.png.md',
+    ]) {
+      const res = await app.request(`/api/attachments/${name}`);
+      expect(res.status).toBe(400);
+    }
+    const missing = await app.request('/api/attachments/0b61fe5f-0000-4000-8000-000000000000.png');
+    expect(missing.status).toBe(404);
   });
 
   test('refuses files with no message to attach them to', async () => {

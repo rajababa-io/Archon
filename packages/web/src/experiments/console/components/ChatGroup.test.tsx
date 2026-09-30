@@ -23,6 +23,38 @@ function assistant(content: string, thinking: string | null, id = 'm1'): Message
   return { key: 'm1', role: 'assistant', timestamp: message.timestamp, messages: [message] };
 }
 
+function userWith(files: Message['files']): MessageGroup {
+  const group = assistant('see this', null);
+  const [first] = group.messages;
+  if (first === undefined) throw new Error('fixture has one message');
+  return { ...group, role: 'user', messages: [{ ...first, role: 'user', files }] };
+}
+
+describe('ChatGroup attachments', () => {
+  test('a kept image renders as a thumbnail that opens full size', () => {
+    const url = '/api/attachments/0b61fe5f-0000-4000-8000-000000000000.png';
+    const html = renderToStaticMarkup(
+      <ChatGroup
+        group={userWith([{ name: 'shot.png', mimeType: 'image/png', size: 9, imageUrl: url }])}
+      />
+    );
+    expect(html).toContain(`<img src="${url}"`);
+    expect(html).toContain(`href="${url}"`);
+    expect(html).not.toContain('deleted from the server');
+  });
+
+  test('a file with nothing kept stays a chip, not a broken image', () => {
+    const html = renderToStaticMarkup(
+      <ChatGroup
+        group={userWith([{ name: 'notes.md', mimeType: 'text/markdown', size: 9, imageUrl: null }])}
+      />
+    );
+    expect(html).not.toContain('<img');
+    expect(html).toContain('notes.md');
+    expect(html).toContain('deleted from the server');
+  });
+});
+
 describe('ChatGroup thinking', () => {
   test('stored thinking folds to its first line, with no label, above the reply', () => {
     const html = renderToStaticMarkup(

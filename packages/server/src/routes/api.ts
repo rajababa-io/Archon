@@ -2999,6 +2999,47 @@ export function registerApiRoutes(
     '.sql',
   ]);
 
+  /**
+   * Uploads kept after the agent has read them, by MIME type, with the
+   * extension the kept copy is stored under. Only raster images: they are what
+   * the transcript shows again as a thumbnail, and the serving route derives
+   * its Content-Type from this extension, so nothing else can be kept.
+   */
+  const KEPT_UPLOAD_EXTENSIONS: Readonly<Record<string, string>> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+  };
+  const KEPT_UPLOAD_TYPES: Readonly<Record<string, string>> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    gif: 'image/gif',
+    webp: 'image/webp',
+  };
+  /** A kept copy's name: the upload's own UUID and a kept extension, nothing else. */
+  const KEPT_UPLOAD_NAME =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(png|jpg|gif|webp)$/;
+
+  /**
+   * What a user message records about each attachment. Never the path — that
+   * file is deleted once the agent has read it — but the kept copy's name when
+   * there is one, so the transcript can show the picture.
+   */
+  function storedFileMeta(f: AttachedFile): {
+    name: string;
+    mimeType: string;
+    size: number;
+    keptAs?: string;
+  } {
+    return {
+      name: f.name,
+      mimeType: f.mimeType,
+      size: f.size,
+      ...(f.keptAs !== undefined ? { keptAs: f.keptAs } : {}),
+    };
+  }
+
   /** Returns true if the MIME type is allowed for upload. */
   function isAllowedUploadType(mimeType: string, fileName: string): boolean {
     // All text/* types are acceptable (covers .md, .py, .rs, .go, .sh, .yaml, etc.)
@@ -3065,6 +3106,7 @@ export function registerApiRoutes(
       }
     }
 
+    const keptDir = join(archonHome, 'attachments');
     const savedFiles: AttachedFile[] = [];
     try {
       await mkdir(uploadDir, { recursive: true });
@@ -3072,23 +3114,37 @@ export function registerApiRoutes(
         const fileId = randomUUID();
         const safeName = basename(entry.name).replace(/[^a-zA-Z0-9._-]/g, '_');
         const filePath = join(uploadDir, `${fileId}_${safeName}`);
-        await writeFile(filePath, Buffer.from(await entry.arrayBuffer()));
+        const bytes = Buffer.from(await entry.arrayBuffer());
+        await writeFile(filePath, bytes);
         const normalizedMime =
           entry.type.split(';')[0].trim().toLowerCase() || 'application/octet-stream';
-        savedFiles.push({
+        const saved: AttachedFile = {
           path: filePath,
           name: safeName || fileId,
           mimeType: normalizedMime,
           size: entry.size,
-        });
+        };
+        // Pushed before the kept copy is written, so a failure writing it still
+        // rolls back the upload beside it.
+        savedFiles.push(saved);
+        const keptExtension = KEPT_UPLOAD_EXTENSIONS[normalizedMime];
+        if (keptExtension !== undefined) {
+          const keptAs = `${fileId}.${keptExtension}`;
+          await mkdir(keptDir, { recursive: true });
+          await writeFile(join(keptDir, keptAs), bytes);
+          saved.keptAs = keptAs;
+        }
       }
     } catch (writeErr: unknown) {
       for (const f of savedFiles) {
-        await unlink(f.path).catch((err: NodeJS.ErrnoException) => {
-          if (err.code !== 'ENOENT') {
-            getLog().warn({ err, filePath: f.path, conversationId }, 'upload.rollback_failed');
-          }
-        });
+        const written = [f.path, ...(f.keptAs !== undefined ? [join(keptDir, f.keptAs)] : [])];
+        for (const filePath of written) {
+          await unlink(filePath).catch((err: NodeJS.ErrnoException) => {
+            if (err.code !== 'ENOENT') {
+              getLog().warn({ err, filePath, conversationId }, 'upload.rollback_failed');
+            }
+          });
+        }
       }
       getLog().error({ err: writeErr, conversationId }, 'upload.write_failed');
       return {
@@ -3143,7 +3199,7 @@ export function registerApiRoutes(
   interface UserTurn {
     /** `midTurn` marks a message the agent read inside a turn already running. */
     persist: (opts?: { midTurn?: boolean }) => Promise<void>;
-    files: { name: string; mimeType: string; size: number }[];
+    files: ReturnType<typeof storedFileMeta>[];
   }
 
   /**
@@ -3817,18 +3873,8 @@ export function registerApiRoutes(
       // If message provided, dispatch it atomically (avoids ghost "Untitled" conversations)
       if (message) {
         try {
-          // Same shape the send-message route persists: name/type/size only,
-          // never the path — the file is deleted once the agent has read it.
           const meta =
-            savedFiles.length > 0
-              ? {
-                  files: savedFiles.map(f => ({
-                    name: f.name,
-                    mimeType: f.mimeType,
-                    size: f.size,
-                  })),
-                }
-              : undefined;
+            savedFiles.length > 0 ? { files: savedFiles.map(storedFileMeta) } : undefined;
           await messageDb.addMessage(conversation.id, 'user', message, meta, userId);
         } catch (e: unknown) {
           // Log only (no SSE warning) — the SSE stream isn't connected yet for new conversations.
@@ -4225,9 +4271,7 @@ export function registerApiRoutes(
       }
     }
 
-    // Omit path from persisted metadata — the on-disk file is ephemeral and will be
-    // deleted after the AI processes it; storing stale paths would confuse future readers.
-    const fileMeta = savedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size }));
+    const fileMeta = savedFiles.map(storedFileMeta);
     const persistUserMessage = async (opts?: { midTurn?: boolean }): Promise<void> => {
       if (conv)
         await persistDeliveredUserMessage(
@@ -5492,15 +5536,7 @@ export function registerApiRoutes(
       if (conv) {
         try {
           const meta =
-            savedFiles.length > 0
-              ? {
-                  files: savedFiles.map(f => ({
-                    name: f.name,
-                    mimeType: f.mimeType,
-                    size: f.size,
-                  })),
-                }
-              : undefined;
+            savedFiles.length > 0 ? { files: savedFiles.map(storedFileMeta) } : undefined;
           await messageDb.addMessage(conv.id, 'user', message, meta, userId);
         } catch (e: unknown) {
           getLog().error({ err: e, conversationId: conv.id }, 'message_persistence_failed');
@@ -6843,6 +6879,45 @@ export function registerApiRoutes(
     }
   });
 
+  /**
+   * The kept copy of an image sent with a chat message, for the transcript's
+   * thumbnail. An `<img src>`, never a typed fetch, so `app.get` rather than an
+   * OpenAPI route — the same reasoning as `/api/codebases/:id/raw`.
+   *
+   * The name is matched whole against KEPT_UPLOAD_NAME before anything touches
+   * the disk: a UUID and a raster extension, so it cannot climb out of the
+   * directory, and the Content-Type comes from that extension rather than from
+   * the file.
+   */
+  app.get('/api/attachments/:name', async c => {
+    const name = c.req.param('name');
+    const match = KEPT_UPLOAD_NAME.exec(name);
+    const contentType = match?.[1] !== undefined ? KEPT_UPLOAD_TYPES[match[1]] : undefined;
+    if (contentType === undefined) {
+      return apiError(c, 400, 'Invalid attachment name');
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(join(getArchonHome(), 'attachments', name));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        return apiError(c, 404, 'Attachment not found');
+      }
+      getLog().error({ err, name }, 'attachments.read_failed');
+      return apiError(c, 500, 'Failed to read attachment');
+    }
+    return new Response(new Uint8Array(bytes), {
+      status: 200,
+      headers: {
+        'Content-Type': contentType,
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Disposition': 'inline',
+        // Named by a fresh UUID and never rewritten, so a copy is never stale.
+        'Cache-Control': 'private, max-age=31536000, immutable',
+      },
+    });
+  });
+
   // NOTE: Uses app.get() instead of registerOpenApiRoute because:
   //  1. Wildcard path params (*) are not representable in OpenAPI 3.0
   //  2. Response is raw text/markdown, not JSON
@@ -7352,7 +7427,7 @@ export function registerApiRoutes(
     }
 
     const { text, userId, attachedFiles } = turn.turn;
-    const fileMeta = attachedFiles.map(f => ({ name: f.name, mimeType: f.mimeType, size: f.size }));
+    const fileMeta = attachedFiles.map(storedFileMeta);
     const firstFile = attachedFiles[0];
     const result = await dispatchToOrchestrator(
       platformId,

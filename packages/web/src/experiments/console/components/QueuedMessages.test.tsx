@@ -38,7 +38,7 @@ describe('QueuedMessages — send now', () => {
   });
 
   test('a message with attachments waits for its own turn', () => {
-    const files = [{ name: 'a.png', mimeType: 'image/png', size: 1 }];
+    const files = [{ name: 'a.png', mimeType: 'image/png', size: 1, imageUrl: null }];
     expect(render([queued({ files })], true)).not.toContain('Send now');
   });
 
