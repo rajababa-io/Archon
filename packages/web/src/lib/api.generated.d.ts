@@ -5618,6 +5618,7 @@ export interface components {
         name: string;
         mimeType: string;
         size: number;
+        keptAs?: string;
       }[];
       queuedAt: string;
       steering: boolean;

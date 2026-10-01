@@ -1,5 +1,7 @@
 import type { ReactElement } from 'react';
 import type { QueuedMessage } from '../skills/conversations';
+import { keptImageUrl } from '../primitives/message';
+import { FileChips } from './FileChips';
 
 interface QueuedMessagesProps {
   messages: readonly QueuedMessage[];
@@ -55,14 +57,22 @@ export function QueuedMessages({
             >
               {message.text.trim()}
             </div>
+            {message.files.length > 0 ? (
+              <FileChips
+                queued
+                files={message.files.map(f => ({
+                  name: f.name,
+                  mimeType: f.mimeType,
+                  size: f.size,
+                  imageUrl: keptImageUrl(f.keptAs),
+                }))}
+              />
+            ) : null}
             <div className="flex items-center gap-[0.5rem] text-mini text-text-tertiary">
               <span>
                 {message.steering
                   ? 'Sent into this turn — waiting for the agent to read it'
                   : 'Queued'}
-                {message.files.length > 0
-                  ? ` · ${String(message.files.length)} file${message.files.length === 1 ? '' : 's'}`
-                  : ''}
               </span>
               {/* In the agent's hands already: it cannot be edited or taken back. */}
               {message.steering ? null : (

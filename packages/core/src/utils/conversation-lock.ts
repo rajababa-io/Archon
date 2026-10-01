@@ -121,7 +121,11 @@ export type TurnHandler = (turn: TurnContext) => Promise<void>;
 export interface QueuedMessageInfo {
   id: string;
   text: string;
-  files: { name: string; mimeType: string; size: number }[];
+  /**
+   * `keptAs` names the server's kept copy of an image, so the queued bubble can
+   * show the picture the delivered one will.
+   */
+  files: { name: string; mimeType: string; size: number; keptAs?: string }[];
   queuedAt: string;
   /** Sent into the running turn and not yet read by the agent. */
   steering: boolean;
