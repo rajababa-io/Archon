@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { HostDeploy, WorkflowDeploy } from '../skills/deploy';
-import { deployGapLabel, deployGapView, deployingSha } from './deploy-gap';
+import { changeLine, deployGapLabel, deployGapView, deployingSha } from './deploy-gap';
 
 const LIVE = 'a9f3e21c1f2a3b4c5d6e7f8091a2b3c4d5e6f70a';
 const TIP = 'c01b85a1aa11bb22cc33dd44ee55ff6677889900';
@@ -174,5 +174,18 @@ describe('deployingSha', () => {
   test('nothing in flight', () => {
     expect(deployingSha(host())).toBeNull();
     expect(deployingSha(null)).toBeNull();
+  });
+});
+
+describe('changeLine', () => {
+  test('a title that leads with its issue keeps only that number', () => {
+    expect(changeLine({ number: 344, title: '#343 Ready to close', url: '' })).toBe(
+      '#343 Ready to close'
+    );
+  });
+  test('a plain title gets the PR number', () => {
+    expect(changeLine({ number: 344, title: 'Ready to close', url: '' })).toBe(
+      '#344 Ready to close'
+    );
   });
 });

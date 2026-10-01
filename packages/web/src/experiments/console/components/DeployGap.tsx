@@ -24,7 +24,7 @@ import { useLiveChats } from '../lib/live-chats';
 import { useNow } from '../lib/clock';
 import { useProjectDeployRefresh } from '../hooks/useProjectDeployRefresh';
 import { PERSON_ONLY_TITLE, deployConfirm, type DeployConfirm } from '../lib/deploy-row';
-import { deployGapView, deployingSha, type DeployGapView } from '../lib/deploy-gap';
+import { changeLine, deployGapView, deployingSha, type DeployGapView } from '../lib/deploy-gap';
 import { ConfirmDeploy, actionError } from './DeployRow';
 
 /** How long "live abc1234" stays after a deploy lands, before the gap closes. */
@@ -32,7 +32,7 @@ const DEPLOYED_MS = 60_000;
 /** How long a press holds the button greyed while the server has not yet shown the deploy. */
 const PRESSED_MS = 30_000;
 /** How many waiting changes the list names before it says "and N more". */
-const LIST_MAX = 5;
+const LIST_MAX = 3;
 
 const ORANGE = 'var(--status-awaiting)';
 
@@ -170,10 +170,10 @@ export function DeployGapPanel({
   onDeploy,
 }: DeployGapPanelProps): ReactElement {
   return (
-    <div data-testid="deploy-gap" className="flex flex-wrap items-start gap-x-6 gap-y-3 py-2">
+    <div data-testid="deploy-gap" className="flex items-center gap-x-4 whitespace-nowrap">
       {view.kind === 'behind' ? (
         <>
-          <div className="flex flex-col items-center gap-1.5">
+          <div className="flex flex-col items-center gap-1">
             <button
               type="button"
               disabled={requested || !canAct || view.blocked !== null}
@@ -181,20 +181,20 @@ export function DeployGapPanel({
               onClick={() => {
                 onDeploy(view.tipSha);
               }}
-              className="rounded-full px-4.5 py-1.75 text-body font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full px-4 py-1.25 text-body font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: ORANGE }}
             >
               {requested ? 'Requested…' : `${view.label} ↓`}
             </button>
-            <span className="max-w-[220px] text-center text-mini text-text-tertiary">
-              waits for a quiet moment, then shows what is running
-            </span>
-            {error !== null ? <span className="text-small text-error">{error}</span> : null}
+            <span className="text-mini text-text-tertiary">waits for a quiet moment</span>
+            {error !== null ? (
+              <span className="max-w-[260px] whitespace-normal text-small text-error">{error}</span>
+            ) : null}
           </div>
           {view.prs.length > 0 ? (
             <ul
               data-testid="deploy-gap-list"
-              className="flex min-w-0 flex-col gap-1 rounded-lg border bg-surface-inset px-3 py-2 text-small"
+              className="flex min-w-0 max-w-[340px] flex-col gap-0.5 rounded-lg border bg-surface-inset px-2.5 py-1.5 text-mini"
             >
               {view.prs.slice(0, LIST_MAX).map(pr => (
                 <li key={pr.number} className="flex min-w-0 items-center gap-2">
@@ -209,7 +209,7 @@ export function DeployGapPanel({
                     rel="noreferrer"
                     className="min-w-0 truncate text-text-primary hover:underline"
                   >
-                    <span className="text-text-tertiary">#{String(pr.number)}</span> {pr.title}
+                    {changeLine(pr)}
                   </a>
                 </li>
               ))}
@@ -224,7 +224,7 @@ export function DeployGapPanel({
       ) : null}
 
       {view.kind === 'deploying' ? (
-        <div className="flex min-w-[260px] flex-col gap-1.5" aria-live="polite">
+        <div className="flex min-w-[260px] flex-col gap-1" aria-live="polite">
           <span className="h-1.5 w-full overflow-hidden rounded-full bg-surface-hover">
             <i
               className={`block h-full${view.fraction === null ? ' w-full animate-pulse' : ''}`}

@@ -4,6 +4,7 @@ import { EmptyState } from '../components/EmptyState';
 import { NeedsYouPill } from '../components/NeedsYouPill';
 import { ProjectBriefCard } from '../components/ProjectBriefCard';
 import { CodeMap } from '../components/code-map/CodeMap';
+import { DeployGap } from '../components/DeployGap';
 import { codeMapEmptyText, useCodeMap } from '../components/code-map/useCodeMap';
 import type { Run } from '../primitives/run';
 import * as skill from '../skills';
@@ -79,6 +80,7 @@ export function OverviewPage(): ReactElement {
             merging={map.merging}
             emptyText={codeMapEmptyText(map)}
             now={now}
+            renderEnvironmentAction={() => <DeployGap projectId={projectId} />}
           />
         </Section>
 

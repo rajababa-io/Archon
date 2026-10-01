@@ -25,6 +25,16 @@ export function deployGapLabel(prs: readonly WaitingPr[], more: boolean): string
   return `Deploy ${plural(prs.length, 'change')}`;
 }
 
+/**
+ * One waiting change as the list names it. Titles in a repo that leads them
+ * with their issue (`#343 Ready to close`) already carry a number, so the PR's
+ * own is added only to a title that has none — two numbers side by side read
+ * as two changes.
+ */
+export function changeLine(pr: WaitingPr): string {
+  return /^#\d/.test(pr.title) ? pr.title : `#${String(pr.number)} ${pr.title}`;
+}
+
 /** What the gap draws. `hidden` draws nothing at all. */
 export type DeployGapView =
   | { kind: 'hidden' }
