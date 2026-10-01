@@ -25,6 +25,7 @@
     "dotenv": "^17.2.3",
     "hono": "^4.12.16",
     "pg": "^8.11.0",
+    "sharp": "^0.35.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -80,6 +81,12 @@
     ],
     [
       "src/routes/project-deploy.test.ts"
+    ],
+    [
+      "src/routes/project-pictures.test.ts"
+    ],
+    [
+      "src/services/project-pictures.test.ts"
     ],
     [
       "src/services/resource-start-hosting.integration.test.ts"

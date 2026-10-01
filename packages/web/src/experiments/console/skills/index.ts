@@ -32,5 +32,6 @@ export * from './github';
 export * from './providerKeys';
 export * from './push';
 export * from './console-views';
+export * from './pictures';
 
 export { HttpError } from '../lib/http';

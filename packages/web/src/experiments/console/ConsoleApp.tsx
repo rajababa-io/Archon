@@ -22,6 +22,7 @@ import { ChatPage } from './routes/ChatPage';
 const FilesPage = lazy(() => import('./routes/FilesPage'));
 import { IssuesPage } from './routes/IssuesPage';
 import { OverviewPage } from './routes/OverviewPage';
+import { PicturesPage } from './routes/PicturesPage';
 import { PreviewPage } from './routes/PreviewPage';
 import { SettingsPage } from './routes/SettingsPage';
 import { invalidate } from './store/cache';
@@ -190,6 +191,7 @@ export function ConsoleApp(): ReactElement {
                 }
               />
               <Route path="p/:projectId/overview" element={<OverviewPage />} />
+              <Route path="p/:projectId/pictures" element={<PicturesPage />} />
               <Route path="p/:projectId/r/:runId" element={<RunDetailPage />} />
             </Route>
             {/* Project-less run detail: LegacyRedirect resolves an old

@@ -95,6 +95,9 @@ export const K = {
   projectDeploy: (projectId: string): string => `projectDeploy:${projectId}`,
   projectDeployLog: (projectId: string): string => `projectDeployLog:${projectId}`,
   projectDeployBranches: (projectId: string): string => `projectDeployBranches:${projectId}`,
+  /** One page of a project's pictures; `topic` is '' for all of them. */
+  pictures: (projectId: string, topic: string, limit: number, offset: number): string =>
+    `pictures:${projectId}:${String(limit)}:${String(offset)}:${topic}`,
   issue: (projectId: string, number: number): string => `issue:${projectId}:${String(number)}`,
   presentation: (projectId: string): string => `presentation:${projectId}`,
   providerConnections: 'provider-connections' as const,
