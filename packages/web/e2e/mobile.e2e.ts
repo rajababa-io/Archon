@@ -263,7 +263,9 @@ test('a photo from the library is shrunk, shown as a thumbnail, and sent', async
   await expect(tray).toHaveCount(0);
   const queued = page.getByRole('list', { name: 'Queued messages' });
   await expect(queued.getByText('Here is the screen.')).toBeVisible();
-  await expect(queued.getByText(/1 file/)).toBeVisible();
+  // The queued bubble shows the attachment itself, as a sent message would
+  // (#346). The stub keeps no copy, so it is the file's chip, not a thumbnail.
+  await expect(queued.getByText('IMG_0001.jpg')).toBeVisible();
   // What reached the server is the re-encoded JPEG, not the camera's PNG.
   const files = await page.evaluate(async id => {
     const res = await fetch(`/api/conversations/${encodeURIComponent(id)}/queue`);
