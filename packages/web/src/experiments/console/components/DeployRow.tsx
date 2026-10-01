@@ -311,7 +311,7 @@ export function DeployRow({ projectId, projectName, deploy }: DeployRowProps): R
                   onClick={() => {
                     setPopoverOpen(open => !open);
                   }}
-                  className="shrink-0 rounded-full bg-warning/15 px-2.25 py-0.5 text-small text-warning ring-1 ring-inset ring-warning/35 hover:bg-warning/20"
+                  className="shrink-0 rounded-full bg-[color:var(--status-awaiting)]/15 px-2.25 py-0.5 text-small text-[color:var(--status-awaiting)] ring-1 ring-inset ring-[color:var(--status-awaiting)]/35 hover:bg-[color:var(--status-awaiting)]/20"
                 >
                   {view.right.label} ▾
                 </button>

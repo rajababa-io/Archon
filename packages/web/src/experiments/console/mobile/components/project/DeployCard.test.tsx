@@ -14,19 +14,19 @@ const waiting: DeployWaiting = {
 };
 
 describe('mobile DeployCard WaitingLine', () => {
-  test('waiting merges draw the amber pill with the shared label', () => {
+  test('waiting merges draw the needs-you pill with the shared label', () => {
     const label = waitingPillLabel(waiting);
     const html = renderToStaticMarkup(<WaitingLine right={{ kind: 'waiting', waiting, label }} />);
     expect(html).toContain(label);
-    expect(html).toContain('text-warning');
-    expect(html).toContain('bg-warning/15');
+    expect(html).toContain('text-[color:var(--status-awaiting)]');
+    expect(html).toContain('bg-[color:var(--status-awaiting)]/15');
     expect(html).toContain('rounded-full');
   });
 
   test('up to date stays neutral', () => {
     const html = renderToStaticMarkup(<WaitingLine right={{ kind: 'up-to-date' }} />);
     expect(html).toContain('Up to date');
-    expect(html).not.toContain('warning');
+    expect(html).not.toContain('status-awaiting');
   });
 
   test('unknown and Deploy on Merge stay neutral', () => {
@@ -36,7 +36,7 @@ describe('mobile DeployCard WaitingLine', () => {
     ] as const) {
       const html = renderToStaticMarkup(<WaitingLine right={right} />);
       expect(html).toContain('text-text-secondary');
-      expect(html).not.toContain('warning');
+      expect(html).not.toContain('status-awaiting');
     }
   });
 });

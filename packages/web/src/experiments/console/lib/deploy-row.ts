@@ -36,7 +36,7 @@ function countedParts(parts: readonly [number, string][]): string | null {
   return shown.length === 0 ? null : shown.join(' and ');
 }
 
-/** The amber pill: `1 merged PR waiting`, `4 merged PRs waiting`, `20+ merged PRs waiting`. */
+/** The needs-you pill: `1 merged PR waiting`, `4 merged PRs waiting`, `20+ merged PRs waiting`. */
 export function waitingPillLabel(waiting: DeployWaiting): string {
   const n = waiting.prs.length;
   // A tip with no PR behind it is a commit pushed straight to the branch.
