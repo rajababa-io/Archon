@@ -16,6 +16,7 @@
     "./workflows/*": "./src/workflows/*.ts",
     "./isolation-store": "./src/db/isolation-environments.ts",
     "./orchestrator": "./src/orchestrator/orchestrator.ts",
+    "./orchestrator/handoff": "./src/orchestrator/handoff.ts",
     "./handlers": "./src/handlers/command-handler.ts",
     "./handlers/command-registry": "./src/handlers/command-registry.ts",
     "./config": "./src/config/index.ts",
@@ -191,6 +192,9 @@
     ],
     [
       "src/db/workflows.dashboard-parent-conversation.integration.test.ts"
+    ],
+    [
+      "src/db/project-artifacts.integration.test.ts"
     ],
     [
       "src/db/workflows.checkout-baseline.integration.test.ts"

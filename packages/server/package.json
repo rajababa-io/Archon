@@ -186,6 +186,9 @@
       "src/routes/shares.test.ts"
     ],
     [
+      "src/routes/project-artifacts.test.ts"
+    ],
+    [
       "src/services/deploy-park.integration.test.ts"
     ]
   ]
