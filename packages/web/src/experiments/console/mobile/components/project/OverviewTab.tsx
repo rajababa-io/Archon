@@ -63,6 +63,7 @@ export function OverviewTab({
             projectId={projectId}
             badge={
               <NeedsYouPill
+                className="min-h-11 px-4"
                 count={pausedRuns + awaitingChats}
                 to={projectPath(projectId, awaitingChats > 0 ? 'chats' : 'runs')}
               />

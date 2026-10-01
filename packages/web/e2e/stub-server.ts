@@ -34,6 +34,7 @@ import {
   CHAT_ID,
   CONVERSATION_COUNTS,
   ISSUES,
+  CODE_MAP,
   MESSAGES,
   OTHER_MESSAGES,
   PROJECT,
@@ -515,6 +516,11 @@ function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, state: S
 
   if (method === 'GET' && path === '/api/workflows') {
     sendJson(res, { workflows: [] });
+    return;
+  }
+
+  if (method === 'GET' && path === `/api/projects/${PROJECT_ID}/code-map`) {
+    sendJson(res, CODE_MAP);
     return;
   }
 

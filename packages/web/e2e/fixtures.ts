@@ -18,6 +18,7 @@ import type { toMessage } from '@/experiments/console/primitives/message';
 import type { toRun } from '@/experiments/console/primitives/run';
 import type { toRunEvent } from '@/experiments/console/primitives/event';
 import type { IssuesResponse } from '@/experiments/console/skills/issues';
+import type { CodeMapResponse } from '@/experiments/console/skills/codeMap';
 import type { HostDeploy } from '@/experiments/console/skills/deploy';
 
 /** The wire rows, named by the normalizer that consumes each one. */
@@ -338,6 +339,27 @@ export const ISSUES: IssuesResponse = {
       openPr: false,
     },
   ],
+};
+
+/** One pull request in CI, for the Overview's live code map. */
+export const CODE_MAP_PR_TITLE = 'Rail width remembers the last drag';
+export const CODE_MAP: CodeMapResponse = {
+  base: 'dev',
+  open: [
+    {
+      number: 9,
+      title: CODE_MAP_PR_TITLE,
+      url: 'https://github.com/rajababa-io/console-e2e/pull/9',
+      branch: 'fix/rail-width',
+      draft: false,
+      updatedAt: '2026-09-26T09:00:00.000Z',
+      checks: { state: 'running', total: 7, done: 4, failedName: null },
+    },
+  ],
+  merged: [],
+  branches: [],
+  repo: PROJECT_NAME,
+  reason: null,
 };
 
 /** The merged commit waiting to go live. */
