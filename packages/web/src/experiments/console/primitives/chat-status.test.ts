@@ -439,4 +439,17 @@ describe('chatStatusSets', () => {
     expect(chatStatus('a', sets)).toBe('awaiting');
     expect(chatStatus('a', chatStatusSets(rows, live))).toBe('ready');
   });
+
+  test('a working chat is not unread; it is again once the turn ends (#335)', () => {
+    const rows = [{ ...row('a'), lastActivityAt: '2026-09-27T11:00:00Z' }];
+    expect(chatStatusSets(rows, { ...live, working: new Set(['a']) }).unread.has('a')).toBe(false);
+    expect(chatStatusSets(rows, live).unread.has('a')).toBe(true);
+  });
+
+  test('an awaiting chat stays unread even while the server reports it working', () => {
+    const rows = [{ ...row('a', { askCandidate: ASK }), lastActivityAt: '2026-09-27T11:00:00Z' }];
+    const sets = chatStatusSets(rows, { ...live, working: new Set(['a']) });
+    expect(chatStatus('a', sets)).toBe('awaiting');
+    expect(sets.unread.has('a')).toBe(true);
+  });
 });
