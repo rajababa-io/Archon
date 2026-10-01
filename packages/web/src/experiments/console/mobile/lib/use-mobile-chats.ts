@@ -57,7 +57,7 @@ export interface MobileChats {
   reach: Reach;
   statusSets: ChatStatusSets;
   statuses: ReadonlyMap<string, ChatStatus>;
-  /** How many chats want you — the same count the desktop tab badge shows (#289). */
+  /** How many chats need you — the same count the desktop tab badge shows (#289). */
   needsYou: number;
   /** What each working chat is running right now, when it is inside a tool. */
   liveTools: ReturnType<typeof useLiveChats>['tools'];
@@ -116,8 +116,8 @@ export function useMobileChats(): MobileChats {
   );
 
   const needsYou = useMemo(
-    () => chatNotifications(chats ?? [], statuses, statusSets.unread).length,
-    [chats, statuses, statusSets.unread]
+    () => chatNotifications(chats ?? [], statuses).length,
+    [chats, statuses]
   );
 
   // Colour, icon and rename come down from the server the way the desktop

@@ -23,42 +23,29 @@ export function chatStatuses(
   return out;
 }
 
-export type ChatNotificationKind = 'awaiting' | 'unread';
-
-/** One chat that wants you. */
+/** One chat that needs you. */
 export interface ChatNotification {
   id: string;
   projectId: string;
   title: string | null;
-  /** Awaiting wins over unread: the question is the part that needs you. */
-  kind: ChatNotificationKind;
   lastActivityAt: string | null;
-  /**
-   * Closed. Never true for an unread one (`unreadIds`), but a run paused on a
-   * gate can still ask from a closed chat, and opening it has to look in the
-   * Closed list.
-   */
+  /** Closed. A run paused on a gate can still ask from a closed chat. */
   completed: boolean;
 }
 
 /**
- * The chats that want you: the ones awaiting you, and the ones you have not
- * read (#289). This list IS the notification count — the favicon badge, the
- * phone's badge and its Home Screen icon all take `.length` of it, so every
- * surface shows the same number.
+ * The chats that need you: status `awaiting`, the rail's "Needs you". This
+ * list IS the notification count — the favicon badge, the phone's badge and
+ * its Home Screen icon all take `.length` of it, so every surface shows the
+ * same number.
  *
- * Those are the two things that ask a person to come and look. A turn that
- * ends while you are away leaves its chat unread, so this rising is how "done"
- * reaches a tab you are not looking at. Unread is a set beside the statuses
- * rather than one of them (#5), so a chat that is both is one notification.
- * Closed chats are never unread (`unreadIds`), which is what keeps this a
- * to-do list rather than a history.
+ * Unread is deliberately not counted (#333). It once was (#289), and a chat
+ * that had only finished a turn then read as `1` beside one that was asking —
+ * the badge could no longer say whether you were needed. Unread stays the bold
+ * title in the rail. Working is not counted either: from another tab the only
+ * question worth answering is whether something needs you.
  *
- * Working is deliberately not counted, and nothing in the tab says a chat is
- * merely working: from another tab the only question worth answering is
- * whether something needs you.
- *
- * Awaiting first, then newest activity first: your move outranks news.
+ * Newest activity first.
  */
 export function chatNotifications(
   found: readonly {
@@ -70,18 +57,15 @@ export function chatNotifications(
     };
     projectId: string;
   }[],
-  statuses: ReadonlyMap<string, ChatStatus>,
-  unread: ReadonlySet<string>
+  statuses: ReadonlyMap<string, ChatStatus>
 ): ChatNotification[] {
   const out: ChatNotification[] = [];
   for (const { chat, projectId } of found) {
-    const awaiting = statuses.get(chat.id) === 'awaiting';
-    if (!awaiting && !unread.has(chat.id)) continue;
+    if (statuses.get(chat.id) !== 'awaiting') continue;
     out.push({
       id: chat.id,
       projectId,
       title: chat.title,
-      kind: awaiting ? 'awaiting' : 'unread',
       lastActivityAt: chat.lastActivityAt,
       completed: chat.completed,
     });
@@ -90,9 +74,7 @@ export function chatNotifications(
     const ms = n.lastActivityAt === null ? Number.NaN : Date.parse(n.lastActivityAt);
     return Number.isNaN(ms) ? 0 : ms;
   };
-  return out.sort(
-    (a, b) => Number(b.kind === 'awaiting') - Number(a.kind === 'awaiting') || at(b) - at(a)
-  );
+  return out.sort((a, b) => at(b) - at(a));
 }
 
 /**
