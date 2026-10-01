@@ -15,16 +15,22 @@ import {
 
 const track = trackTempRoots();
 
-/** A public root holding a deck folder, a lone image, and a secret outside the root. */
+/**
+ * A public root holding a deck folder and a lone image, and a folder outside
+ * the root holding a secret. Links in the tests point at that FOLDER, as a
+ * junction, because a file symlink needs a privilege Windows does not grant by
+ * default; a link to a folder escapes just as well.
+ */
 function fixture(): { root: string; outside: string } {
   const top = track(mkdtempSync(join(tmpdir(), 'shares-')));
   const root = join(top, 'public');
-  const outside = join(top, 'secret.txt');
+  const outside = join(top, 'outside');
+  mkdirSync(outside);
+  writeFileSync(join(outside, 'secret.txt'), 'secret');
   mkdirSync(join(root, 'archon/deck/img'), { recursive: true });
   writeFileSync(join(root, 'archon/deck/index.html'), '<h1>deck</h1>');
   writeFileSync(join(root, 'archon/deck/img/a.png'), 'png');
   writeFileSync(join(root, 'archon/pic.png'), 'pic');
-  writeFileSync(outside, 'secret');
   return { root, outside };
 }
 
@@ -69,11 +75,12 @@ describe('normalizeSharePath', () => {
 describe('publishedEntry', () => {
   test('tells a folder from a file, and refuses what is missing or outside the root', async () => {
     const { root, outside } = fixture();
-    symlinkSync(outside, join(root, 'archon/escape.txt'));
+    symlinkSync(outside, join(root, 'archon/escape'), 'junction');
     expect(await publishedEntry(root, 'archon/deck')).toBe('dir');
     expect(await publishedEntry(root, 'archon/pic.png')).toBe('file');
     expect(await publishedEntry(root, 'archon/nope')).toBeNull();
-    expect(await publishedEntry(root, 'archon/escape.txt')).toBeNull();
+    expect(await publishedEntry(root, 'archon/escape')).toBeNull();
+    expect(await publishedEntry(root, 'archon/escape/secret.txt')).toBeNull();
   });
 });
 
@@ -83,11 +90,11 @@ describe('resolveShareRequest', () => {
     const deck = share('archon/deck');
     expect(await resolveShareRequest(root, deck, '', true)).toEqual({
       kind: 'file',
-      file: expect.stringMatching(/archon\/deck\/index\.html$/),
+      file: expect.stringMatching(/archon[\\/]deck[\\/]index\.html$/),
     });
     expect(await resolveShareRequest(root, deck, 'img/a.png', true)).toEqual({
       kind: 'file',
-      file: expect.stringMatching(/img\/a\.png$/),
+      file: expect.stringMatching(/img[\\/]a\.png$/),
     });
   });
 
@@ -108,13 +115,14 @@ describe('resolveShareRequest', () => {
 
   test('nothing outside the shared folder is reachable', async () => {
     const { root, outside } = fixture();
-    symlinkSync(outside, join(root, 'archon/deck/leak.txt'));
+    symlinkSync(outside, join(root, 'archon/deck/leak'), 'junction');
     const deck = share('archon/deck');
     for (const rest of [
       '../pic.png',
       '%2e%2e/pic.png',
       '..%2fpic.png',
-      'leak.txt',
+      'leak/secret.txt',
+      'leak/',
       'missing.png',
     ]) {
       expect((await resolveShareRequest(root, deck, rest, true)).kind).toBe('missing');
