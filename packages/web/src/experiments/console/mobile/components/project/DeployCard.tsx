@@ -46,7 +46,7 @@ export function DeployCard({
 
 /**
  * The state line under the branches. Waiting merges take the desktop deploy
- * row's amber pill, so work not yet live reads as a warning on both surfaces;
+ * row's needs-you pill, so work not yet live reads as waiting on you on both surfaces;
  * every other state stays neutral text.
  */
 export function WaitingLine({ right }: { right: DeployRowRight }): ReactElement {
@@ -54,7 +54,7 @@ export function WaitingLine({ right }: { right: DeployRowRight }): ReactElement 
     case 'waiting':
       return (
         <p>
-          <span className="inline-block rounded-full bg-warning/15 px-2.25 py-0.5 text-small text-warning ring-1 ring-inset ring-warning/35">
+          <span className="inline-block rounded-full bg-[color:var(--status-awaiting)]/15 px-2.25 py-0.5 text-small text-[color:var(--status-awaiting)] ring-1 ring-inset ring-[color:var(--status-awaiting)]/35">
             {right.label}
           </span>
         </p>
