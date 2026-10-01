@@ -901,8 +901,12 @@
 .project-chip > .chat-status i {
   margin-top: calc(0.5ex - 4px); /* 4px: half the 8px dot */
 }
-/* Every state is this dot. Size and radius are stated ONCE, so no state can
-   render at a different diameter from its neighbour in the same column. */
+/* Every state is this dot — filled, in its own colour (#331). Size and radius
+   are stated ONCE, so no state can render at a different diameter from its
+   neighbour in the same column, and no state differs from another by shape:
+   on an 8px mark, a ring and a filled dot of one colour read as the same
+   thing. Each colour is a `--status-*` token in theme/tokens.css, the same
+   one `STATUS_COLOR` hands every label beside a dot. */
 .chat-status i {
   display: block;
   width: 8px;
@@ -912,14 +916,11 @@
 }
 /* Working: the agent is executing a turn for this chat right now. */
 .chat-status.is-working {
-  color: var(--running);
+  color: var(--status-working);
 }
-/* Awaiting: your move — a run paused on a gate, or a question not answered.
-   The MARK variant of the warning colour, not the text one: a dot is a
-   graphic and owes 3:1 rather than 4.5:1, which is the difference between
-   amber and the ochre the word has to settle for. */
+/* Awaiting: your move — a run paused on a gate, or a question not answered. */
 .chat-status.is-awaiting {
-  color: var(--warning-mark);
+  color: var(--status-awaiting);
 }
 /* Done: the unit of work this chat IS — an issue, a cluster of them — has
    landed. The only state a human sets by hand, and the only one that is a
@@ -927,48 +928,25 @@
    and awaiting both outrank it: a done chat that starts moving again shows
    what it is doing now and goes back to green when it stops. */
 .chat-status.is-done {
-  color: var(--success);
+  color: var(--status-done);
 }
-/* Ready to close: the AGENT says the work landed, and no human has answered.
-   Closed's green, hollow. The claim and the confirmation are one family and read
-   better as one colour; a seventh hue would have to be learned, where "not
-   filled in yet" reads on sight. Geometry carries the whole difference, so the
-   diameter stated once above is left alone and only the fill changes — an
-   inset shadow rather than a border, which would round differently and make
-   this the one dot in the column with its own size. */
+/* Ready to close: the AGENT says the work landed, and no human has answered. */
 .chat-status.is-ready {
-  color: var(--success);
+  color: var(--status-ready);
 }
-.chat-status.is-ready i {
-  background: transparent;
-  box-shadow: inset 0 0 0 2px currentColor;
-}
-/* Run going: a workflow run this chat started is executing. Working's blue,
-   hollow — the same move ready makes on done's green: "work is moving for this
-   chat" in one hue, and the empty centre says it is not the agent's own turn. */
+/* Run going: a workflow run this chat started is executing. */
 .chat-status.is-running {
-  color: var(--running);
-}
-.chat-status.is-running i {
-  background: transparent;
-  box-shadow: inset 0 0 0 2px currentColor;
+  color: var(--status-running);
 }
 /* Waiting on CI: the chat asked to be told when CI finishes, and the server
-   is watching for it. Hollow, because it is a wait, and purple because no
-   other state uses it — it shared the run's blue until runs had a mark (#188),
-   and orange would have differed from the filled amber "Needs you" by fill
-   alone. */
+   is watching for it. */
 .chat-status.is-waiting {
-  color: var(--ci-wait);
-}
-.chat-status.is-waiting i {
-  background: transparent;
-  box-shadow: inset 0 0 0 2px currentColor;
+  color: var(--status-waiting);
 }
 /* Idle: nothing pending here. Quiet rather than empty — the one state with
    nothing to announce, so it is the one that is dimmed. */
 .chat-status.is-idle {
-  color: var(--text-tertiary);
+  color: var(--status-idle);
 }
 .chat-status.is-idle i {
   opacity: 0.7;
