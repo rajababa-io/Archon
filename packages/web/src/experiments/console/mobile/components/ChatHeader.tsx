@@ -8,7 +8,7 @@ import { useProjectIdentity } from '../../lib/project-identity';
 import { ProjectMark } from './ProjectMark';
 
 interface ChatHeaderProps {
-  /** Chats that want you, across every project. */
+  /** Chats that need you, across every project. */
   needsYou: number;
   onOpenSwitcher: () => void;
   /** The chat's project, which its name links to; null until the chat list has loaded. */

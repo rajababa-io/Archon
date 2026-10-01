@@ -74,57 +74,40 @@ describe('chatNotifications', () => {
     projectId,
   });
 
-  test('awaiting and unread — never working, ready or idle on their own', () => {
+  test('awaiting only — never unread, working, ready or idle (#333)', () => {
     const got = chatNotifications(
       ['a', 'b', 'c', 'd', 'e'].map(id => found(id)),
-      m({ a: 'awaiting', b: 'idle', c: 'working', d: 'idle', e: 'ready' }),
-      new Set(['b'])
+      m({ a: 'awaiting', b: 'idle', c: 'working', d: 'idle', e: 'ready' })
     );
-    expect(got.map(n => [n.id, n.kind])).toEqual([
-      ['a', 'awaiting'],
-      ['b', 'unread'],
-    ]);
-    expect(chatNotifications([], new Map(), new Set())).toEqual([]);
+    expect(got.map(n => n.id)).toEqual(['a']);
+    expect(chatNotifications([], new Map())).toEqual([]);
   });
 
-  // Unread is a set beside the status (#5), so the two can overlap.
-  test('a chat both awaiting and unread is one notification, and says awaiting', () => {
-    const got = chatNotifications([found('a')], m({ a: 'awaiting' }), new Set(['a']));
-    expect(got.map(n => [n.id, n.kind])).toEqual([['a', 'awaiting']]);
-  });
-
-  test('awaiting leads, then newest first; each carries its own project', () => {
+  test('newest first; each carries its own project', () => {
     const got = chatNotifications(
-      [
-        found('old', '2026-09-27T08:00:00Z'),
-        found('new', '2026-09-27T12:00:00Z', 'p2'),
-        found('ask', '2026-09-27T07:00:00Z'),
-      ],
-      m({ old: 'idle', new: 'idle', ask: 'awaiting' }),
-      new Set(['old', 'new'])
+      [found('old', '2026-09-27T08:00:00Z'), found('new', '2026-09-27T12:00:00Z', 'p2')],
+      m({ old: 'awaiting', new: 'awaiting' })
     );
-    expect(got.map(n => n.id)).toEqual(['ask', 'new', 'old']);
-    expect(got[1]?.projectId).toBe('p2');
+    expect(got.map(n => n.id)).toEqual(['new', 'old']);
+    expect(got[0]?.projectId).toBe('p2');
   });
 
-  // The whole of #289: a closed chat that moved after it was last read.
-  test('a closed chat is not a notification, through the real status sets', () => {
-    const rows = [
-      chat('closed', { completed: true, lastReadAt: null }),
-      chat('open', { lastReadAt: null }),
-    ];
+  // #333: an unread chat that is not asking is news, not a call — no badge.
+  test('an unread chat is not a notification, through the real status sets', () => {
+    const rows = [chat('unread', { lastReadAt: null })];
     const sets = chatStatusSets(rows, {
       working: new Set(),
       runAwaiting: new Set(),
       running: new Set(),
       waiting: new Set(),
     });
-    const got = chatNotifications(
-      rows.map(r => found(r.id)),
-      chatStatuses(rows, sets),
-      sets.unread
-    );
-    expect(got.map(n => n.id)).toEqual(['open']);
+    expect(sets.unread.has('unread')).toBe(true);
+    expect(
+      chatNotifications(
+        rows.map(r => found(r.id)),
+        chatStatuses(rows, sets)
+      )
+    ).toEqual([]);
   });
 });
 

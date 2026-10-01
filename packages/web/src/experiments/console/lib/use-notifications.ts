@@ -1,6 +1,6 @@
 /**
- * What wants you, across every project (#289): the chats awaiting you and the
- * ones you have not read, with the statuses they were read from.
+ * What needs you, across every project (#289, #333): the chats awaiting you,
+ * with the statuses they were read from.
  *
  * The favicon badge (`use-tab-signal`) reads this hook. The phone reads the
  * same primitive through `useMobileChats`, whose scope is also every project.
@@ -44,7 +44,7 @@ export function useNotifications(): Notifications {
     return {
       found,
       statuses,
-      items: chatNotifications(found, statuses, sets.unread),
+      items: chatNotifications(found, statuses),
       loaded: all !== undefined,
     };
   }, [found, all, live.ids, live.ciWaiting, runFeed?.runs]);

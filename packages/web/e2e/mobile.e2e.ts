@@ -361,8 +361,8 @@ test('while the agent works, Send queues and its menu steers or interrupts', asy
 test('the switcher lists chats by status and opens the one tapped', async ({ page }) => {
   await open(page, chatPath(CHAT_ID));
 
-  // The unread chat is counted on the button that opens the list.
-  await page.getByRole('button', { name: 'Open chat list, 1 need you' }).tap();
+  // Unread is not a call (#333): no chat is awaiting, so the button carries no count.
+  await page.getByRole('button', { name: 'Open chat list', exact: true }).tap();
   const sheet = page.getByRole('dialog', { name: 'Switch chat' });
   await expect(sheet).toBeVisible();
 
