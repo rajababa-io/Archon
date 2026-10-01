@@ -39,10 +39,13 @@ const INPUT_SCHEMA = defineNativeToolInputSchema({
  * itself finished.
  *
  * WHAT LANDED HAS TO MEAN, because the loose reading is the obvious one and it
- * is wrong: for work whose output is code, landed is MERGED and running
- * wherever it runs. An open pull request — green, reviewed, whatever — is
- * unfinished work, not a decision waiting on a human. The only thing left when
- * this is set should be whether the work was the RIGHT work.
+ * is wrong: for work whose output is code, landed is MERGED into its base
+ * branch with that branch's checks green. An open pull request — green,
+ * reviewed, whatever — is unfinished work, not a decision waiting on a human.
+ * The only thing left when this is set should be whether the work was the RIGHT
+ * work. Deploying is NOT part of it: that is the end of the work item, a
+ * separate process, and a chat held open until a deploy reads as unfinished for
+ * as long as the deploy waits (#343).
  *
  * Nothing here can verify that, and pretending otherwise would be theatre — a
  * required "evidence" field written to a column that does not exist buys
@@ -62,7 +65,7 @@ export function buildReadyToCloseTool(ctx: ReadyToCloseContext): NativeTool {
   return {
     name: 'mark_ready_to_close',
     description:
-      'Declare that this chat\'s unit of work has LANDED, so it reads as "Ready to close" rather than idle. Landed means merged and running where it runs — an open pull request, however green, is unfinished work and must NOT be marked. Call it once, when the work is genuinely finished and the only question left is whether it was the right work; then say so in your reply and let the human decide. Do not call it to mean "I have replied" or "I have written the code". The mark survives later messages from the human: a question about the finished work, or answering a question you asked, leaves it standing. Pass `withdraw: true` when a message reopens the work — new changes asked for, or the work turns out not to have landed — or when you find the claim was wrong.',
+      'Declare that this chat\'s unit of work has LANDED, so it reads as "Ready to close" rather than idle. Landed means merged into the base branch with its checks green — an open pull request, however green, is unfinished work and must NOT be marked. Deploying is not part of it: a step left after merge (a deploy, a host install, a credential) belongs on the work item, not in this chat, and does not hold the mark back. Call it once, when the work is genuinely finished and the only question left is whether it was the right work; then say so in your reply and let the human decide. Do not call it to mean "I have replied" or "I have written the code". The mark survives later messages from the human: a question about the finished work, or answering a question you asked, leaves it standing. Pass `withdraw: true` when a message reopens the work — new changes asked for, or the work turns out not to have landed — or when you find the claim was wrong.',
     inputSchema: INPUT_SCHEMA,
     handler: async (input): Promise<string> => {
       const withdraw = input.withdraw === true;
