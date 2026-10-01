@@ -261,6 +261,20 @@ describe('server resource-start host', () => {
     await until(() => (engine.claimed.includes(runId ?? '') ? true : undefined));
   });
 
+  test('a resource start keeps its chat out of the chat list (#341)', async () => {
+    const { deliver, engine } = await fixture();
+    expect((await deliver('hidden', 'queue')).status).toBe(200);
+
+    const submitted = await until(() => engine.submitted[0]);
+    const conversationId = submitted.options?.preCreatedRun?.conversation_id;
+    expect(conversationId).toBeTruthy();
+    const row = await getDatabase().query<{ hidden: number | boolean | null }>(
+      'SELECT hidden FROM remote_agent_conversations WHERE id = $1',
+      [conversationId]
+    );
+    expect(Boolean(row.rows[0]?.hidden)).toBe(true);
+  });
+
   test('a queued receipt starts when its blocker ends and the scheduler tick drains', async () => {
     const { deliver, engine, host } = await fixture();
     expect((await deliver('first', 'queue')).status).toBe(200);
