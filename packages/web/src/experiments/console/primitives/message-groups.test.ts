@@ -181,3 +181,37 @@ describe('progressNoteIds', () => {
     expect(progressNoteIds(groupOf(text('system', 'a'), text('system', 'b'))).size).toBe(0);
   });
 });
+
+describe('questions render last (#336)', () => {
+  const block = JSON.stringify({ questions: [{ title: 'Which?', options: [{ label: 'A' }] }] });
+  const fence = `\`\`\`ask\n${block}\n\`\`\``;
+  const row = (role: MessageRole, timestamp: string, content: string): Message => ({
+    ...msg(role, timestamp),
+    content,
+  });
+
+  it('moves the card under the final text and picture, in one group', () => {
+    const ask = row('assistant', '2026-10-01T12:37:20Z', fence);
+    const answer = row('assistant', '2026-10-01T12:37:43Z', 'Order — ![q1](/files/q1.png)');
+    const groups = groupMessages([ask, answer]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.messages.map(m => m.id)).toEqual([answer.id, ask.id]);
+  });
+
+  it('keeps the final text unfolded when the card follows it', () => {
+    const note = row('assistant', '2026-10-01T12:37:10Z', 'Checking.');
+    const ask = row('assistant', '2026-10-01T12:37:10Z', fence);
+    const answer = row('assistant', '2026-10-01T12:37:10Z', 'Answer.');
+    const [group] = groupMessages([note, ask, answer]);
+    if (group === undefined) throw new Error('no group');
+    expect([...progressNoteIds(group)]).toEqual([note.id]);
+  });
+
+  it('never moves a card past your next message', () => {
+    const ask = row('assistant', '2026-10-01T12:37:10Z', fence);
+    const you = row('user', '2026-10-01T12:38:00Z', 'A');
+    const next = row('assistant', '2026-10-01T12:38:05Z', 'Done.');
+    const flat = groupMessages([ask, you, next]).flatMap(g => g.messages);
+    expect(flat.map(m => m.id)).toEqual([ask.id, you.id, next.id]);
+  });
+});
