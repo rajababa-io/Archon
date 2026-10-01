@@ -20,6 +20,7 @@ export * from './slashCommands';
 export * from './worktrees';
 export * from './files';
 export * from './runs';
+export * from './artifacts';
 export * from './startRun';
 export * from './messages';
 export * from './conversations';

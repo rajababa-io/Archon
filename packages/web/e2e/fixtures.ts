@@ -19,6 +19,7 @@ import type { toRun } from '@/experiments/console/primitives/run';
 import type { toRunEvent } from '@/experiments/console/primitives/event';
 import type { IssuesResponse } from '@/experiments/console/skills/issues';
 import type { CodeMapResponse } from '@/experiments/console/skills/codeMap';
+import type { ProjectArtifact } from '@/experiments/console/skills/artifacts';
 import type { HostDeploy } from '@/experiments/console/skills/deploy';
 
 /** The wire rows, named by the normalizer that consumes each one. */
@@ -340,6 +341,35 @@ export const ISSUES: IssuesResponse = {
     },
   ],
 };
+
+/** The Overview's Artifacts band: one run document and one handoff (#351). */
+export const PROJECT_ARTIFACTS: ProjectArtifact[] = [
+  {
+    id: `run:${RUN_ID}:plan.md`,
+    type: 'plan',
+    name: 'plan.md',
+    modifiedAt: '2026-09-26T11:30:00.000Z',
+    run: {
+      id: RUN_ID,
+      path: 'plan.md',
+      workflowName: RUN_WORKFLOW,
+      status: 'completed',
+      prNumber: null,
+      prUrl: null,
+    },
+    handoffId: null,
+    chat: { id: CHAT_ID, title: CHAT_TITLE, done: false, ready: true },
+  },
+  {
+    id: 'handoff:msg-e2e-handoff',
+    type: 'handoff',
+    name: '2026-09-26_ask-cards.md',
+    modifiedAt: '2026-09-26T10:00:00.000Z',
+    run: null,
+    handoffId: 'msg-e2e-handoff',
+    chat: { id: OTHER_CHAT_ID, title: null, done: false, ready: false },
+  },
+];
 
 /** One pull request in CI, for the Overview's live code map. */
 export const CODE_MAP_PR_TITLE = 'Rail width remembers the last drag';

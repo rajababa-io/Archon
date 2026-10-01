@@ -3910,6 +3910,133 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/codebases/{id}/artifacts': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The project's documents across its runs and handoffs, newest first
+     * @description An index over existing storage: run artifacts (plans, investigations, reviews, data) from the project's newest runs, plus the handoff documents its chats were opened from. A run artifact is read with `GET /api/artifacts/{runId}/{path}`; a handoff with `GET /api/codebases/{id}/handoffs/{handoffId}`.
+     */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+        };
+        header?: never;
+        path: {
+          id: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ProjectArtifactsResponse'];
+          };
+        };
+        /** @description Project not found */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/codebases/{id}/handoffs/{handoffId}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** One of the project's handoff documents */
+    get: {
+      parameters: {
+        query?: never;
+        header?: never;
+        path: {
+          id: string;
+          handoffId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['HandoffDocument'];
+          };
+        };
+        /** @description No such handoff in this project, or its document is gone */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Document too large to preview */
+        413: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+        /** @description Server error */
+        500: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/projects/{projectId}/deploy/log': {
     parameters: {
       query?: never;
@@ -6780,6 +6907,39 @@ export interface components {
       path: string;
       size: number;
       modifiedAt: string;
+    };
+    ProjectArtifactsResponse: {
+      artifacts: components['schemas']['ProjectArtifact'][];
+    };
+    ProjectArtifact: {
+      id: string;
+      type: components['schemas']['ProjectArtifactType'];
+      name: string;
+      modifiedAt: string;
+      run: {
+        id: string;
+        path: string;
+        workflowName: string;
+        status: components['schemas']['WorkflowRunStatus'];
+        prNumber: number | null;
+        prUrl: string | null;
+      } | null;
+      handoffId: string | null;
+      chat: components['schemas']['ProjectArtifactChat'];
+    };
+    /** @enum {string} */
+    ProjectArtifactType: 'plan' | 'investigation' | 'review' | 'handoff' | 'data' | 'other';
+    /** @enum {string} */
+    WorkflowRunStatus: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled' | 'paused';
+    ProjectArtifactChat: {
+      id: string;
+      title: string | null;
+      done: boolean;
+      ready: boolean;
+    } | null;
+    HandoffDocument: {
+      name: string;
+      content: string;
     };
     DeployLogResponse: {
       entries: components['schemas']['DeployLogEntry'][];

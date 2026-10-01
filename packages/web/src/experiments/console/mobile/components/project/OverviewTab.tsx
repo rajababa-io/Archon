@@ -4,6 +4,7 @@ import { useEntity } from '../../../store/cache';
 import { K } from '../../../store/keys';
 import type { Run } from '../../../primitives/run';
 import { useNow } from '../../../lib/clock';
+import { ArtifactsBand } from '../../../components/ArtifactsBand';
 import { NeedsYouPill } from '../../../components/NeedsYouPill';
 import { PicturesBand } from '../../../components/PicturesBand';
 import { ProjectBriefCard } from '../../../components/ProjectBriefCard';
@@ -87,9 +88,9 @@ export function OverviewTab({
       </div>
 
       <Section label="Artifacts">
-        <p className="px-4 text-body text-text-tertiary">
-          Plans, reports and reviews from this project will show here.
-        </p>
+        <div className="px-4">
+          <ArtifactsBand projectId={projectId} phone />
+        </div>
       </Section>
     </div>
   );

@@ -115,6 +115,8 @@ import {
   NotAGitCheckoutError,
 } from '@archon/git';
 import { readConversationCheckout } from './conversation-checkout';
+import { listRunArtifactFiles, resolveRunArtifactDir, type RunArtifactFile } from './run-artifacts';
+import { registerProjectArtifactRoutes } from './project-artifacts';
 import {
   createLogger,
   getWorkflowFolderSearchPaths,
@@ -124,9 +126,6 @@ import {
   getArchonWorkspacesPath,
   getHomeCommandsPath,
   getHomeWorkflowsPath,
-  getRunArtifactsDirForRoot,
-  isRunArtifactsEngineEntry,
-  resolveRunStorageRoot,
   isInsideArchonHome,
   isInsideArchonWorkspaces,
   isPathInside,
@@ -500,27 +499,6 @@ if (BUNDLED_IS_BINARY) {
 }
 
 type WorkflowSource = 'project' | 'bundled' | 'global';
-
-/**
- * Resolve the on-disk artifact directory for a run, for EVERY project kind
- * (#2200).
- *
- * Both artifact routes previously did `parseOwnerRepo(codebase.name)` alone,
- * which returns null for a folder project (display name, no slash) and for a
- * no-remote local repo (bare basename) — so artifact browsing was silently dead
- * for two of the three project kinds Archon can register.
- *
- * The shared root resolver owns trusted persisted-root precedence and
- * relocation fallback; this route only composes the artifact directory.
- */
-function resolveRunArtifactDir(
-  run: { output_root?: string | null },
-  codebase: { kind?: string | null; name: string; default_cwd: string } | null,
-  runId: string
-): string | null {
-  const root = resolveRunStorageRoot(run, codebase);
-  return root ? getRunArtifactsDirForRoot(root, runId) : null;
-}
 
 /**
  * Why a caller-supplied path was refused. The caller maps these to its own
@@ -6689,57 +6667,14 @@ export function registerApiRoutes(
       return apiError(c, 400, 'Invalid artifact path');
     }
 
-    interface FileEntry {
-      path: string;
-      size: number;
-      modifiedAt: string;
-    }
-    const files: FileEntry[] = [];
-
-    async function walk(dir: string, rel: string): Promise<void> {
-      let entries: { name: string; isDirectory: () => boolean; isFile: () => boolean }[];
-      try {
-        entries = await readdir(dir, { withFileTypes: true });
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
-        throw err;
-      }
-      for (const entry of entries) {
-        // The engine's own store is left out by the rule the CLI's listing shares;
-        // a workflow's own dotfiles are its output and stay listed.
-        if (isRunArtifactsEngineEntry(rel, entry.name)) continue;
-        const child = join(dir, entry.name);
-        const childRel = rel === '' ? entry.name : `${rel}/${entry.name}`;
-        if (entry.isDirectory()) {
-          await walk(child, childRel);
-        } else if (entry.isFile()) {
-          try {
-            const s = await stat(child);
-            files.push({
-              path: childRel,
-              size: s.size,
-              modifiedAt: s.mtime.toISOString(),
-            });
-          } catch (err) {
-            // Race with deletion / permission flips: skip ENOENT / EACCES
-            // silently, surface anything else so we don't return a half-list
-            // with no diagnostic.
-            const code = (err as NodeJS.ErrnoException).code;
-            if (code === 'ENOENT' || code === 'EACCES') continue;
-            throw err;
-          }
-        }
-      }
-    }
-
+    let files: RunArtifactFile[];
     try {
-      await walk(artifactDir, '');
+      files = await listRunArtifactFiles(artifactDir);
     } catch (error) {
       getLog().error({ err: error, runId, artifactDir }, 'artifacts.walk_failed');
       return apiError(c, 500, 'Failed to list artifacts');
     }
 
-    files.sort((a, b) => a.path.localeCompare(b.path));
     return c.json({ files });
   });
 
@@ -6862,6 +6797,9 @@ export function registerApiRoutes(
       return c.json({ ...empty, repo: slug, reason: 'unreachable' });
     }
   });
+
+  // The project's documents across runs and handoffs, for Overview (#351).
+  registerProjectArtifactRoutes(app);
 
   // The per-project deploy bar (#211, #226). Running counts are the same two the
   // health route reports, so the Deploy now confirm and the drain agree.

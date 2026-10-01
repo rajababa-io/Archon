@@ -62,6 +62,14 @@ export const K = {
   pendingRuns: 'pendingRuns' as const,
   envVars: (projectId: string): string => `envVars:${projectId}`,
   artifacts: (runId: string): string => `artifacts:${runId}`,
+  /**
+   * The project's documents across runs and handoffs (#351). Under `runs:` so
+   * the dashboard stream refreshes it as runs move, which is when new ones land.
+   */
+  projectArtifacts: (projectId: string): string => `runs:artifacts:${projectId}`,
+  /** One indexed document's text, keyed by its index id. */
+  projectArtifactText: (projectId: string, artifactId: string): string =>
+    `artifactText:${encodeURIComponent(projectId)}:${encodeURIComponent(artifactId)}`,
   // One key per directory, which is what makes the tree lazy: expanding a
   // folder is a cache miss on that folder alone, and collapsing it keeps what
   // was already read. Both parts are encoded — a path may contain `:`.

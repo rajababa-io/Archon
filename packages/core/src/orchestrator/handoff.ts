@@ -14,6 +14,9 @@
  * session re-walks dead ends this one already ruled out.
  */
 
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 /** What the agent must say. Empty strings are allowed; missing sections are not. */
 export interface HandoffInput {
   /** kebab-case, names the work rather than the session. */
@@ -124,6 +127,16 @@ function checkboxes(items: readonly string[]): string {
   const kept = items.map(s => s.trim()).filter(s => s !== '');
   if (kept.length === 0) return 'None.';
   return kept.map(s => `- [ ] ${s}`).join('\n');
+}
+
+/**
+ * Where handoff documents are written when the tool is given no directory —
+ * and so the only place the server will read one back from (#351). One owner,
+ * because a reader that guessed its own copy of this path would refuse every
+ * document the writer moved.
+ */
+export function defaultHandoffsDir(): string {
+  return join(homedir(), 'handoffs');
 }
 
 /**

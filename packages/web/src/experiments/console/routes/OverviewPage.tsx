@@ -1,5 +1,6 @@
 import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { useParams } from 'react-router';
+import { ArtifactsBand } from '../components/ArtifactsBand';
 import { EmptyState } from '../components/EmptyState';
 import { NeedsYouPill } from '../components/NeedsYouPill';
 import { PicturesBand } from '../components/PicturesBand';
@@ -90,9 +91,7 @@ export function OverviewPage(): ReactElement {
 
         {/* 4 — the documents the runs wrote (#351). */}
         <Section label="Artifacts">
-          <p className="text-body text-text-tertiary">
-            Plans, reports and reviews from this project will show here.
-          </p>
+          <ArtifactsBand projectId={projectId} />
         </Section>
       </div>
     </div>

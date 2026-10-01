@@ -35,6 +35,7 @@ import {
   CONVERSATION_COUNTS,
   ISSUES,
   CODE_MAP,
+  PROJECT_ARTIFACTS,
   MESSAGES,
   OTHER_MESSAGES,
   PROJECT,
@@ -521,6 +522,11 @@ function handleApi(req: IncomingMessage, res: ServerResponse, url: URL, state: S
 
   if (method === 'GET' && path === `/api/projects/${PROJECT_ID}/code-map`) {
     sendJson(res, CODE_MAP);
+    return;
+  }
+
+  if (method === 'GET' && path === `/api/codebases/${PROJECT_ID}/artifacts`) {
+    sendJson(res, { artifacts: PROJECT_ARTIFACTS });
     return;
   }
 

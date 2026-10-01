@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { defineNativeToolInputSchema, type NativeTool } from '@archon/providers/types';
 import { createLogger } from '@archon/paths';
 import {
+  defaultHandoffsDir,
   findSecrets,
   handoffPath,
   renderHandoff,
@@ -108,7 +108,7 @@ export function buildHandoffTool(ctx: HandoffContext): NativeTool {
       const topic = typeof i.topic === 'string' ? i.topic.trim() : '';
       if (topic === '') return 'handoff needs a topic slug naming the work.';
 
-      const dir = ctx.handoffsDir ?? `${homedir()}/handoffs`;
+      const dir = ctx.handoffsDir ?? defaultHandoffsDir();
       mkdirSync(dir, { recursive: true });
       const date = new Date().toISOString().slice(0, 10);
       const path = handoffPath(dir, date, topic, p => existsSync(p));
