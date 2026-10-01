@@ -54,7 +54,7 @@ export const PRIMARY = `${BUTTON} bg-accent/15 text-text-primary ring-1 ring-ins
 const STOP = `${BUTTON} bg-transparent text-error ring-1 ring-inset ring-error/45 hover:bg-error/10 hover:ring-error`;
 export const GHOST = `${BUTTON} bg-transparent font-medium text-text-secondary ring-1 ring-inset ring-border-bright hover:text-text-primary`;
 
-function actionError(err: unknown): string {
+export function actionError(err: unknown): string {
   return err instanceof HttpError && err.serverError !== undefined
     ? err.serverError
     : errorDetail(err);
@@ -523,7 +523,7 @@ function WaitingPopover({
   );
 }
 
-function ConfirmDeploy({
+export function ConfirmDeploy({
   confirm,
   onCancel,
   onDeploy,

@@ -10,6 +10,8 @@ import { AskCard } from '../components/AskCard';
 import { AskErrorCard } from '../components/AskErrorCard';
 import { parseAskSpec, splitReply, type AskParse, type ReplyPart } from '@archon/awaiting';
 import { FilesMock } from '../preview/FilesMock';
+import { DeployGapPanel } from '../components/DeployGap';
+import type { DeployGapView } from '../lib/deploy-gap';
 
 /**
  * Visual preview of the console's warm palette in context.
@@ -301,6 +303,45 @@ function AskBrokenSample(): ReactElement | null {
   return part === undefined ? null : <AskErrorCard reason={part.reason} text={part.text} />;
 }
 
+/** Every state of the code map's deploy gap (#349), fixture-backed and inert. */
+const GAP_STATES: { label: string; view: Exclude<DeployGapView, { kind: 'hidden' }> }[] = [
+  {
+    label: 'behind by 3',
+    view: {
+      kind: 'behind',
+      label: 'Deploy 3 changes',
+      tipSha: 'c01b85a1',
+      blocked: null,
+      more: false,
+      prs: [
+        { number: 343, title: 'Ready to close', url: '#' },
+        { number: 341, title: 'Untitled chat fix', url: '#' },
+        { number: 336, title: 'Card last', url: '#' },
+      ],
+    },
+  },
+  {
+    label: 'pending',
+    view: {
+      kind: 'deploying',
+      pending: true,
+      progress: 'Deploying c01b85a1 · requested',
+      fraction: 0.1,
+    },
+  },
+  {
+    label: 'waiting on a chat',
+    view: {
+      kind: 'deploying',
+      pending: false,
+      progress: 'Deploying c01b85a1 · waiting on 1 chat · pauses it in 4:12',
+      fraction: 0.5,
+    },
+  },
+  { label: 'deployed', view: { kind: 'deployed', sha: 'c01b85a1' } },
+  { label: 'did not go live', view: { kind: 'not-live', target: 'c01b85a1', live: 'a9f3e21c' } },
+];
+
 export function PreviewPage(): ReactElement {
   return (
     <div className="flex h-full flex-col overflow-y-auto">
@@ -312,6 +353,30 @@ export function PreviewPage(): ReactElement {
       </header>
 
       <main className="mx-auto flex w-full max-w-[1000px] flex-col gap-x-7.5 gap-y-6 px-4.75 py-5">
+        <Section title="Code map · deploy gap · every state">
+          <div
+            data-testid="preview-deploy-gap"
+            className="flex flex-col gap-3 rounded border border-border bg-surface p-4"
+          >
+            {GAP_STATES.map(({ label, view }) => (
+              <div key={label} className="flex items-start gap-4">
+                <span className="w-[120px] shrink-0 pt-2.5 text-mini text-text-tertiary">
+                  {label}
+                </span>
+                <DeployGapPanel
+                  view={view}
+                  requested={false}
+                  canAct={true}
+                  error={null}
+                  onDeploy={(): void => {
+                    /* preview only */
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+
         <Section title="Files tab · three layouts to choose from">
           <FilesMock />
         </Section>
