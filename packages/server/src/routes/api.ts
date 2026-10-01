@@ -38,6 +38,13 @@ import {
   toIssue,
   toIssueDetail,
 } from './github-issues';
+import {
+  CODE_MAP_MERGED_PAGE,
+  CODE_MAP_QUERY,
+  readCodingBranches,
+  resolveBase,
+  toPulls,
+} from './code-map';
 import type {
   ConversationLockManager,
   AttachedFile,
@@ -315,6 +322,7 @@ function findBundledWorkflow(
 }
 import * as conversationDb from '@archon/core/db/conversations';
 import * as codebaseDb from '@archon/core/db/codebases';
+import * as projectDeployDb from '@archon/core/db/project-deploy';
 import * as envVarDb from '@archon/core/db/env-vars';
 import * as isolationEnvDb from '@archon/core/db/isolation-environments';
 import * as workflowDb from '@archon/core/db/workflows';
@@ -6811,6 +6819,46 @@ export function registerApiRoutes(
     } catch (err) {
       getLog().warn({ err, projectId, number }, 'issue.fetch_failed');
       return c.json({ issue: null, repo: slug, reason: 'unreachable' });
+    }
+  });
+
+  /**
+   * GET /api/projects/:projectId/code-map — the changes in flight, for the
+   * Overview's live code map (#348): open pull requests into the trunk with
+   * their CI rollup, the recently merged ones, and the worktree branches a
+   * chat is coding on with no pull request yet. What is live comes from the
+   * deploy route, not from here. `app.get` for the reason the issue routes
+   * give: a thin passthrough of GitHub's model.
+   */
+  app.get('/api/projects/:projectId/code-map', async c => {
+    const projectId = c.req.param('projectId');
+    const src = await resolveIssueSource(projectId);
+    if (src === null) return c.json({ error: 'Project not found' }, 404);
+    const empty = { base: null, open: [], merged: [], branches: [] };
+    if (isIssueReadFailure(src)) return c.json({ ...empty, ...src });
+
+    const slug = repoSlug(src);
+    try {
+      const out = await githubGraphQl(src, CODE_MAP_QUERY, {
+        owner: src.owner,
+        repo: src.repo,
+        merged: CODE_MAP_MERGED_PAGE,
+      });
+      if ('reason' in out) return c.json({ ...empty, repo: slug, reason: out.reason });
+      const deploy = await projectDeployDb.getProjectDeploy(projectId);
+      const base = resolveBase(out.data, deploy?.branch ?? null);
+      if (base === null) return c.json({ ...empty, repo: slug, reason: 'no-base-branch' });
+      const { open, merged, closedHeads } = toPulls(out.data, base);
+      const codebase = await codebaseDb.getCodebase(projectId);
+      const envs = await isolationEnvDb.listByCodebaseWithAge(projectId);
+      const branches =
+        codebase?.default_cwd !== undefined && codebase.default_cwd !== ''
+          ? await readCodingBranches(codebase.default_cwd, base, envs, closedHeads)
+          : [];
+      return c.json({ base, open, merged, branches, repo: slug, reason: null });
+    } catch (err) {
+      getLog().warn({ err, projectId }, 'code_map.fetch_failed');
+      return c.json({ ...empty, repo: slug, reason: 'unreachable' });
     }
   });
 

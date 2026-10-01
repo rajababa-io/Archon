@@ -145,6 +145,9 @@
       "src/routes/github-issues.test.ts"
     ],
     [
+      "src/routes/code-map.test.ts"
+    ],
+    [
       "src/routes/public-files.test.ts"
     ],
     [
