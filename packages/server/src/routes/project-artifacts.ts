@@ -204,7 +204,7 @@ export async function buildProjectArtifacts(
       out.push({
         id: `run:${run.id}:${doc.path}`,
         type: runArtifactType(doc.path),
-        name: basename(doc.path),
+        name: doc.path,
         modifiedAt: doc.modifiedAt,
         run: {
           id: run.id,

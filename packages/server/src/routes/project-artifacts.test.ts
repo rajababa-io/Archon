@@ -135,7 +135,9 @@ describe('buildProjectArtifacts', () => {
     // A finished run whose row changed (resumed, re-finished) is walked again.
     const done = runs[0];
     if (done) done.completed_at = new Date('2026-09-30T12:00:00Z');
-    expect((await buildProjectArtifacts(CODEBASE, 100)).map(a => a.name)).toContain('report.md');
+    expect((await buildProjectArtifacts(CODEBASE, 100)).map(a => a.name)).toContain(
+      'review/report.md'
+    );
   });
 
   test('includes handoffs from their lineage record', async () => {

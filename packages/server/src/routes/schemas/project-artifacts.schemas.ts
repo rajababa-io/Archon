@@ -30,7 +30,7 @@ export const projectArtifactSchema = z
     /** Stable across loads: `run:<runId>:<path>` or `handoff:<messageId>`. */
     id: z.string(),
     type: projectArtifactTypeSchema,
-    /** File name alone, for the row. */
+    /** What the row shows: the path inside the run's directory, or a handoff's file name. */
     name: z.string(),
     modifiedAt: z.string(),
     /** Set for a run artifact: read it with `GET /api/artifacts/{runId}/{path}`. */
