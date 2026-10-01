@@ -365,35 +365,24 @@ export const STATUS_LABEL: Readonly<Record<ChatStatus, string>> = {
 };
 
 /**
- * The token that renders each state. Amber is "your move", red stays failure.
- * Amber is `awaiting` alone: it means something you can clear by acting, and
- * an unread chat is marked by its bold title, never by amber (#5).
+ * The token that renders each state — one `--status-*` per state, defined for
+ * both modes in theme/tokens.css. The rail dot (`.chat-status.is-*` in
+ * `rail.css`) reads the same token, so a dot and the word beside it cannot
+ * disagree; `chat-status-css.test.ts` holds the two to it.
  *
- * `ready` shares `done`'s green and separates itself by GEOMETRY instead: the
- * rail draws it hollow where done is filled (`rail.css`, `.chat-status.is-ready
- * i`). The claim and the confirmation are one family and read better as one
- * colour; a seventh hue would have to be learned, where "not filled in yet"
- * reads on sight. It is the first state to differ by shape rather than by hue,
- * so the diameter stays the one every dot shares and only the fill changes.
- *
- * `running` does the same with `working`'s blue: hollow where working is
- * filled. Both mean "work is moving for this chat"; the hollow one is a
- * workflow run, not the agent's own turn.
- *
- * `waiting` is hollow too, and purple — the one hue no other state uses. It
- * shared running's blue until runs got a mark of their own (#188); orange was
- * the other candidate and was rejected because a hollow orange ring next to a
- * filled amber "Needs you" differs only by fill, which is the mix-up a status
- * column exists to prevent.
+ * Every state is its own hue and every dot is filled (#331). Three states were
+ * once rings in a filled state's colour, and on an 8px mark the shape was all
+ * that told them apart. Red is not a state colour: it means failed. An unread
+ * chat is marked by its bold title, never by a colour (#5).
  */
 export const STATUS_COLOR: Readonly<Record<ChatStatus, string>> = {
-  working: 'var(--running)',
-  awaiting: 'var(--warning)',
-  done: 'var(--success)',
-  ready: 'var(--success)',
-  running: 'var(--running)',
-  waiting: 'var(--ci-wait)',
-  idle: 'var(--text-tertiary)',
+  working: 'var(--status-working)',
+  awaiting: 'var(--status-awaiting)',
+  done: 'var(--status-done)',
+  ready: 'var(--status-ready)',
+  running: 'var(--status-running)',
+  waiting: 'var(--status-waiting)',
+  idle: 'var(--status-idle)',
 };
 
 export const STATUS_TITLE: Readonly<Record<ChatStatus, string>> = {

@@ -89,6 +89,18 @@
      prints its label in this colour too, so it is solved for text (4.5:1),
      not just for the dot: 4.68:1 on the darkest dark-preset hover. */
   --ci-wait: oklch(0.72 0.15 300);
+  /* Chat states (#331) — one token per state, read by both the rail dot
+     (`.chat-status.is-*` in rail.css) and every label beside one
+     (`STATUS_COLOR` in primitives/chat-status.ts). Every state is a filled dot
+     in its own hue, so no two states differ only by shape. Red is not among
+     them: it means failed and nothing else. */
+  --status-working: oklch(0.68 0.21 255);
+  --status-running: oklch(0.85 0.15 205);
+  --status-waiting: oklch(0.64 0.26 300);
+  --status-awaiting: oklch(0.77 0.19 58);
+  --status-ready: oklch(0.7 0.26 355);
+  --status-done: oklch(0.8 0.23 148);
+  --status-idle: var(--text-tertiary);
   --error: oklch(0.68 0.2 18);
   --error-soft: oklch(0.68 0.2 18 / 0.14);
   /* The other six --node-* live in the production :root in index.css with one
@@ -120,6 +132,16 @@
      on --surface. Raising it further is what breaks it. */
   --warning-mark: oklch(0.61 0.14 78);
   --ci-wait: oklch(0.52 0.18 300); /* 4.67:1 on the darkest light-preset hover */
+  /* The dark hues, darkened until each MARK keeps 3:1 (WCAG 1.4.11) on
+     --surface-hover of the light preset, the darkest surface a dot sits on —
+     the rule --warning-mark follows. Ratios are against that surface. */
+  --status-working: oklch(0.59 0.19 255); /* 3.25:1 */
+  --status-running: oklch(0.575 0.095 205); /* 3.27:1 */
+  --status-waiting: oklch(0.615 0.24 300); /* 3.24:1 */
+  --status-awaiting: oklch(0.595 0.14 58); /* 3.28:1 */
+  --status-ready: oklch(0.62 0.25 355); /* 3.25:1 */
+  --status-done: oklch(0.565 0.16 148); /* 3.31:1 */
+  --status-idle: var(--text-tertiary);
   --error: oklch(0.52 0.21 18); /* .54 read 4.34:1 on a stacked error tint */
   --error-soft: oklch(0.52 0.21 18 / 0.1);
   /* See the dark block: all six fail in light mode at their :root values.

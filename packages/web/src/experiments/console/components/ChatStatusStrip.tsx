@@ -150,8 +150,8 @@ export function ChatStatusStrip({
 
   // Colour carries the state before the words do. Read from the same map the
   // rail and the project chip read, so there is one vocabulary and not three.
-  // Overdue borrows amber, the "your move" colour: a CI wait past its alarm is
-  // something to go and look at, not something to keep waiting on.
+  // Overdue turns to the warning amber, which no state uses: a CI wait past its
+  // alarm is something to go and look at, not something to keep waiting on.
   const tone = overdue ? 'var(--warning)' : STATUS_COLOR[status];
 
   const shown = trace.slice(-TRACE_LIMIT);
