@@ -190,6 +190,10 @@ async function prepareBinding(
     owner.hold(source);
     const conversationId = `trigger-${randomUUID()}`;
     const conversation = await conversationDb.getOrCreateConversation('cli', conversationId);
+    // A resource start is background-only (no interactive gates), and its run is shown
+    // where it was asked for — the deploy bar, the trigger log. Its chat holds nothing a
+    // person acts on, so it stays out of the chat list, like a background worker's (#341).
+    await conversationDb.updateConversation(conversation.id, { hidden: true });
     const origin: ResourceStartRunMetadata = {
       receiptId: identity.receiptId,
       bindingId: identity.bindingId,
