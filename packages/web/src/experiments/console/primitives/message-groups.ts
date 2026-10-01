@@ -51,14 +51,51 @@ function displayedSecond(timestamp: string): string {
   return Number.isNaN(t) ? timestamp : String(Math.floor(t / 1000));
 }
 
+/** An agent message carrying an ask block, well-formed or not. */
+function asks(message: Message): boolean {
+  return (
+    message.role === 'assistant' && splitReply(message.content).some(p => p.kind !== 'markdown')
+  );
+}
+
+/**
+ * The agent's messages with every question moved to the end of its reply (#336).
+ *
+ * The `ask` tool's card is persisted as its own row the moment the tool is
+ * called, and the agent cannot write its picture first: text before a tool call
+ * folds away as a progress note, images and all. So in arrival order the
+ * question always sat ABOVE the final text and the picture that explains it.
+ * A question is what the reply ends on, so it renders last.
+ *
+ * A reply here is a run of consecutive agent messages; anything else — you, the
+ * system, a workflow card — ends it, so a question never moves past one.
+ */
+function askLast(messages: readonly Message[]): Message[] {
+  const ordered: Message[] = [];
+  let held: Message[] = [];
+  for (const message of messages) {
+    if (message.role === 'assistant' && !standsAlone(message)) {
+      if (asks(message)) held.push(message);
+      else ordered.push(message);
+      continue;
+    }
+    ordered.push(...held, message);
+    held = [];
+  }
+  ordered.push(...held);
+  return ordered;
+}
+
 export function groupMessages(messages: readonly Message[]): MessageGroup[] {
   const groups: MessageGroup[] = [];
-  for (const message of messages) {
+  for (const message of askLast(messages)) {
     const last = groups[groups.length - 1];
     const previous = last?.messages[last.messages.length - 1];
     const joinable =
       last?.role === message.role &&
-      displayedSecond(last.timestamp) === displayedSecond(message.timestamp) &&
+      // A question moved to the end of its reply belongs under that reply's
+      // header even though its own clock is earlier.
+      (displayedSecond(last.timestamp) === displayedSecond(message.timestamp) || asks(message)) &&
       !standsAlone(message) &&
       // A card ends a group as surely as it cannot start one, so the next
       // prose message opens a fresh header rather than continuing the card's.
@@ -88,17 +125,16 @@ export function groupMessages(messages: readonly Message[]): MessageGroup[] {
  * as two (#125). Every text piece but the last is therefore a note; the last
  * is the answer.
  *
- * A piece carrying an ask block — well-formed or not — is never a note: folding it would hide a
- * question waiting for an answer. Empty rows (tool calls only) render nothing
- * either way and do not count as the last piece.
+ * A piece carrying an ask block is never a note, and never the answer either:
+ * folding it would hide a question waiting for an answer, and since questions
+ * render last (see {@link askLast}) counting one as the answer would fold the
+ * real answer above it. Empty rows (tool calls only) render nothing either way
+ * and do not count as the last piece.
  */
 export function progressNoteIds(group: MessageGroup): Set<string> {
   const notes = new Set<string>();
   if (group.role !== 'assistant') return notes;
-  const texts = group.messages.filter(m => m.content.trim().length > 0);
-  for (const m of texts.slice(0, -1)) {
-    const asks = splitReply(m.content).some(part => part.kind !== 'markdown');
-    if (!asks) notes.add(m.id);
-  }
+  const texts = group.messages.filter(m => m.content.trim().length > 0 && !asks(m));
+  for (const m of texts.slice(0, -1)) notes.add(m.id);
   return notes;
 }
