@@ -16,6 +16,8 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import * as skill from '../skills';
 import type { DeployAnswer } from '../skills/deploy';
+import type { Project } from '../primitives/project';
+import { useProjectLabel } from '../lib/display-name';
 import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import { useLiveChats } from '../lib/live-chats';
@@ -36,16 +38,19 @@ const ORANGE = 'var(--status-awaiting)';
 
 interface DeployGapProps {
   projectId: string;
-  projectName: string;
 }
 
-export function DeployGap({ projectId, projectName }: DeployGapProps): ReactElement | null {
+export function DeployGap({ projectId }: DeployGapProps): ReactElement | null {
+  // The header reads both keys, so neither is a second request.
+  const { data: project } = useEntity<Project | null>(K.project(projectId), () =>
+    skill.getProject(projectId)
+  );
+  const projectName = useProjectLabel(projectId, project?.name ?? '');
   const { data: answer } = useEntity<DeployAnswer | null>(K.projectDeploy(projectId), () =>
     skill.getProjectDeploy(projectId)
   );
   const deploy = answer?.kind === 'set-up' ? answer.deploy : null;
   const { drain } = useLiveChats();
-  const now = useNow(1_000);
   const reload = useProjectDeployRefresh(projectId);
 
   // The commit a deploy seen on this page carried, kept past its end so the
@@ -58,6 +63,8 @@ export function DeployGap({ projectId, projectName }: DeployGapProps): ReactElem
     deploy !== null &&
     ((deploy.method === 'archon-host' && deploy.status.phase !== 'idle') ||
       (deploy.method === 'workflow' && deploy.run !== null));
+  // One second while a deploy runs, for the drain countdown; otherwise nothing here moves.
+  const now = useNow(running ? 1_000 : 30_000);
   useEffect(() => {
     if (!running) return;
     const sha = carrying ?? pressed;
