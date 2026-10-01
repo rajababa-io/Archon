@@ -189,10 +189,18 @@ export function chatStatusSets(
 ): ChatStatusSets {
   const awaiting = askAwaitingIds(conversations);
   for (const id of live.runAwaiting) awaiting.add(id);
+  // A working chat is not unread (#335): the message that started the turn
+  // stamps new activity, so every working chat would be bold, yet there is
+  // nothing to read until the turn ends. Dropping it here rather than in the
+  // rail keeps every surface agreeing, and the read marker already waits for
+  // the turn to end, so it marks the chat read the moment the id returns.
+  // Keyed on the status, not the raw set: an awaiting chat outranks working.
+  const unread = unreadIds(conversations);
+  for (const id of live.working) if (!awaiting.has(id)) unread.delete(id);
   return {
     working: live.working,
     awaiting,
-    unread: unreadIds(conversations),
+    unread,
     done: completedIds(conversations),
     ready: readyIds(conversations),
     running: live.running,
