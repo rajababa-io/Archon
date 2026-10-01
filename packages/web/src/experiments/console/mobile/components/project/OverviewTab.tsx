@@ -1,18 +1,17 @@
 import { useMemo, type ReactElement, type ReactNode } from 'react';
-import { Link } from 'react-router';
-import { ChevronRight } from 'lucide-react';
 import * as skill from '../../../skills';
 import { useEntity } from '../../../store/cache';
 import { K } from '../../../store/keys';
 import type { Run } from '../../../primitives/run';
+import { useNow } from '../../../lib/clock';
+import { NeedsYouPill } from '../../../components/NeedsYouPill';
+import { ProjectBriefCard } from '../../../components/ProjectBriefCard';
+import { CodeMapList } from '../../../components/code-map/CodeMapList';
+import { useCodeMap } from '../../../components/code-map/useCodeMap';
 import type { MobileChats } from '../../lib/use-mobile-chats';
 import { projectPath } from '../../lib/paths';
 import { projectChatRows } from '../../lib/switcher';
-import { ChatRow } from '../ChatRow';
-import { RunRow } from '../RunRow';
 import { DeployCard } from './DeployCard';
-
-const RECENT_CHATS = 5;
 
 function Section({ label, children }: { label: string; children: ReactNode }): ReactElement {
   return (
@@ -24,9 +23,11 @@ function Section({ label, children }: { label: string; children: ReactNode }): R
 }
 
 /**
- * Where a project is: its deploy, what only you can move, and the chats to
- * pick up. What needs you is the desktop overview's rule — runs paused on
- * you — plus the project's chats that are waiting on an answer.
+ * The desktop Overview's four bands, on a phone (#348): where the project is,
+ * the live code map as a list, then pictures and artifacts. The deploy card
+ * stays — it is the phone's only deploy control. What needs you is a count:
+ * runs paused on you plus the project's chats waiting on an answer, each
+ * listed on its own tab.
  */
 export function OverviewTab({
   projectId,
@@ -41,68 +42,54 @@ export function OverviewTab({
     skill.listRuns({ codebaseId: projectId, limit: skill.RUN_LIMIT })
   );
   const pausedRuns = useMemo(
-    () => (feed?.runs ?? []).filter(r => r.status === 'paused'),
+    () => (feed?.runs ?? []).filter(r => r.status === 'paused').length,
     [feed?.runs]
   );
-  const rows = useMemo(
-    () => projectChatRows(chats.chats ?? [], chats.statuses, chats.statusSets.unread, projectId),
+  const awaitingChats = useMemo(
+    () =>
+      projectChatRows(chats.chats ?? [], chats.statuses, chats.statusSets.unread, projectId).filter(
+        r => r.status === 'awaiting'
+      ).length,
     [chats.chats, chats.statuses, chats.statusSets.unread, projectId]
   );
-  const awaiting = rows.filter(r => r.status === 'awaiting');
-  const recent = [...rows]
-    .sort((a, b) => (b.chat.lastActivityAt ?? '').localeCompare(a.chat.lastActivityAt ?? ''))
-    .slice(0, RECENT_CHATS);
+  const map = useCodeMap(projectId);
+  const now = useNow();
 
   return (
     <div className="flex flex-col gap-5 py-3">
+      <Section label="Where this project is">
+        <div className="px-4">
+          <ProjectBriefCard
+            projectId={projectId}
+            badge={
+              <NeedsYouPill
+                className="min-h-11 px-4"
+                count={pausedRuns + awaitingChats}
+                to={projectPath(projectId, awaitingChats > 0 ? 'chats' : 'runs')}
+              />
+            }
+          />
+        </div>
+      </Section>
+
       <div className="px-4">
         <DeployCard projectId={projectId} projectName={projectName} />
       </div>
 
-      <Section label="Needs you">
-        {pausedRuns.length === 0 && awaiting.length === 0 ? (
-          <p className="px-4 text-body text-text-secondary">Nothing is waiting on you.</p>
-        ) : (
-          <>
-            {awaiting.length > 0 ? (
-              <ul>
-                {awaiting.map(({ chat, status, unread }) => (
-                  <li key={chat.id}>
-                    <ChatRow chat={chat} status={status} unread={unread} />
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {pausedRuns.length > 0 ? (
-              <div className="flex flex-col gap-2 px-4">
-                {pausedRuns.map(run => (
-                  <RunRow key={run.id} run={run} />
-                ))}
-              </div>
-            ) : null}
-          </>
-        )}
+      <Section label="Live code map">
+        <CodeMapList data={map} now={now} />
       </Section>
 
-      <Section label="Recent chats">
-        {recent.length === 0 ? (
-          <p className="px-4 text-body text-text-tertiary">No open chats.</p>
-        ) : (
-          <ul>
-            {recent.map(({ chat, status, unread }) => (
-              <li key={chat.id}>
-                <ChatRow chat={chat} status={status} unread={unread} />
-              </li>
-            ))}
-          </ul>
-        )}
-        <Link
-          to={projectPath(projectId, 'chats')}
-          className="mobile-row flex items-center gap-1 px-4 text-body text-text-secondary"
-        >
-          Every chat in this project
-          <ChevronRight aria-hidden className="h-4 w-4" />
-        </Link>
+      <Section label="Pictures">
+        <p className="px-4 text-body text-text-tertiary">
+          Pictures from this project will show here.
+        </p>
+      </Section>
+
+      <Section label="Artifacts">
+        <p className="px-4 text-body text-text-tertiary">
+          Plans, reports and reviews from this project will show here.
+        </p>
       </Section>
     </div>
   );

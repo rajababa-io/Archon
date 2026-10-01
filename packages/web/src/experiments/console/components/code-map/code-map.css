@@ -1,0 +1,92 @@
+/* The live code map (#348). Colours arrive as attributes from the status
+   tokens; this file owns type and motion only. */
+
+.code-map text {
+  font-size: 12px;
+}
+.code-map .code-map-label {
+  fill: var(--text-secondary);
+  font-size: 13px;
+}
+.code-map .code-map-title {
+  fill: var(--text-secondary);
+}
+.code-map .code-map-detail,
+.code-map .code-map-pill,
+.code-map .code-map-pill-text {
+  font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+}
+.code-map .code-map-pill {
+  fill: var(--surface);
+  font-weight: 600;
+}
+.code-map .code-map-pill-quiet {
+  fill: var(--surface);
+  stroke-width: 1.5;
+}
+.code-map a:hover .code-map-title {
+  fill: var(--text-primary);
+}
+.code-map .code-map-lane path {
+  transition: stroke 0.8s ease;
+}
+.code-map .code-map-lane circle {
+  transition: fill 0.8s ease;
+}
+
+/* A line still in CI breathes, so the one thing moving reads as moving. */
+.code-map .code-map-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: code-map-pulse 1.6s ease-in-out infinite;
+}
+@keyframes code-map-pulse {
+  0%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.1;
+  }
+}
+
+/* The merge: the line draws itself down into the trunk, then the dot lands. */
+.code-map .code-map-draw {
+  stroke-dasharray: 1;
+  animation: code-map-draw 1.2s ease-out both;
+}
+@keyframes code-map-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.code-map .code-map-pop {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: code-map-pop 0.6s 1s ease-out both;
+}
+@keyframes code-map-pop {
+  0% {
+    transform: scale(0);
+  }
+  60% {
+    transform: scale(1.8);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .code-map .code-map-pulse,
+  .code-map .code-map-draw,
+  .code-map .code-map-pop {
+    animation: none;
+  }
+}

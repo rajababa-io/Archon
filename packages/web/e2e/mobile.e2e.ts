@@ -23,6 +23,7 @@ import {
   OTHER_CHAT_TEXT,
   OTHER_CHAT_TITLE,
   OPEN_ISSUE_TITLE,
+  CODE_MAP_PR_TITLE,
   PROJECT,
   PROJECT_ID,
   PROJECT_SHORT_NAME,
@@ -437,11 +438,14 @@ test("a chat's project opens from its header, and every tab shows its part", asy
   await page.getByRole('link', { name: `${PROJECT_SHORT_NAME} ▸` }).tap();
   await expect(page).toHaveURL(new RegExp(`${projectPath}$`));
 
-  // Overview: the deploy, and the run stopped on you.
+  // Overview: the deploy, the run stopped on you as a count, and the code map.
   await expect(page.getByRole('heading', { name: PROJECT_SHORT_NAME })).toBeVisible();
   await expect(page.getByTestId('mobile-deploy')).toContainText('1 merged PR waiting');
-  const needsYou = page.getByRole('region', { name: 'Needs you' });
-  await expect(needsYou.getByRole('link', { name: new RegExp(RUN_WORKFLOW) })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Needs you · 1' })).toBeVisible();
+  const map = page.getByRole('region', { name: 'Live code map' });
+  await expect(map.getByRole('link', { name: new RegExp(CODE_MAP_PR_TITLE) })).toContainText(
+    'CI running · 4 of 7 checks'
+  );
 
   const tabs = page.getByRole('navigation', { name: 'Project' });
   await tabs.getByRole('link', { name: 'Runs' }).tap();

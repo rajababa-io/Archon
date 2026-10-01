@@ -12,6 +12,7 @@ export * from './activeChats';
 export * from './deploy';
 export * from './projectCounts';
 export * from './issues';
+export * from './codeMap';
 export * from './presentation';
 export * from './projects';
 export * from './workflows';

@@ -1,4 +1,4 @@
-import { type ReactElement } from 'react';
+import { type ReactElement, type ReactNode } from 'react';
 import { useEntity } from '../store/cache';
 import { K } from '../store/keys';
 import * as skill from '../skills';
@@ -27,7 +27,14 @@ const FIELDS: readonly { key: keyof Omit<ProjectBrief, 'updatedAt'>; label: stri
  * It rides in on the project row (`presentation.brief`), so there is no second
  * request and nothing to sync between machines.
  */
-export function ProjectBriefCard({ projectId }: { projectId: string }): ReactElement | null {
+export function ProjectBriefCard({
+  projectId,
+  badge,
+}: {
+  projectId: string;
+  /** Rides under the brief — the Overview's "Needs you" count (#348). */
+  badge?: ReactNode;
+}): ReactElement | null {
   const { data: projects } = useEntity<Project[]>(K.projects, skill.listProjects);
   const brief = projects?.find((p: Project) => p.id === projectId)?.brief ?? null;
 
@@ -35,9 +42,12 @@ export function ProjectBriefCard({ projectId }: { projectId: string }): ReactEle
     // Says what it is rather than offering a text box: there is nothing for
     // the reader to do here, and pretending otherwise wastes a click.
     return (
-      <p className="rounded-lg border border-dashed border-border px-3 py-1.75 text-body text-text-tertiary">
-        Not written yet. This is filled in from the repository, the runs and the open issues.
-      </p>
+      <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border px-3 py-1.75">
+        <p className="text-body text-text-tertiary">
+          Not written yet. This is filled in from the repository, the runs and the open issues.
+        </p>
+        {badge}
+      </div>
     );
   }
 
@@ -59,6 +69,7 @@ export function ProjectBriefCard({ projectId }: { projectId: string }): ReactEle
           );
         })}
       </div>
+      {badge !== undefined && badge !== null ? <div className="mt-2">{badge}</div> : null}
       {brief.updatedAt !== null ? (
         <p className="mt-2.5 border-t border-border pt-1.25 text-mini text-text-tertiary">
           Written {relativeTime(new Date(brief.updatedAt).toISOString())}
