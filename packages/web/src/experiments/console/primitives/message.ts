@@ -50,6 +50,19 @@ export interface MessageFile {
   imageUrl: string | null;
 }
 
+/**
+ * Where the server serves the kept copy of an image named `keptAs`, or null.
+ *
+ * Encoded, not trusted: the server's route refuses anything but a UUID and a
+ * raster extension, and this keeps a bad value from becoming a different path
+ * on the way there.
+ */
+export function keptImageUrl(keptAs: unknown): string | null {
+  return typeof keptAs === 'string' && keptAs.length > 0
+    ? `/api/attachments/${encodeURIComponent(keptAs)}`
+    : null;
+}
+
 export interface WorkflowDispatchMeta {
   workflowName: string;
   workerConversationId?: string;
@@ -231,13 +244,7 @@ export function toMessage(raw: RawMessage): Message {
       name: f.name,
       mimeType: typeof f.mimeType === 'string' ? f.mimeType : '',
       size: typeof f.size === 'number' ? f.size : 0,
-      // Encoded, not trusted: the server's route refuses anything but a UUID
-      // and a raster extension, and this keeps a bad value from becoming a
-      // different path on the way there.
-      imageUrl:
-        typeof f.keptAs === 'string' && f.keptAs.length > 0
-          ? `/api/attachments/${encodeURIComponent(f.keptAs)}`
-          : null,
+      imageUrl: keptImageUrl(f.keptAs),
     }));
   return {
     id: raw.id,

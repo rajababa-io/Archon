@@ -38,7 +38,7 @@ describe('QueuedMessages — send now', () => {
   });
 
   test('a message with attachments waits for its own turn', () => {
-    const files = [{ name: 'a.png', mimeType: 'image/png', size: 1, imageUrl: null }];
+    const files = [{ name: 'a.png', mimeType: 'image/png', size: 1 }];
     expect(render([queued({ files })], true)).not.toContain('Send now');
   });
 
@@ -48,5 +48,23 @@ describe('QueuedMessages — send now', () => {
     expect(html).not.toContain('Send now');
     expect(html).not.toContain('Edit');
     expect(html).not.toContain('Remove');
+  });
+});
+
+describe('QueuedMessages — attachments', () => {
+  test('an image the server kept shows as a thumbnail, like a sent message', () => {
+    const keptAs = '0b6f1c2e-1111-4222-8333-944455556666.png';
+    const files = [{ name: 'shot.png', mimeType: 'image/png', size: 2048, keptAs }];
+    const html = render([queued({ files })], false);
+    expect(html).toContain(`<img src="/api/attachments/${keptAs}"`);
+    expect(html).toContain('alt="shot.png"');
+  });
+
+  test('any other file shows as a chip that says it has not been read yet', () => {
+    const files = [{ name: 'notes.md', mimeType: 'text/markdown', size: 10 }];
+    const html = render([queued({ files })], false);
+    expect(html).toContain('notes.md');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('the agent reads it when the message is delivered');
   });
 });

@@ -138,7 +138,15 @@ export const queuedMessageSchema = z
   .object({
     id: z.string(),
     text: z.string(),
-    files: z.array(z.object({ name: z.string(), mimeType: z.string(), size: z.number() })),
+    files: z.array(
+      z.object({
+        name: z.string(),
+        mimeType: z.string(),
+        size: z.number(),
+        /** The kept copy of an image, served by `/api/attachments/:name`. */
+        keptAs: z.string().optional(),
+      })
+    ),
     queuedAt: z.string(),
     /** Sent into the running turn and not yet read; it cannot be taken back. */
     steering: z.boolean(),
