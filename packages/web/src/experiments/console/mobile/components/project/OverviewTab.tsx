@@ -89,7 +89,7 @@ export function OverviewTab({
 
       <Section label="Artifacts">
         <div className="px-4">
-          <ArtifactsBand projectId={projectId} />
+          <ArtifactsBand projectId={projectId} phone />
         </div>
       </Section>
     </div>
