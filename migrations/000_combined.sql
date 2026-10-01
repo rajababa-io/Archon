@@ -32,6 +32,7 @@
 --   16. remote_agent_notify_prefs
 --   17. remote_agent_deploy_not_started
 --   18. remote_agent_deploy_reports
+--   19. remote_agent_shares
 --
 -- Dropped tables (via migrations):
 --   - remote_agent_command_templates (017)
@@ -894,6 +895,18 @@ CREATE TABLE IF NOT EXISTS remote_agent_deploy_reports (
 
 COMMENT ON TABLE remote_agent_deploy_reports IS
   'What a remote-host deploy reported doing: held, ok or failed, with the commit it was running afterwards.';
+
+-- Share links (#345). See migrations/045_shares.sql.
+CREATE TABLE IF NOT EXISTS remote_agent_shares (
+  code VARCHAR(32) PRIMARY KEY,
+  path TEXT NOT NULL UNIQUE,
+  access VARCHAR(16) NOT NULL DEFAULT 'link' CHECK (access IN ('link', 'restricted')),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE remote_agent_shares IS
+  'Published pages and files reachable at /share/<code>/ without a login, while access is link.';
 
 -- Provider-attempt holders on the shared resource slot (#2816): owner process
 -- columns, and the holder-kind CHECK widened from ('run'). Unreleased dev databases

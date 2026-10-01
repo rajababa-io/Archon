@@ -10,7 +10,12 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { createLogger, captureChatTurn, canonicalizeProjectPath } from '@archon/paths';
+import {
+  createLogger,
+  captureChatTurn,
+  canonicalizeProjectPath,
+  getArchonPublicPath,
+} from '@archon/paths';
 import { isEffortRung } from '@archon/paths/effort';
 import type {
   IPlatformAdapter,
@@ -49,6 +54,9 @@ import { getAgentProvider } from '../services/provider-admission';
 import { buildManageRunTool } from './manage-run-tool';
 import { buildProjectBriefTool } from './update-project-brief-tool';
 import { buildReadyToCloseTool } from './ready-to-close-tool';
+import { buildShareTool } from './share-tool';
+import { setShareAccess } from '../db/shares';
+import { shareTarget } from '../services/shares';
 import { buildAskTool, withToolReplies } from './ask-tool';
 import { buildWatchCiTool } from './watch-ci-tool';
 import { openCiWatch } from '../db/ci-watches';
@@ -3176,6 +3184,11 @@ export async function handleMessage(
           mark: async (ready): Promise<void> => {
             await db.setConversationReady(conversation.id, ready);
           },
+        }),
+        // Letting one published page past the deployment's login (#345).
+        buildShareTool({
+          target: path => shareTarget(getArchonPublicPath(), path),
+          set: setShareAccess,
         }),
         // Questions asked through a typed call, checked before the reader sees
         // them, instead of an ask fence typed from memory.

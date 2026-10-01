@@ -8188,6 +8188,18 @@ describe('mark_ready_to_close', () => {
     expect(names).not.toContain('close_chat');
   });
 
+  test('share_page is offered, so a chat can hand out a link to what it published (#345)', async () => {
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'hi' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+
+    await handleMessage(makePlatform(), 'conv-1', 'share the deck');
+
+    const options = mockSendQuery.mock.calls.at(-1)?.[3] as { nativeTools?: { name: string }[] };
+    expect((options.nativeTools ?? []).map(t => t.name)).toContain('share_page');
+  });
+
   test('watch_ci is offered on the web, whose dispatch is what delivers it', async () => {
     const turn = async (platformType: 'web' | 'slack'): Promise<string[]> => {
       mockSendQuery.mockImplementationOnce(async function* () {

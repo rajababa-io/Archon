@@ -244,6 +244,9 @@ describe('SqliteAdapter upgrade path', () => {
     expect(columnsOf(path, 'remote_agent_deploy_reports')).toEqual(
       expect.arrayContaining(['verdict', 'sha', 'live_sha', 'reason'])
     );
+    expect(columnsOf(path, 'remote_agent_shares')).toEqual(
+      expect.arrayContaining(['code', 'path', 'access', 'created_at', 'updated_at'])
+    );
     expect(columnsOf(path, 'remote_agent_deploy_runs')).toEqual(
       expect.arrayContaining(['run_id', 'codebase_id', 'sha', 'created_at'])
     );

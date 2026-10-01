@@ -6,6 +6,7 @@ import { format, resolveConfig } from 'prettier';
 import { registerApiRoutes } from '../routes/api';
 import { registerPushRoutes } from '../routes/push';
 import { registerConsoleViewRoutes } from '../routes/console-views';
+import { registerShareApiRoutes } from '../routes/shares';
 
 const OUTPUT_PATH = resolve(import.meta.dir, '../../../web/src/lib/api.generated.d.ts');
 const GENERATOR_PATH = resolve(
@@ -112,6 +113,7 @@ async function generateApiTypes(): Promise<string> {
   registerApiRoutes(app, {} as never, {} as never);
   registerPushRoutes(app, {} as never);
   registerConsoleViewRoutes(app);
+  registerShareApiRoutes(app);
 
   const response = await app.request('/api/openapi.json');
   if (!response.ok) {
