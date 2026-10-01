@@ -5,6 +5,7 @@ import { K } from '../../../store/keys';
 import type { Run } from '../../../primitives/run';
 import { useNow } from '../../../lib/clock';
 import { NeedsYouPill } from '../../../components/NeedsYouPill';
+import { PicturesBand } from '../../../components/PicturesBand';
 import { ProjectBriefCard } from '../../../components/ProjectBriefCard';
 import { CodeMapList } from '../../../components/code-map/CodeMapList';
 import { useCodeMap } from '../../../components/code-map/useCodeMap';
@@ -80,11 +81,10 @@ export function OverviewTab({
         <CodeMapList data={map} now={now} />
       </Section>
 
-      <Section label="Pictures">
-        <p className="px-4 text-body text-text-tertiary">
-          Pictures from this project will show here.
-        </p>
-      </Section>
+      {/* Uppercase heading, like the phone's other sections. */}
+      <div className="px-4 [&_h2]:uppercase">
+        <PicturesBand projectId={projectId} />
+      </div>
 
       <Section label="Artifacts">
         <p className="px-4 text-body text-text-tertiary">
