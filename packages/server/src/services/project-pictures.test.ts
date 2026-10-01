@@ -7,7 +7,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { removeTempTree } from '@archon/paths/test-utils';
 import sharp from 'sharp';
 import { listProjectPictures, projectPictureRoot, type ThumbnailMaker } from './project-pictures';
@@ -200,6 +200,6 @@ describe('projectPictureRoot', () => {
     expect(projectPictureRoot('/pub', '../etc')).toBeNull();
     expect(projectPictureRoot('/pub', '.')).toBeNull();
     expect(projectPictureRoot('/pub', '.thumbs')).toBeNull();
-    expect(projectPictureRoot('/pub', 'owner/repo')).toBe('/pub/owner/repo');
+    expect(projectPictureRoot('/pub', 'owner/repo')).toBe(resolve('/pub', 'owner', 'repo'));
   });
 });
