@@ -173,6 +173,9 @@
       "src/routes/console-views.test.ts"
     ],
     [
+      "src/routes/shares.test.ts"
+    ],
+    [
       "src/services/deploy-park.integration.test.ts"
     ]
   ]

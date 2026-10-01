@@ -1119,6 +1119,15 @@ export class SqliteAdapter implements IDatabase {
         PRIMARY KEY (person, scope_id)
       );
 
+      -- Mirrors remote_agent_shares in migrations/000_combined.sql (#345).
+      CREATE TABLE IF NOT EXISTS remote_agent_shares (
+        code TEXT PRIMARY KEY,
+        path TEXT NOT NULL UNIQUE,
+        access TEXT NOT NULL DEFAULT 'link' CHECK (access IN ('link', 'restricted')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+
       -- Workflow events table
       CREATE TABLE IF NOT EXISTS remote_agent_workflow_events (
         id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),

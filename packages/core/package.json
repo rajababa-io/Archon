@@ -148,6 +148,9 @@
       "src/db/console-view-prefs.integration.test.ts"
     ],
     [
+      "src/db/shares.integration.test.ts"
+    ],
+    [
       "src/db/conversations.order.integration.test.ts"
     ],
     [
@@ -216,6 +219,9 @@
     ],
     [
       "src/services/run-attention-watch.test.ts"
+    ],
+    [
+      "src/services/shares.test.ts"
     ],
     [
       "src/workflows/store-adapter.test.ts",
@@ -299,6 +305,7 @@
       "src/orchestrator/ask-tool.test.ts",
       "src/orchestrator/watch-ci-tool.test.ts",
       "src/orchestrator/update-project-brief-tool.test.ts",
+      "src/orchestrator/share-tool.test.ts",
       "src/handlers/provider-commands.test.ts"
     ]
   ]

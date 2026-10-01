@@ -89,6 +89,7 @@ import {
 import { registerApiRoutes } from './routes/api';
 import { registerPushRoutes } from './routes/push';
 import { registerConsoleViewRoutes } from './routes/console-views';
+import { registerShareApiRoutes, registerShareServing } from './routes/shares';
 import { startPush } from './services/push-service';
 import {
   settleCiWatchesForHead,
@@ -857,6 +858,7 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   const apiRoutes = registerApiRoutes(app, webAdapter, lockManager, activePlatforms, deployHost);
   registerPushRoutes(app, startPush(webAdapter));
   registerConsoleViewRoutes(app);
+  registerShareApiRoutes(app);
   // A turn that starts taking mid-turn input, or a steered message it read,
   // changes what the chat's queue shows — "send now" appears, a message leaves.
   lockManager.setQueueListener(apiRoutes.emitQueueChanged);
@@ -1041,6 +1043,9 @@ export async function startServer(opts: ServerOptions = {}): Promise<void> {
   // Published files from ARCHON_HOME. Registered before the SPA catch-all
   // and outside the production-only block below — see the note in the module.
   await registerPublicFiles(app);
+  // Share links: the one prefix meant to answer without the deployment's
+  // login. Before the SPA catch-all for the same reason as `/files`.
+  registerShareServing(app);
 
   // Serve web UI static files in production
   if (process.env.NODE_ENV === 'production' || !process.env.WEB_UI_DEV) {

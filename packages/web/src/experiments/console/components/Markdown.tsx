@@ -1,10 +1,19 @@
-import { createContext, useContext, useState, type ReactElement } from 'react';
+import {
+  Children,
+  createContext,
+  useContext,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import rehypeHighlight from 'rehype-highlight';
 import { CodeBlock } from './CodeBlock';
 import { sameOriginFallback } from '../lib/published-image';
+import { publishedPath } from '../skills/shares';
+import { ShareLinkButton } from './ShareDialog';
 
 /**
  * Markdown rendered in the console's own type scale, not a prose stylesheet's.
@@ -52,17 +61,36 @@ function LinkedImage({ src: written, alt }: { src?: string; alt?: string }): Rea
   );
 }
 
+/**
+ * A text link to a published file carries a Share control (#345). A picture
+ * that is itself a link does not: its address is printed as a text link under
+ * it, and a control on every image would crowd every diagram.
+ */
+function isTextOnly(children: ReactNode): boolean {
+  return Children.toArray(children).every(c => typeof c === 'string');
+}
+
 export const MD_COMPONENTS: Components = {
-  a: ({ href, children }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="underline decoration-text-tertiary/50 underline-offset-2 transition-colors hover:text-accent-bright hover:decoration-accent-bright"
-    >
-      <INSIDE_LINK.Provider value={true}>{children}</INSIDE_LINK.Provider>
-    </a>
-  ),
+  a: ({ href, children }) => {
+    const shareable = href !== undefined && isTextOnly(children) ? publishedPath(href) : null;
+    const link = (
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="underline decoration-text-tertiary/50 underline-offset-2 transition-colors hover:text-accent-bright hover:decoration-accent-bright"
+      >
+        <INSIDE_LINK.Provider value={true}>{children}</INSIDE_LINK.Provider>
+      </a>
+    );
+    if (shareable === null) return link;
+    return (
+      <>
+        {link}
+        <ShareLinkButton path={shareable} />
+      </>
+    );
+  },
   img: ({ src, alt }) => <LinkedImage src={typeof src === 'string' ? src : undefined} alt={alt} />,
   code: ({ className, children }) => {
     const isBlock = className?.startsWith('language-');
