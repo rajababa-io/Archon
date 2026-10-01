@@ -82,6 +82,10 @@ describe('activeProjectTab', () => {
     expect(activeProjectTab('/console/p/abc/chat/')).toBe('chat');
   });
 
+  test("the pictures gallery lights Overview — it is the band's See all", () => {
+    expect(activeProjectTab('/console/p/abc/pictures')).toBe('overview');
+  });
+
   test('the runs route lights Runs', () => {
     expect(activeProjectTab('/console/p/abc')).toBe('runs');
   });

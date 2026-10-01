@@ -163,6 +163,7 @@ import { findCommandFiles } from '@archon/core/utils/commands';
 import { conversationCheckout } from '@archon/core/utils/conversation-checkout';
 import { DEPLOY_VERDICTS, type DeployStatus, getDeployStatus } from '../services/deploy-status';
 import { registerProjectDeployRoutes } from './project-deploy';
+import { registerProjectPicturesRoutes } from './project-pictures';
 import type { DeployHost } from '../services/workflow-deploy';
 import { resumeWorkflowRunFromServer } from '../services/workflow-resume-service';
 import { TURN_RESUMED_NOTICE, type ParkedTurnDispatcher } from '../services/deploy-park';
@@ -6873,6 +6874,9 @@ export function registerApiRoutes(
     },
     deployHost
   );
+
+  // The Overview's Pictures band and gallery (#350).
+  registerProjectPicturesRoutes(app);
 
   /**
    * GET/PATCH /api/projects/:projectId/presentation — the console's own view of

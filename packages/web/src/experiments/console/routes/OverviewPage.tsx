@@ -2,6 +2,7 @@ import { useMemo, type ReactElement, type ReactNode } from 'react';
 import { useParams } from 'react-router';
 import { EmptyState } from '../components/EmptyState';
 import { NeedsYouPill } from '../components/NeedsYouPill';
+import { PicturesBand } from '../components/PicturesBand';
 import { ProjectBriefCard } from '../components/ProjectBriefCard';
 import { CodeMap } from '../components/code-map/CodeMap';
 import { DeployGap } from '../components/DeployGap';
@@ -85,9 +86,7 @@ export function OverviewPage(): ReactElement {
         </Section>
 
         {/* 3 — the pictures the chats drew (#350). */}
-        <Section label="Pictures">
-          <p className="text-body text-text-tertiary">Pictures from this project will show here.</p>
-        </Section>
+        <PicturesBand projectId={projectId} />
 
         {/* 4 — the documents the runs wrote (#351). */}
         <Section label="Artifacts">

@@ -77,6 +77,8 @@ export function activeProjectTab(pathname: string): ProjectView {
   if (/\/chat\/?$/.test(pathname)) return 'chat';
   if (/\/issues\/?$/.test(pathname)) return 'issues';
   if (/\/overview\/?$/.test(pathname)) return 'overview';
+  // The pictures gallery is the Overview band's "See all", so Overview stays lit.
+  if (/\/pictures\/?$/.test(pathname)) return 'overview';
   if (/\/files\/?$/.test(pathname)) return 'files';
   // Runs is the bare project path AND a run's detail page, which has no tab of
   // its own — a run belongs to Runs, so that is what stays lit while you read

@@ -567,6 +567,18 @@ The console tab each signed-in person last picked, so All projects and each proj
 
 ---
 
+## Project pictures
+
+The pictures a project has published, for the console's Overview Pictures band and gallery.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/projects/{projectId}/pictures` | `{ all, total, topics, pictures }`, newest first. Query: `limit` (1–200, default 8), `offset`, `topic`. Each picture has `url` (the original) and `thumbUrl` (a WebP at most 480px wide, or `null` when one could not be made) |
+
+A picture belongs to the project whose name is its folder under `$ARCHON_HOME/public/`: project `archon` owns `public/archon/`, project `owner/repo` owns `public/owner/repo/`. A folder that is no project's name is listed for none. The first folder below that is the picture's topic. Thumbnails are written to `public/.thumbs/` on first listing and served by `/files/` like the originals; a compiled binary cannot load the image library, so there `thumbUrl` is always `null`.
+
+---
+
 ## Configuration
 
 | Method | Path | Description |

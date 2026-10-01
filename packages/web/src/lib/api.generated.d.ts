@@ -4004,6 +4004,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/projects/{projectId}/pictures': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** A project's published pictures, newest first, with thumbnails */
+    get: {
+      parameters: {
+        query?: {
+          limit?: number;
+          offset?: number | null;
+          topic?: string;
+        };
+        header?: never;
+        path: {
+          projectId: string;
+        };
+        cookie?: never;
+      };
+      requestBody?: never;
+      responses: {
+        /** @description OK */
+        200: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['ProjectPicturesResponse'];
+          };
+        };
+        /** @description No project */
+        404: {
+          headers: {
+            [name: string]: unknown;
+          };
+          content: {
+            'application/json': components['schemas']['Error'];
+          };
+        };
+      };
+    };
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/config': {
     parameters: {
       query?: never;
@@ -6757,6 +6808,26 @@ export interface components {
       defaultBranch: string | null;
       complete: boolean;
       reason: string | null;
+    };
+    ProjectPicturesResponse: {
+      all: number;
+      total: number;
+      topics: components['schemas']['ProjectPictureTopic'][];
+      pictures: components['schemas']['ProjectPicture'][];
+    };
+    ProjectPictureTopic: {
+      name: string;
+      count: number;
+      latestAt: string;
+    };
+    ProjectPicture: {
+      path: string;
+      topic: string | null;
+      name: string;
+      url: string;
+      thumbUrl: string | null;
+      modifiedAt: string;
+      bytes: number;
     };
     ConfigResponse: {
       config: components['schemas']['SafeConfig'];
