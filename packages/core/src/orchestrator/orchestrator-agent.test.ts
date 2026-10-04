@@ -31,7 +31,7 @@ import type { WorkflowDefinition } from '@archon/workflows/schemas/workflow';
 import type { WorkflowRun } from '@archon/workflows/schemas/workflow-run';
 import { toBranchName } from '@archon/git';
 import { splitReply } from '@archon/awaiting';
-import type { IAgentProvider, ProviderCapabilities } from '@archon/providers/types';
+import type { IAgentProvider, MessageChunk, ProviderCapabilities } from '@archon/providers/types';
 import type * as Git from '@archon/git';
 import type * as ConfigLoader from '../config/config-loader';
 import type * as ConversationDb from '../db/conversations';
@@ -5394,6 +5394,120 @@ describe('stale session ID clearing on error_during_execution', () => {
       expect(reply).toBeGreaterThanOrEqual(0);
       // The reply goes out before the error message, not after it.
       expect(texts.length).toBeGreaterThan(reply + 1);
+    });
+
+    // An ask card is emitted by a tool, not typed, so text after it used to
+    // release it before the Stop hook ruled — the rewrite then asked again and
+    // the card showed twice (#358).
+    describe('with an ask card in the reply (#358)', () => {
+      type AskHandler = (input: unknown) => Promise<string>;
+      const card = (title: string) => ({
+        questions: [{ title, options: [{ label: 'A' }, { label: 'B' }] }],
+      });
+      const askTool = (): AskHandler | undefined => {
+        const options = mockSendQuery.mock.calls.at(-1)?.[3] as
+          | { nativeTools?: { name: string; handler: AskHandler }[] }
+          | undefined;
+        return options?.nativeTools?.find(t => t.name === 'ask')?.handler;
+      };
+      const run = async (
+        mode: 'stream' | 'batch',
+        script: (ask: (title: string) => Promise<void>) => AsyncGenerator<MessageChunk>
+      ): Promise<string[]> => {
+        const providers = await import('@archon/providers');
+        const capsMock = providers.getProviderCapabilities as ReturnType<typeof mock>;
+        capsMock.mockReturnValue({ ...DEFAULT_PROVIDER_CAPS, nativeTools: true });
+        const codebase = makeCodebaseForSync();
+        mockGetOrCreateConversation.mockReturnValueOnce(
+          Promise.resolve(
+            makeConversation({ ai_assistant_type: 'claude', codebase_id: 'codebase-1' })
+          )
+        );
+        mockGetCodebase.mockReturnValueOnce(Promise.resolve(codebase));
+        mockListCodebases.mockReturnValueOnce(Promise.resolve([codebase]));
+        mockSendQuery.mockImplementationOnce(() =>
+          script(async title => {
+            await askTool()?.(card(title));
+          })
+        );
+        try {
+          const platform = makePlatform();
+          (platform.getStreamingMode as ReturnType<typeof mock>).mockReturnValue(mode);
+          await handleMessage(platform, 'conv-1', 'hello');
+          return sentTexts(platform);
+        } finally {
+          capsMock.mockReturnValue({ ...DEFAULT_PROVIDER_CAPS });
+        }
+      };
+      const askCall = { type: 'tool', toolName: 'ask', toolInput: {} } as const;
+      const askResult = { type: 'tool_result', toolName: 'ask', toolOutput: 'shown' } as const;
+
+      test('stream: a sent-back reply takes its card with it, so the card shows once', async () => {
+        const texts = await run('stream', async function* (ask) {
+          yield askCall;
+          await ask('first card');
+          yield askResult;
+          yield { type: 'assistant', content: 'one question above' };
+          yield stopHook;
+          yield { type: 'thinking', content: 'needs a picture' };
+          yield askCall;
+          await ask('second card');
+          yield askResult;
+          yield { type: 'assistant', content: 'rewritten' };
+          yield stopHook;
+          yield { type: 'result', sessionId: 'sid' };
+        });
+        expect(texts.some(t => t.includes('first card'))).toBe(false);
+        expect(texts.some(t => t.includes('second card'))).toBe(true);
+        expect(texts).not.toContain('one question above');
+        expect(texts).toContain('rewritten');
+      });
+
+      test('stream: a passing reply delivers the card, then the text after it', async () => {
+        const texts = await run('stream', async function* (ask) {
+          yield askCall;
+          await ask('the card');
+          yield askResult;
+          yield { type: 'assistant', content: 'one question above' };
+          yield stopHook;
+          yield { type: 'result', sessionId: 'sid' };
+        });
+        const cardAt = texts.findIndex(t => t.includes('the card'));
+        expect(cardAt).toBeGreaterThanOrEqual(0);
+        expect(texts.indexOf('one question above')).toBeGreaterThan(cardAt);
+      });
+
+      test('stream: a card followed by other work is released before that work', async () => {
+        const texts = await run('stream', async function* (ask) {
+          yield askCall;
+          await ask('the card');
+          yield askResult;
+          yield { type: 'tool', toolName: 'Read', toolInput: { file_path: '/x' } };
+          yield { type: 'result', sessionId: 'sid' };
+        });
+        const cardAt = texts.findIndex(t => t.includes('the card'));
+        const readAt = texts.findIndex(t => !t.includes('the card') && t.includes('Read'));
+        expect(cardAt).toBeGreaterThanOrEqual(0);
+        expect(readAt).toBeGreaterThan(cardAt);
+      });
+
+      test('batch: the final message leaves out a sent-back card', async () => {
+        const texts = await run('batch', async function* (ask) {
+          yield askCall;
+          await ask('first card');
+          yield askResult;
+          yield { type: 'assistant', content: 'one question above' };
+          yield stopHook;
+          yield askCall;
+          await ask('second card');
+          yield askResult;
+          yield { type: 'assistant', content: 'rewritten' };
+          yield stopHook;
+          yield { type: 'result', sessionId: 'sid' };
+        });
+        expect(texts.some(t => t.includes('first card'))).toBe(false);
+        expect(texts.some(t => t.includes('second card'))).toBe(true);
+      });
     });
 
     test('batch: the final message leaves out the sent-back draft', async () => {
