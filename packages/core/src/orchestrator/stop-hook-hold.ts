@@ -13,13 +13,29 @@
  * rejected draft followed by its rewrite (#190). Text followed by other work
  * (a tool call) is an interim note and is released as soon as that work
  * starts; only a trailing run of text waits for the turn to decide.
+ *
+ * A question card the `ask` tool emitted belongs to that trailing run, not
+ * before it (#358). Text after the card is still the same reply, so it must
+ * not release the card: if the Stop hook then sends the reply back, the
+ * rewrite asks again and the reader would see the card twice.
  */
 export class StopHookHold {
   private held: string[] = [];
   private stopHookFinished = false;
+  private heldToolReply = false;
 
-  hold(text: string): void {
+  /** `fromTool`: the text is a reply a tool emitted, such as an ask card. */
+  hold(text: string, fromTool = false): void {
     this.held.push(text);
+    if (fromTool) this.heldToolReply = true;
+  }
+
+  /**
+   * More text arrived and should join the held text instead of releasing it:
+   * a tool reply is held and no Stop hook has judged it yet.
+   */
+  keepsTextTogether(): boolean {
+    return this.heldToolReply && !this.stopHookFinished;
   }
 
   /** A Stop hook finished. It judged the held text only if text is held. */
@@ -52,5 +68,6 @@ export class StopHookHold {
   private reset(): void {
     this.held = [];
     this.stopHookFinished = false;
+    this.heldToolReply = false;
   }
 }

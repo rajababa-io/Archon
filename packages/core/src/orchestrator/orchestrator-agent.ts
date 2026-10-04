@@ -57,7 +57,7 @@ import { buildReadyToCloseTool } from './ready-to-close-tool';
 import { buildShareTool } from './share-tool';
 import { setShareAccess } from '../db/shares';
 import { shareTarget } from '../services/shares';
-import { buildAskTool, withToolReplies } from './ask-tool';
+import { buildAskTool, isToolReply, withToolReplies } from './ask-tool';
 import { buildWatchCiTool } from './watch-ci-tool';
 import { openCiWatch } from '../db/ci-watches';
 import { isCiWatchActive } from '../services/ci-watch';
@@ -3397,7 +3397,13 @@ async function handleStreamMode(
         hold.stopHookDone();
         continue;
       }
-      if (msg.type === 'assistant' || msg.type === 'tool' || msg.type === 'thinking') {
+      // Text after a held ask card is the same reply, so it joins the card
+      // rather than releasing it (#358).
+      if (
+        msg.type === 'tool' ||
+        msg.type === 'thinking' ||
+        (msg.type === 'assistant' && !hold.keepsTextTogether())
+      ) {
         await continueTurn();
       }
       if (msg.type === 'assistant' && msg.content) {
@@ -3426,7 +3432,7 @@ async function handleStreamMode(
             }
           } else {
             // Held, not sent: a Stop hook may yet send this text back (#190).
-            hold.hold(msg.content);
+            hold.hold(msg.content, isToolReply(msg));
           }
         } else if (!commandFullyParsed) {
           // Post-prefix: keep accumulating until the full command pattern is present.
@@ -3674,7 +3680,7 @@ async function handleBatchMode(
       hold.stopHookDone();
       continue;
     }
-    if (msg.type === 'assistant' || msg.type === 'tool') {
+    if (msg.type === 'tool' || (msg.type === 'assistant' && !hold.keepsTextTogether())) {
       const { text, sentBack } = hold.continueTurn();
       // Held chunks are the tail of assistantMessages; the cap's shift() can
       // only have trimmed the front.
@@ -3692,7 +3698,7 @@ async function handleBatchMode(
       allChunks.push({ type: 'assistant', content: msg.content });
       if (!commandFullyParsed) {
         assistantMessages.push(msg.content);
-        if (!commandDetected) hold.hold(msg.content);
+        if (!commandDetected) hold.hold(msg.content, isToolReply(msg));
       }
 
       // Cap assistant-only chunks while no command has been detected.  Once

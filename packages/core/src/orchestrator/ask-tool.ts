@@ -90,6 +90,13 @@ export function buildAskTool(ctx: AskToolContext): NativeTool {
  * persisted row — it is indistinguishable from text the agent wrote itself,
  * which is the point: nothing past this line needs to know about the tool.
  */
+const toolReplyChunks = new WeakSet<MessageChunk>();
+
+/** True for a chunk {@link withToolReplies} released from a tool's queue. */
+export function isToolReply(chunk: MessageChunk): boolean {
+  return toolReplyChunks.has(chunk);
+}
+
 export async function* withToolReplies(
   stream: AsyncIterable<MessageChunk>,
   pending: string[]
@@ -97,7 +104,11 @@ export async function* withToolReplies(
   const release = function* (): Generator<MessageChunk> {
     while (pending.length > 0) {
       const content = pending.shift();
-      if (content !== undefined) yield { type: 'assistant', content };
+      if (content !== undefined) {
+        const chunk: MessageChunk = { type: 'assistant', content };
+        toolReplyChunks.add(chunk);
+        yield chunk;
+      }
     }
   };
   for await (const chunk of stream) {
