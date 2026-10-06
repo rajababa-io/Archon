@@ -3,7 +3,7 @@ import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { copyLabel, useCopy } from '../lib/clipboard';
 import { useClock } from '../lib/clock';
-import { splitReply } from '@archon/awaiting';
+import { cardsLast, splitReply } from '@archon/awaiting';
 import { AskErrorCard } from './AskErrorCard';
 import { FileChips } from './FileChips';
 import { progressNoteIds, type MessageGroup } from '../primitives/message-groups';
@@ -249,7 +249,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
                   isSystem ? 'text-text-secondary' : 'text-text-primary'
                 }`}
               >
-                {splitReply(content).map((part, i) => {
+                {cardsLast(splitReply(content)).map((part, i) => {
                   if (part.kind === 'ask')
                     return (
                       <AskCard key={`ask-${String(i)}`} spec={part.spec} onAnswer={onAnswer} />

@@ -303,3 +303,16 @@ export function splitReply(content: string): ReplyPart[] {
   flushProse();
   return parts;
 }
+
+/**
+ * A reply's parts with every card moved after its prose (#361).
+ *
+ * A question is what a reply ends on, so it renders last. #336 did that across
+ * rows, but #358 stores the card and the text written after it as ONE row —
+ * the card first, because the `ask` tool runs before the agent writes its
+ * reply — and reordering rows cannot reach inside one. Stable: prose keeps its
+ * order, and so do several cards.
+ */
+export function cardsLast(parts: readonly ReplyPart[]): ReplyPart[] {
+  return [...parts.filter(p => p.kind === 'markdown'), ...parts.filter(p => p.kind !== 'markdown')];
+}

@@ -58,7 +58,7 @@ export function buildAskTool(ctx: AskToolContext): NativeTool {
   return {
     name: 'ask',
     description:
-      'Ask the human one or more multiple-choice questions, shown as clickable cards. Use this instead of writing an ```ask block by hand: the questions are checked before anything is shown, and a wrong or missing field comes back to you as an error naming the right one. On success the cards appear in your reply where you called this — do not repeat the questions in text, and end your turn to wait; the answer arrives as an ordinary message. Each question is an object: `title` (required, the question), `options` (required, at least one; each has `label` (required), optional `detail`, `recommended: true` on at most one option, and `why` for the recommended one), optional `evidence` (a paragraph shown above the question), optional `chip` (a short label for its subject), optional `allowOwn` (false hides the free-text answer), optional `multi` (true allows choosing several).',
+      'Ask the human one or more multiple-choice questions, shown as clickable cards. Use this instead of writing an ```ask block by hand: the questions are checked before anything is shown, and a wrong or missing field comes back to you as an error naming the right one. Call this BEFORE you write your reply: text written before any tool call does not reach the reader, pictures included. After it returns, write the whole reply — statements and pictures — then end your turn to wait; the cards are drawn after your reply, and the answer arrives as an ordinary message. Do not repeat the questions in text. Each question is an object: `title` (required, the question), `options` (required, at least one; each has `label` (required), optional `detail`, `recommended: true` on at most one option, and `why` for the recommended one), optional `evidence` (a paragraph shown above the question), optional `chip` (a short label for its subject), optional `allowOwn` (false hides the free-text answer), optional `multi` (true allows choosing several).',
     inputSchema: INPUT_SCHEMA,
     handler: (input): Promise<string> => {
       const result = validateAskSpec({ questions: input.questions });
@@ -74,7 +74,7 @@ export function buildAskTool(ctx: AskToolContext): NativeTool {
       const count = result.spec.questions.length;
       log.info({ questions: count }, 'ask.shown');
       return Promise.resolve(
-        `ask: ${String(count)} question${count === 1 ? '' : 's'} shown as cards in your reply. End your turn now; the answer arrives as the next message.`
+        `ask: ${String(count)} question${count === 1 ? '' : 's'} shown as cards; they are drawn after your reply. Now write the whole reply, pictures included, then end your turn; the answer arrives as the next message.`
       );
     },
   };
