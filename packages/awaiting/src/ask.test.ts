@@ -1,5 +1,12 @@
 import { describe, test, expect } from 'bun:test';
-import { formatAskFence, parseAskSpec, splitReply, validateAskSpec, type AskSpec } from './ask';
+import {
+  cardsLast,
+  formatAskFence,
+  parseAskSpec,
+  splitReply,
+  validateAskSpec,
+  type AskSpec,
+} from './ask';
 
 const SPEC = {
   questions: [
@@ -237,5 +244,29 @@ describe('formatAskFence', () => {
     expect(validateAskSpec(SPEC)).toEqual(parseAskSpec(JSON.stringify(SPEC)));
     const wrong = { questions: [{ question: 'q?', options: [{ label: 'a' }] }] };
     expect(validateAskSpec(wrong)).toEqual(parseAskSpec(JSON.stringify(wrong)));
+  });
+});
+
+describe('cardsLast', () => {
+  // #361: the ask tool runs first, so one stored row holds the card and THEN
+  // the reply with its picture. The reader must meet the picture first.
+  test('moves a card after the prose written after it', () => {
+    const parts = cardsLast(
+      splitReply(`${fenced(SPEC)}\n\nAnswer ready.\n\n[![pic](/files/x.png)](/files/x.png)`)
+    );
+    expect(parts.map(p => p.kind)).toEqual(['markdown', 'ask']);
+    expect(parts[0]).toMatchObject({ text: expect.stringContaining('![pic]') });
+  });
+
+  test('keeps prose order and card order', () => {
+    const parts = cardsLast(splitReply(`one\n${fenced(SPEC)}\ntwo\n\`\`\`ask\n{ broken\n\`\`\``));
+    expect(parts.map(p => p.kind)).toEqual(['markdown', 'markdown', 'ask', 'ask-error']);
+    expect(parts[0]).toMatchObject({ text: expect.stringContaining('one') });
+    expect(parts[1]).toMatchObject({ text: expect.stringContaining('two') });
+  });
+
+  test('a reply with no card is unchanged', () => {
+    const parts = splitReply('Just talking.');
+    expect(cardsLast(parts)).toEqual(parts);
   });
 });

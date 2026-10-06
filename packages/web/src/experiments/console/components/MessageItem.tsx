@@ -2,7 +2,7 @@ import { memo, type ReactElement } from 'react';
 import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { useClock } from '../lib/clock';
-import { splitReply } from '@archon/awaiting';
+import { cardsLast, splitReply } from '@archon/awaiting';
 import { AskErrorCard } from './AskErrorCard';
 import type { Message } from '../primitives/message';
 
@@ -54,7 +54,7 @@ function MessageItemImpl({ message }: MessageItemProps): ReactElement {
       >
         {content.length > 0 ? (
           <div className="max-w-none text-body leading-[1.7] text-text-secondary">
-            {splitReply(content).map((part, i) => {
+            {cardsLast(splitReply(content)).map((part, i) => {
               if (part.kind === 'ask') return <AskCard key={`ask-${String(i)}`} spec={part.spec} />;
               if (part.kind === 'ask-error')
                 return (
