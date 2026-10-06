@@ -92,3 +92,29 @@ describe('ChatGroup thinking', () => {
     expect(html).not.toContain('text-small whitespace-pre-wrap text-text-tertiary');
   });
 });
+
+describe('ChatGroup question cards', () => {
+  const fence = '```ask\n{"questions":[{"title":"Ship it?","options":[{"label":"Yes"}]}]}\n```';
+  const reply = `PR 83 — ready.\n\n![Q1 — the choice](https://example.test/q1.png)\n\n${fence}`;
+
+  // The agent calls `ask` before writing its reply, so a streamed preview
+  // holds the fence before it holds the reply. Drawn then, the question
+  // reached the reader alone, ahead of its pictures (#369).
+  test('a reply still streaming draws no question card', () => {
+    const html = renderToStaticMarkup(<ChatGroup group={assistant(reply, null, 'live-0')} />);
+    expect(html).toContain('PR 83');
+    expect(html).not.toContain('Ship it?');
+  });
+
+  test('a stored row holds its card hidden until its pictures settle, below the reply', () => {
+    const html = renderToStaticMarkup(<ChatGroup group={assistant(reply, null)} />);
+    expect(html).toContain('Ship it?');
+    expect(html).toContain('data-cards-waiting');
+    expect(html.indexOf('q1.png')).toBeLessThan(html.indexOf('Ship it?'));
+  });
+
+  test('a stored row with no question has nothing waiting', () => {
+    const html = renderToStaticMarkup(<ChatGroup group={assistant('Done.', null)} />);
+    expect(html).not.toContain('data-cards-waiting');
+  });
+});
