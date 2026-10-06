@@ -46,11 +46,12 @@ const ERROR_MS = 8_000;
 const POPOVER_WIDTH = 430;
 const MARGIN = 8;
 
+// Tailwind v4 leaves a button's cursor as the arrow; a pressable one says so.
 const BUTTON =
-  'shrink-0 rounded-md px-2.75 py-0.75 text-small font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+  'shrink-0 rounded-md px-2.75 py-0.75 text-small font-semibold transition-colors enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-50';
 // Outlines are rings, not borders: the console scope repaints every border
 // colour (see theme.css), and a ring is a box-shadow it does not touch.
-export const PRIMARY = `${BUTTON} bg-accent/15 text-text-primary ring-1 ring-inset ring-accent hover:bg-accent/25`;
+export const PRIMARY = `${BUTTON} bg-accent/15 text-text-primary ring-1 ring-inset ring-accent enabled:hover:bg-accent/35`;
 const STOP = `${BUTTON} bg-transparent text-error ring-1 ring-inset ring-error/45 hover:bg-error/10 hover:ring-error`;
 export const GHOST = `${BUTTON} bg-transparent font-medium text-text-secondary ring-1 ring-inset ring-border-bright hover:text-text-primary`;
 

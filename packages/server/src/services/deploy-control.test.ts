@@ -15,10 +15,18 @@ mock.module('@archon/core/db/project-deploy', () => ({
   recordDeployEvent: mockRecordEvent,
   listDeployEvents: mock(async () => []),
 }));
+const mockGraphQl = mock(
+  async (..._args: unknown[]): Promise<unknown> => ({
+    reason: 'not-in-tests',
+  })
+);
+const mockResolveSource = mock(
+  async (_id: string): Promise<unknown> => ({ repo: null, reason: 'no-repository' })
+);
 mock.module('../routes/github-issues', () => ({
-  githubGraphQl: mock(async () => ({ reason: 'not-in-tests' })),
+  githubGraphQl: mockGraphQl,
   isIssueReadFailure: (src: unknown) => typeof src === 'object' && src !== null && 'reason' in src,
-  resolveIssueSource: mock(async () => ({ repo: null, reason: 'no-repository' })),
+  resolveIssueSource: mockResolveSource,
 }));
 
 import {
@@ -31,6 +39,9 @@ import {
   getProjectDeployView,
   HISTORY_PAGE,
   isCancellable,
+  readWaiting,
+  resetWaitingCache,
+  WAITING_TTL_MS,
   waitingFromHistory,
 } from './deploy-control';
 
@@ -442,5 +453,43 @@ describe('getProjectDeployView', () => {
     );
     expect(view.waiting).toBeNull();
     expect(view.waitingReason).toBe('branch-is-deploy-pointer');
+  });
+});
+
+describe('readWaiting', () => {
+  test('a merge after the last read is seen once the short hold has passed (#367)', async () => {
+    resetWaitingCache();
+    mockResolveSource.mockImplementation(async () => ({ owner: 'o', repo: 'r' }));
+    const before = history([{ oid: MID, pr: { number: 2, title: 'two' } }, { oid: LIVE }]);
+    const after = history([
+      { oid: TIP, pr: { number: 3, title: 'three' } },
+      { oid: MID, pr: { number: 2, title: 'two' } },
+      { oid: LIVE },
+    ]);
+    mockGraphQl.mockImplementationOnce(async () => ({ data: before }));
+    mockGraphQl.mockImplementationOnce(async () => ({ data: after }));
+    const codebase = { id: 'p' } as never;
+    const realNow = Date.now;
+    const t0 = realNow();
+    try {
+      Date.now = () => t0;
+      const first = await readWaiting(codebase, 'dev', LIVE);
+      expect(first.waiting?.prs.map(p => p.number)).toEqual([2]);
+
+      // A burst inside the hold is one GitHub call.
+      Date.now = () => t0 + WAITING_TTL_MS - 1;
+      await readWaiting(codebase, 'dev', LIVE);
+      expect(mockGraphQl).toHaveBeenCalledTimes(1);
+
+      // The code map polls every 15s; its next tick must see the merge and the new tip.
+      Date.now = () => t0 + 15_000;
+      const next = await readWaiting(codebase, 'dev', LIVE);
+      expect(next.waiting?.prs.map(p => p.number)).toEqual([3, 2]);
+      expect(next.waiting?.tipSha).toBe(TIP);
+    } finally {
+      Date.now = realNow;
+      mockResolveSource.mockImplementation(async () => ({ repo: null, reason: 'no-repository' }));
+      mockGraphQl.mockClear();
+    }
   });
 });
