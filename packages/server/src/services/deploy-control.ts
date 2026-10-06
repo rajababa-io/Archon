@@ -170,8 +170,14 @@ export function waitingFromHistory(raw: unknown, liveSha: string | null): Waitin
   return { tipSha: tip, prs, more };
 }
 
-/** Held briefly per (project, live) so a header poll is not a GitHub call. */
-const WAITING_TTL_MS = 30_000;
+/**
+ * Held only long enough to collapse one burst — the header, the code map and
+ * its deploy button, several tabs — into one GitHub call. The key holds the
+ * live commit but not the branch tip, so a merge does not change it: anything
+ * longer than the console's code-map poll serves the pre-merge list, and
+ * its tip, to a page whose code map already shows the merge (#367).
+ */
+export const WAITING_TTL_MS = 5_000;
 const waitingCache = new Map<
   string,
   { at: number; value: Waiting | null; reason: string | null }

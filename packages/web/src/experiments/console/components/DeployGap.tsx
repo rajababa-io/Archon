@@ -181,7 +181,7 @@ export function DeployGapPanel({
               onClick={() => {
                 onDeploy(view.tipSha);
               }}
-              className="rounded-full px-4 py-1.25 text-body font-semibold text-black transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-full px-4 py-1.25 text-body font-semibold text-black transition enabled:cursor-pointer enabled:hover:brightness-110 enabled:hover:ring-2 enabled:hover:ring-text-primary/40 disabled:cursor-not-allowed disabled:opacity-50"
               style={{ background: ORANGE }}
             >
               {requested ? 'Requested…' : `${view.label} ↓`}
