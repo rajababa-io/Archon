@@ -1,9 +1,9 @@
-import { memo, useState, type ReactElement } from 'react';
+import { memo, useLayoutEffect, useRef, useState, type ReactElement, type RefObject } from 'react';
 import { AskCard } from './AskCard';
 import { Markdown } from './Markdown';
 import { copyLabel, useCopy } from '../lib/clipboard';
 import { useClock } from '../lib/clock';
-import { cardsLast, splitReply } from '@archon/awaiting';
+import { splitReply } from '@archon/awaiting';
 import { AskErrorCard } from './AskErrorCard';
 import { FileChips } from './FileChips';
 import { progressNoteIds, type MessageGroup } from '../primitives/message-groups';
@@ -102,6 +102,93 @@ function Thinking({ text, live }: { text: string; live: boolean }): ReactElement
       </div>
     );
   return <FoldedLine content={content} hideLabel="Hide thinking" italic />;
+}
+
+/**
+ * The longest a question card waits for the pictures above it. A slow or broken
+ * image must never hide the question for good.
+ */
+const PICTURE_WAIT_MS = 6000;
+
+/**
+ * Hold a row's cards until every picture in it has loaded or failed (#369).
+ *
+ * The agent calls `ask` before writing its reply, so the card's fence is in
+ * the row before the reply and its pictures are; drawn as soon as it exists,
+ * the question reached the reader first, alone. A layout effect runs before
+ * paint, so a row whose pictures are already in (or that has none) shows its
+ * card with no flash. `load` and `error` do not bubble, hence the capture
+ * listeners on the row.
+ */
+function usePicturesSettled(holding: boolean): {
+  ref: RefObject<HTMLDivElement | null>;
+  settled: boolean;
+} {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [settled, setSettled] = useState(!holding);
+  useLayoutEffect(() => {
+    const row = ref.current;
+    if (!holding || settled || row === null) return;
+    const check = (): void => {
+      if (Array.from(row.querySelectorAll('img')).every(img => img.complete)) setSettled(true);
+    };
+    check();
+    const cap = window.setTimeout(() => {
+      setSettled(true);
+    }, PICTURE_WAIT_MS);
+    row.addEventListener('load', check, true);
+    row.addEventListener('error', check, true);
+    return (): void => {
+      window.clearTimeout(cap);
+      row.removeEventListener('load', check, true);
+      row.removeEventListener('error', check, true);
+    };
+  }, [holding, settled]);
+  return { ref, settled };
+}
+
+/**
+ * One row's reply: prose first, then its cards (#364), and the cards arrive
+ * together with the pictures rather than ahead of them (#369). A streamed
+ * preview draws no card at all — its reply is still being written — so the
+ * card first appears on the stored row, once that row's pictures are in.
+ */
+function ReplyBody({
+  content,
+  live,
+  onAnswer,
+}: {
+  content: string;
+  live: boolean;
+  onAnswer: ChatGroupProps['onAnswer'];
+}): ReactElement {
+  const parts = splitReply(content);
+  const prose = parts.flatMap(p => (p.kind === 'markdown' ? [p.text] : []));
+  const cards = live ? [] : parts.filter(p => p.kind !== 'markdown');
+  const { ref, settled } = usePicturesSettled(cards.length > 0);
+  return (
+    <div ref={ref}>
+      {prose.map((text, i) => (
+        <Markdown key={`md-${String(i)}`}>{text}</Markdown>
+      ))}
+      {cards.length > 0 ? (
+        // Rendered hidden rather than left out: the server render carries
+        // the card, and the layout effect reveals it before first paint when
+        // there is nothing to wait for.
+        <div hidden={!settled} data-cards-waiting={settled ? undefined : ''}>
+          {cards.map((part, i) => {
+            if (part.kind === 'ask')
+              return <AskCard key={`ask-${String(i)}`} spec={part.spec} onAnswer={onAnswer} />;
+            if (part.kind === 'ask-error')
+              return (
+                <AskErrorCard key={`ask-err-${String(i)}`} reason={part.reason} text={part.text} />
+              );
+            return null;
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ErrorBlock({ message }: { message: string }): ReactElement {
@@ -249,21 +336,7 @@ function ChatGroupImpl({ group, onAnswer }: ChatGroupProps): ReactElement {
                   isSystem ? 'text-text-secondary' : 'text-text-primary'
                 }`}
               >
-                {cardsLast(splitReply(content)).map((part, i) => {
-                  if (part.kind === 'ask')
-                    return (
-                      <AskCard key={`ask-${String(i)}`} spec={part.spec} onAnswer={onAnswer} />
-                    );
-                  if (part.kind === 'ask-error')
-                    return (
-                      <AskErrorCard
-                        key={`ask-err-${String(i)}`}
-                        reason={part.reason}
-                        text={part.text}
-                      />
-                    );
-                  return <Markdown key={`md-${String(i)}`}>{part.text}</Markdown>;
-                })}
+                <ReplyBody content={content} live={isLivePreview(message)} onAnswer={onAnswer} />
               </div>
             ) : null}
             {message.error !== null ? <ErrorBlock message={message.error.message} /> : null}
