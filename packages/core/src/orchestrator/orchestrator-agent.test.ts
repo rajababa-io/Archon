@@ -7983,12 +7983,24 @@ describe('handoff relay', () => {
     );
   }
 
+  /**
+   * A web platform that can be told a chat's database id. The relay calls it, so
+   * the plain `makePlatform()` — web-typed but without the web-only methods —
+   * would fail the relay rather than test it.
+   */
+  function makeWebPlatform() {
+    return {
+      ...makePlatform(),
+      setConversationDbId: mock<(platformId: string, dbId: string) => void>(() => {}),
+    };
+  }
+
   test('the successor is given the relay trigger as a visible user message', async () => {
     arrangeScopedChat();
     const results: string[] = [];
     agentCallsHandoff(VALID_INPUT, results);
 
-    await handleMessage(makePlatform(), 'conv-1', 'hand this off');
+    await handleMessage(makeWebPlatform(), 'conv-1', 'hand this off');
 
     const seeded = mockAddMessage.mock.calls.filter(
       ([conversationId, role]) => conversationId === 'successor-db' && role === 'user'
@@ -8010,6 +8022,25 @@ describe('handoff relay', () => {
     ).toBe(false);
   });
 
+  test('the successor can save its own reply: its database id reaches the web adapter', async () => {
+    // On web only the adapter writes assistant rows, and only for a chat whose
+    // database id it knows. A relay that never says leaves the successor's whole
+    // first turn unsaved — the chat looks empty though the agent worked (#363).
+    arrangeScopedChat();
+    const platform = makeWebPlatform();
+    const results: string[] = [];
+    agentCallsHandoff(VALID_INPUT, results);
+
+    await handleMessage(platform, 'conv-1', 'hand this off');
+
+    expect(results[0]).toContain('Handed off');
+    const registered = platform.setConversationDbId.mock.calls.filter(
+      ([, dbId]) => dbId === 'successor-db'
+    );
+    expect(registered).toHaveLength(1);
+    expect(registered[0]?.[0]).toMatch(/^web-\d+-[a-z0-9]+$/);
+  });
+
   test('a seed that cannot be persisted still hands off', async () => {
     arrangeScopedChat();
     // The document is already written and the successor already exists, so an
@@ -8018,7 +8049,7 @@ describe('handoff relay', () => {
     const results: string[] = [];
     agentCallsHandoff(VALID_INPUT, results);
 
-    await handleMessage(makePlatform(), 'conv-1', 'hand this off');
+    await handleMessage(makeWebPlatform(), 'conv-1', 'hand this off');
 
     expect(results[0]).toContain('Handed off');
     // Completed, not archived: a handoff marks the predecessor DONE, which is

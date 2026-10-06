@@ -3098,6 +3098,13 @@ export async function handleMessage(
             } catch (e: unknown) {
               getLog().warn({ err: toError(e), successorId }, 'handoff.seed_persist_failed');
             }
+            // On web the adapter writes assistant rows, and only for a chat whose
+            // database id it has been told; the HTTP send routes tell it, and the
+            // relay arrives by none of them. Without this the successor's whole
+            // first turn — reply, tool steps, ask card — stays in the adapter's
+            // buffer and the chat reads as if nothing happened (#363). The worker
+            // dispatch in orchestrator.ts registers its child the same way.
+            if (isWebAdapter(platform)) platform.setConversationDbId(successorId, successor.id);
             // Dispatched, not awaited. The successor orients itself while this
             // turn finishes; awaiting it would hold this conversation open
             // waiting for a different one to think.
