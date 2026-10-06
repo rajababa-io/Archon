@@ -209,6 +209,8 @@ export {
 export {
   ConversationLockManager,
   DeployParkAbort,
+  UserStopAbort,
+  type StopSource,
   DRAIN_REFUSAL_NOTICE,
   type DrainStatus,
   type LockAcquisitionResult,

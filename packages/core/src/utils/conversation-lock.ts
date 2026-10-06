@@ -189,6 +189,22 @@ export class DeployParkAbort extends Error {
   }
 }
 
+/** Which control asked to stop a turn (#362). */
+export type StopSource = 'stop-button' | 'escape-key' | 'send-and-stop';
+
+/**
+ * The abort reason the interrupt route gives `interrupt`, naming the control
+ * that asked. A turn the operator did not knowingly stop read "you stopped this
+ * turn" with nothing to say how; the source is what makes that answerable.
+ * `undefined` when the client did not say (an older client, or the API).
+ */
+export class UserStopAbort extends Error {
+  constructor(readonly source: StopSource | undefined) {
+    super('Stopped by the user');
+    this.name = 'UserStopAbort';
+  }
+}
+
 /**
  * Where a turn came from. `replay` is parked work a deploy is handing back: it
  * runs ahead of every `new` message, because it was sent before any of them.
@@ -526,7 +542,13 @@ export class ConversationLockManager {
     const turn = this.activeConversations.get(conversationId);
     if (!turn) return undefined;
     if (!turn.controller.signal.aborted) {
-      getLog().info({ conversationId }, 'turn_interrupt_requested');
+      const source =
+        reason instanceof UserStopAbort
+          ? (reason.source ?? 'unspecified')
+          : reason instanceof DeployParkAbort
+            ? 'deploy-park'
+            : 'unspecified';
+      getLog().info({ conversationId, source }, 'turn_interrupt_requested');
       turn.controller.abort(reason);
     }
     return turn.promise;

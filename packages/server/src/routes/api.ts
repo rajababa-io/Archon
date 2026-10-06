@@ -100,6 +100,8 @@ import {
   setUserDefault,
   DRAIN_REFUSAL_NOTICE,
 } from '@archon/core';
+// A subpath, not the barrel: route tests mock the barrel and use the real lock.
+import { UserStopAbort } from '@archon/core/utils/conversation-lock';
 import type { UserTiersPatch, UserAliasesPatch, AliasesPatch, Conversation } from '@archon/core';
 import { InvalidConfigError, parseWorkflowRunConfig } from '@archon/core/config';
 import type { WorkflowRunConfigInput } from '@archon/workflows/schemas/run-config';
@@ -380,6 +382,8 @@ import {
   conversationIdParamsSchema,
   conversationLockResponseSchema,
   conversationCheckoutResponseSchema,
+  conversationInterruptBodySchema,
+  STOP_SOURCES,
   conversationInterruptResponseSchema,
   conversationQueueResponseSchema,
   conversationChangesResponseSchema,
@@ -868,7 +872,13 @@ const interruptConversationRoute = createRoute({
     'Aborts the running chat turn through its provider. Output already streamed is kept and ' +
     'the turn is marked interrupted. Workflow runs the turn started are not affected. Queued ' +
     'messages stay queued and are delivered once the turn ends.',
-  request: { params: conversationIdParamsSchema },
+  request: {
+    params: conversationIdParamsSchema,
+    body: {
+      content: { 'application/json': { schema: conversationInterruptBodySchema } },
+      required: false,
+    },
+  },
   responses: {
     200: {
       content: { 'application/json': { schema: conversationInterruptResponseSchema } },
@@ -4298,7 +4308,13 @@ export function registerApiRoutes(
     try {
       const conv = await conversationDb.findConversationByPlatformId(platformId);
       if (!conv) return apiError(c, 404, 'Conversation not found');
-      const turn = lockManager.interrupt(platformId);
+      // Read leniently: the body is optional, and a stop must never fail
+      // because the client did not say which control it was.
+      const body: unknown = await c.req.json().catch(() => ({}));
+      const parsed = conversationInterruptBodySchema.safeParse(body);
+      const named = parsed.success ? parsed.data.source : undefined;
+      const source = STOP_SOURCES.find(s => s === named);
+      const turn = lockManager.interrupt(platformId, new UserStopAbort(source));
       if (turn === undefined)
         return c.json({ conversationId: platformId, status: 'idle' as const });
       // Wait briefly so the common case answers "stopped" rather than making the
