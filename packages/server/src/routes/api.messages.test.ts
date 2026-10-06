@@ -158,7 +158,10 @@ mock.module('@archon/core/utils/commands', () => ({
 }));
 
 import { registerApiRoutes } from './api';
-import { ConversationLockManager as RealLockManager } from '@archon/core/utils/conversation-lock';
+import {
+  ConversationLockManager as RealLockManager,
+  UserStopAbort,
+} from '@archon/core/utils/conversation-lock';
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -889,6 +892,38 @@ describe('POST /api/conversations/:id/interrupt', () => {
     await settle(() => turns.started.length === 2, 'queued message delivered');
     expect(turns.signals.get('next')?.aborted).toBe(false);
     turns.release('next');
+  });
+
+  // #362: the body names the control, and the turn's signal carries it.
+  test('the stop source reaches the turn as its abort reason', async () => {
+    const turns = gatedTurns();
+    const { app } = makeRealApp();
+
+    await send(app, 'long task');
+    await settle(() => turns.signals.has('long task'), 'turn started with a signal');
+    await app.request('/api/conversations/web-test-abc/interrupt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'escape-key' }),
+    });
+    const reason: unknown = turns.signals.get('long task')?.reason;
+    expect(reason).toBeInstanceOf(UserStopAbort);
+    expect((reason as UserStopAbort).source).toBe('escape-key');
+  });
+
+  test('an unknown source still stops the turn', async () => {
+    const turns = gatedTurns();
+    const { app } = makeRealApp();
+
+    await send(app, 'long task');
+    await settle(() => turns.signals.has('long task'), 'turn started with a signal');
+    const response = await app.request('/api/conversations/web-test-abc/interrupt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'telepathy' }),
+    });
+    expect(response.status).toBe(200);
+    expect(turns.signals.get('long task')?.aborted).toBe(true);
   });
 
   test('says idle when nothing is running', async () => {

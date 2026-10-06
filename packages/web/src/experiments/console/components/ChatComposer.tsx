@@ -75,7 +75,7 @@ interface ChatComposerProps {
    * queues behind the turn — and Stop takes Send's place.
    */
   working?: boolean;
-  onStop?: () => void;
+  onStop?: (source: 'stop-button' | 'escape-key') => void;
   /** A stop was requested and the turn has not ended yet. */
   stopping?: boolean;
   /**
@@ -347,7 +347,7 @@ export function ChatComposer({
       const action = escapeAction({ working, canStop: onStop !== undefined, stopping });
       if (action === 'blur') e.currentTarget.blur();
       else e.preventDefault();
-      if (action === 'stop') onStop?.();
+      if (action === 'stop') onStop?.('escape-key');
       return;
     }
     // Only in an empty box, and only when something was actually pulled back:
@@ -513,7 +513,7 @@ export function ChatComposer({
               ) : null}
               <button
                 type="button"
-                onClick={onStop}
+                onClick={() => onStop?.('stop-button')}
                 disabled={onStop === undefined || stopping}
                 title={stopping ? 'Stopping…' : 'Stop the agent · Esc'}
                 aria-label={stopping ? 'Stopping' : 'Stop'}

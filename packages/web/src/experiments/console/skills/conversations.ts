@@ -249,6 +249,12 @@ export async function getConversationLock(
   );
 }
 
+/**
+ * Which control asked to stop the turn. The server names it in the transcript
+ * and its log (#362), so a stop nobody remembers making can be traced.
+ */
+export type StopSource = 'stop-button' | 'escape-key' | 'send-and-stop';
+
 /** What a stop request found: stopped, still stopping, or nothing running. */
 export type InterruptResult = components['schemas']['ConversationInterruptResponse'];
 
@@ -261,11 +267,17 @@ export type InterruptResult = components['schemas']['ConversationInterruptRespon
  * own lock event, not by this reply.
  */
 export async function interruptConversation(
-  conversationPlatformId: string
+  conversationPlatformId: string,
+  source?: StopSource
 ): Promise<InterruptResult> {
   return requestJson<InterruptResult>(
     `/api/conversations/${encodeURIComponent(conversationPlatformId)}/interrupt`,
-    { method: 'POST' }
+    {
+      method: 'POST',
+      ...(source !== undefined
+        ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ source }) }
+        : {}),
+    }
   );
 }
 

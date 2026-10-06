@@ -661,6 +661,7 @@ import {
   parseOrchestratorCommands,
   handleMessage,
   TURN_INTERRUPTED_NOTICE,
+  TURN_INTERRUPTED_BY,
   TURN_PARKED_NOTICE,
   resolveChatModelRequest,
   applyChatModelPin,
@@ -671,7 +672,7 @@ import {
 } from './orchestrator-agent';
 import { clearProviderCommandCache } from '../handlers/provider-commands';
 import { buildAiProfile } from '@archon/workflows/model-validation';
-import { DeployParkAbort } from '../utils/conversation-lock';
+import { DeployParkAbort, UserStopAbort } from '../utils/conversation-lock';
 import { TerminalStatusWriteError } from '@archon/workflows/terminal-status-write';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -5758,6 +5759,43 @@ describe('handleMessage — interrupted turn', () => {
     await handleMessage(platform, 'conv-1', 'do the thing', { abortSignal: controller.signal });
 
     expect(platform.sendDurableNotice).toHaveBeenCalledTimes(1);
+    expect(platform.sendDurableNotice).toHaveBeenCalledWith('conv-1', TURN_INTERRUPTED_NOTICE, {
+      category: 'turn_interrupted',
+    });
+  });
+
+  // #362: a stop nobody remembers making is only explicable if the transcript
+  // names the control that made it.
+  test.each(['stop-button', 'escape-key', 'send-and-stop'] as const)(
+    'a stop from %s is named in the marker',
+    async source => {
+      const controller = new AbortController();
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield { type: 'assistant', content: 'partial' };
+        controller.abort(new UserStopAbort(source));
+      });
+
+      const platform = platformWithNotices();
+      await handleMessage(platform, 'conv-1', 'do the thing', { abortSignal: controller.signal });
+
+      expect(platform.sendDurableNotice).toHaveBeenCalledWith(
+        'conv-1',
+        TURN_INTERRUPTED_BY[source],
+        { category: 'turn_interrupted' }
+      );
+    }
+  );
+
+  test('a stop whose client did not say how keeps the plain marker', async () => {
+    const controller = new AbortController();
+    mockSendQuery.mockImplementationOnce(async function* () {
+      yield { type: 'assistant', content: 'partial' };
+      controller.abort(new UserStopAbort(undefined));
+    });
+
+    const platform = platformWithNotices();
+    await handleMessage(platform, 'conv-1', 'do the thing', { abortSignal: controller.signal });
+
     expect(platform.sendDurableNotice).toHaveBeenCalledWith('conv-1', TURN_INTERRUPTED_NOTICE, {
       category: 'turn_interrupted',
     });

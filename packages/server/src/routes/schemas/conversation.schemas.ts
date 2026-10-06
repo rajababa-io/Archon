@@ -126,6 +126,20 @@ export const conversationCheckoutResponseSchema = z
  * yet; the provider owns how quickly it honours it, and the lock stays held
  * until it does. `idle` — no turn was running, so there was nothing to stop.
  */
+/** The controls that can stop a turn, as the transcript names them. */
+export const STOP_SOURCES = ['stop-button', 'escape-key', 'send-and-stop'] as const;
+
+/**
+ * Which control asked to stop the turn. Optional, and a string rather than an
+ * enum on purpose: a stop must never be refused because a client named a
+ * control this server does not know. The route keeps only known values.
+ */
+export const conversationInterruptBodySchema = z
+  .object({
+    source: z.string().optional().openapi({ example: 'escape-key' }),
+  })
+  .openapi('ConversationInterruptBody');
+
 export const conversationInterruptResponseSchema = z
   .object({
     conversationId: z.string(),

@@ -28,7 +28,7 @@ export interface TurnControls {
   /** Something worth saying that is not a failure — e.g. a pull-back lost the race. */
   notice: string | null;
   controlRef: RefObject<ComposerControl | null>;
-  stop: () => void;
+  stop: (source?: skill.StopSource) => void;
   /** Send while the agent works: the server queues it. */
   queueSend: (text: string, files?: File[]) => void;
   /** Send while the agent works, straight into the running turn. */
@@ -87,27 +87,32 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
     if (!locked) setStopping(false);
   }, [locked]);
 
-  const stop = useCallback((): void => {
-    if (conversationId === null) return;
-    setStopping(true);
-    setNotice(null);
-    void skill
-      .interruptConversation(conversationId)
-      .then(result => {
-        if (result.status === 'stopping') {
-          setNotice('Stop sent — the agent has not ended its turn yet.');
-        } else {
+  const stop = useCallback(
+    (source: skill.StopSource = 'stop-button'): void => {
+      if (conversationId === null) return;
+      setStopping(true);
+      setNotice(null);
+      void skill
+        .interruptConversation(conversationId, source)
+        .then(result => {
+          if (result.status === 'stopping') {
+            setNotice('Stop sent — the agent has not ended its turn yet.');
+          } else {
+            setStopping(false);
+            // Stopped or already idle: ask the lock again rather than waiting on
+            // an event, in case this tab missed it.
+            invalidate(K.conversationLock(conversationId));
+          }
+        })
+        .catch((e: unknown) => {
           setStopping(false);
-          // Stopped or already idle: ask the lock again rather than waiting on
-          // an event, in case this tab missed it.
-          invalidate(K.conversationLock(conversationId));
-        }
-      })
-      .catch((e: unknown) => {
-        setStopping(false);
-        setNotice(`Could not stop the agent: ${e instanceof Error ? e.message : 'unknown error'}`);
-      });
-  }, [conversationId]);
+          setNotice(
+            `Could not stop the agent: ${e instanceof Error ? e.message : 'unknown error'}`
+          );
+        });
+    },
+    [conversationId]
+  );
 
   const queueSend = useCallback(
     (text: string, files?: File[]): void => {
@@ -182,7 +187,9 @@ export function useTurnControls(conversationId: string | null, locked: boolean):
   // delivers it once the turn ends, so the message cannot be lost in between.
   const interruptSend = useCallback(
     (text: string, files?: File[]): void => {
-      sendThen(text, files, stop);
+      sendThen(text, files, () => {
+        stop('send-and-stop');
+      });
     },
     [sendThen, stop]
   );

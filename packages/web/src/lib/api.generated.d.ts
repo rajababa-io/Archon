@@ -1553,7 +1553,11 @@ export interface paths {
         };
         cookie?: never;
       };
-      requestBody?: never;
+      requestBody?: {
+        content: {
+          'application/json': components['schemas']['ConversationInterruptBody'];
+        };
+      };
       responses: {
         /** @description Outcome of the stop request */
         200: {
@@ -5863,6 +5867,10 @@ export interface components {
       conversationId: string;
       /** @enum {string} */
       status: 'stopped' | 'stopping' | 'idle';
+    };
+    ConversationInterruptBody: {
+      /** @example escape-key */
+      source?: string;
     };
     ConversationQueueResponse: {
       conversationId: string;

@@ -45,7 +45,7 @@ import {
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError, formatProviderRefusal } from '../utils/error-formatter';
 import { toError } from '../utils/error';
-import { DeployParkAbort } from '../utils/conversation-lock';
+import { DeployParkAbort, UserStopAbort, type StopSource } from '../utils/conversation-lock';
 import { quoteCommandArg } from '../utils/command-args';
 import { conversationCheckout } from '../utils/conversation-checkout';
 import { safeDeactivateSession } from '../state/session-transitions';
@@ -4060,8 +4060,19 @@ async function maybeNudgeHandoff(
   }
 }
 
-/** What the transcript records on a turn the user stopped. */
+/** What the transcript records on a turn the user stopped, when the client did not say how. */
 export const TURN_INTERRUPTED_NOTICE = 'Interrupted — you stopped this turn.';
+
+/**
+ * The same notice naming the control that stopped the turn (#362). Escape in
+ * the message box stops a working turn, and a stop nobody remembers making is
+ * only explicable if the transcript says which control it was.
+ */
+export const TURN_INTERRUPTED_BY: Record<StopSource, string> = {
+  'stop-button': 'Interrupted — stopped with the Stop button.',
+  'escape-key': 'Interrupted — stopped with the Escape key in the message box.',
+  'send-and-stop': 'Interrupted — stopped so your new message goes next.',
+};
 
 /** What the transcript records on a turn a deploy paused, to be resumed after the restart. */
 export const TURN_PARKED_NOTICE =
@@ -4081,8 +4092,14 @@ async function announceInterrupted(
   signal: AbortSignal
 ): Promise<void> {
   const parked = signal.reason instanceof DeployParkAbort;
+  const source = signal.reason instanceof UserStopAbort ? signal.reason.source : undefined;
+  const text = parked
+    ? TURN_PARKED_NOTICE
+    : source !== undefined
+      ? TURN_INTERRUPTED_BY[source]
+      : TURN_INTERRUPTED_NOTICE;
   try {
-    await notice(platform, conversationId, parked ? TURN_PARKED_NOTICE : TURN_INTERRUPTED_NOTICE, {
+    await notice(platform, conversationId, text, {
       category: parked ? 'turn_parked' : 'turn_interrupted',
     });
   } catch (error) {
