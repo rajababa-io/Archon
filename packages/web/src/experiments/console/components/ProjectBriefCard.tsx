@@ -4,12 +4,39 @@ import { K } from '../store/keys';
 import * as skill from '../skills';
 import type { Project, ProjectBrief } from '../primitives/project';
 import { relativeTime } from '../lib/format';
+import { splitBriefLinks } from '../lib/brief-links';
 
 const FIELDS: readonly { key: keyof Omit<ProjectBrief, 'updatedAt'>; label: string }[] = [
   { key: 'why', label: 'Why' },
   { key: 'doing', label: 'Doing' },
   { key: 'where', label: 'Where' },
 ];
+
+/**
+ * A brief field with its addresses clickable (#371). Text runs are React text
+ * nodes, never HTML — the brief is agent-written and is not trusted markup.
+ */
+export function BriefText({ text }: { text: string }): ReactElement {
+  return (
+    <>
+      {splitBriefLinks(text).map((seg, i) =>
+        seg.kind === 'text' ? (
+          seg.text
+        ) : (
+          <a
+            key={i}
+            href={seg.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline decoration-text-tertiary/50 underline-offset-2 wrap-anywhere transition-colors hover:text-accent-bright hover:decoration-accent-bright"
+          >
+            {seg.label}
+          </a>
+        )
+      )}
+    </>
+  );
+}
 
 /**
  * The standing answer to "what is this and where is it".
@@ -63,7 +90,7 @@ export function ProjectBriefCard({
                 {label}
               </span>
               <span className="min-w-0 flex-1 text-body leading-[1.6] text-text-secondary">
-                {value}
+                <BriefText text={value} />
               </span>
             </div>
           );
