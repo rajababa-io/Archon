@@ -4,6 +4,7 @@ import { K } from '../store/keys';
 import * as skill from '../skills';
 import type { Project, ProjectBrief } from '../primitives/project';
 import { relativeTime } from '../lib/format';
+import { briefParts } from '../lib/brief-links';
 
 const FIELDS: readonly { key: keyof Omit<ProjectBrief, 'updatedAt'>; label: string }[] = [
   { key: 'why', label: 'Why' },
@@ -63,7 +64,7 @@ export function ProjectBriefCard({
                 {label}
               </span>
               <span className="min-w-0 flex-1 text-body leading-[1.6] text-text-secondary">
-                {value}
+                <BriefText value={value} />
               </span>
             </div>
           );
@@ -76,5 +77,33 @@ export function ProjectBriefCard({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A field with its web addresses clickable (#372). Each address is its own
+ * element built from a parsed part, never HTML from the brief, and only
+ * http(s) addresses are ever linked — see `briefParts`.
+ */
+function BriefText({ value }: { value: string }): ReactElement {
+  return (
+    <>
+      {briefParts(value).map((part, i) =>
+        part.kind === 'link' ? (
+          <a
+            key={i}
+            href={part.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            // A long address wraps inside the card instead of pushing it wider.
+            className="underline decoration-text-tertiary/50 underline-offset-2 transition-colors [overflow-wrap:anywhere] hover:text-accent-bright hover:decoration-accent-bright"
+          >
+            {part.label}
+          </a>
+        ) : (
+          part.text
+        )
+      )}
+    </>
   );
 }
