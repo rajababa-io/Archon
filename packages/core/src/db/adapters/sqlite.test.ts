@@ -280,6 +280,39 @@ describe('SqliteAdapter upgrade path', () => {
       expect.arrayContaining(['id', 'codebase_id', 'sha', 'trigger_ref', 'reason', 'created_at'])
     );
   });
+
+  // #377: the console reads both columns on every project load, so a database
+  // without them fails with `no such column: presentation`.
+  test('a database from before #377 gains codebase presentation and sort_order', async () => {
+    const path = await upgradeFixturePath();
+    await new SqliteAdapter(path).close();
+    const raw = new Database(path);
+    try {
+      raw.run('ALTER TABLE remote_agent_codebases DROP COLUMN presentation');
+      raw.run('ALTER TABLE remote_agent_codebases DROP COLUMN sort_order');
+      raw.run(
+        "INSERT INTO remote_agent_codebases (id, name, default_cwd) VALUES ('cb-old', 'old', '/tmp/old')"
+      );
+    } finally {
+      raw.close();
+    }
+    expect(columnsOf(path, 'remote_agent_codebases')).not.toContain('presentation');
+
+    const upgraded = new SqliteAdapter(path);
+    try {
+      await upgraded.query(
+        'UPDATE remote_agent_codebases SET presentation = $1, sort_order = $2 WHERE id = $3',
+        ['{"icon":"star"}', 2, 'cb-old']
+      );
+      const res = await upgraded.query<{ presentation: string; sort_order: number }>(
+        'SELECT presentation, sort_order FROM remote_agent_codebases WHERE id = $1',
+        ['cb-old']
+      );
+      expect(res.rows[0]).toEqual({ presentation: '{"icon":"star"}', sort_order: 2 });
+    } finally {
+      await upgraded.close();
+    }
+  });
 });
 
 describe('SqliteAdapter', () => {

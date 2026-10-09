@@ -329,6 +329,13 @@ export class SqliteAdapter implements IDatabase {
           "ALTER TABLE remote_agent_codebases ADD COLUMN kind TEXT NOT NULL DEFAULT 'repo'"
         );
       }
+      // Mirrors migrations/027_project_presentation.sql (#377).
+      if (!codebaseColNames.has('presentation')) {
+        this.db.run('ALTER TABLE remote_agent_codebases ADD COLUMN presentation TEXT');
+      }
+      if (!codebaseColNames.has('sort_order')) {
+        this.db.run('ALTER TABLE remote_agent_codebases ADD COLUMN sort_order INTEGER');
+      }
     } catch (e: unknown) {
       getLog().warn({ err: e as Error }, 'db.sqlite_migration_codebases_columns_failed');
       allApplied = false;
@@ -830,6 +837,8 @@ export class SqliteAdapter implements IDatabase {
         ai_assistant_type TEXT DEFAULT 'claude',
         kind TEXT NOT NULL DEFAULT 'repo' CHECK (kind IN ('repo', 'folder')),
         commands TEXT DEFAULT '{}',
+        presentation TEXT,
+        sort_order INTEGER,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       );
