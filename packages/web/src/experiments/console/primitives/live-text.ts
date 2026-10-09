@@ -52,7 +52,9 @@ export type LiveEvent =
   /** `name` and `input` ride along for readers other than the segmenter, which ignores them. */
   | { kind: 'tool'; name?: string; input?: Record<string, unknown> }
   | { kind: 'thinking'; content: string }
-  | { kind: 'retract' };
+  | { kind: 'retract' }
+  /** The stream (re)opened: whatever it carried before is no longer known to be whole. */
+  | { kind: 'rejoin' };
 
 /** Whether a segment or row has anything a reader would see. */
 function hasSubstance(s: { content: string; thinking?: string | null }): boolean {
@@ -72,6 +74,8 @@ function hasSubstance(s: { content: string; thinking?: string | null }): boolean
  */
 export function reduceLive(segments: LiveSegment[], event: LiveEvent): LiveSegment[] {
   const last = segments[segments.length - 1];
+
+  if (event.kind === 'rejoin') return [];
 
   if (event.kind === 'retract') {
     // Mirrors `retractLastSegment`: a segment that carries tool calls survives
@@ -112,6 +116,14 @@ export function reduceLive(segments: LiveSegment[], event: LiveEvent): LiveSegme
   return [...segments.slice(0, -1), { ...last, content: last.content + event.content }];
 }
 
+/** A stored row as the preview reads it. `id` places the turn's user row. */
+interface StoredRow {
+  id?: string;
+  role: string;
+  content: string;
+  thinking?: string | null;
+}
+
 /**
  * How many assistant rows of the current turn are already in the database.
  *
@@ -120,9 +132,7 @@ export function reduceLive(segments: LiveSegment[], event: LiveEvent): LiveSegme
  * segment in the preview. The result is how many leading segments the database has caught up
  * with.
  */
-export function persistedSegmentCount(
-  messages: { role: string; content: string; thinking?: string | null }[]
-): number {
+export function persistedSegmentCount(messages: readonly StoredRow[]): number {
   let count = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
@@ -139,8 +149,68 @@ export function persistedSegmentCount(
 }
 
 /**
+ * Where this tab joined the turn it is previewing: how many of the turn's rows
+ * were already stored, and the user row that turn hangs from.
+ *
+ * The preview holds only what this tab streamed. A tab that opens the chat
+ * mid-turn, or whose stream reconnects, missed the segments before that, so
+ * counting stored rows from the start of the turn over-counts them, and the
+ * slice drops segments that were never shown — a finished reply could vanish
+ * until reload (#375). The count is tied to its user row because a turn that
+ * starts after the join begins counting from zero again.
+ */
+export interface JoinPoint {
+  stored: number;
+  userRowId: string | null;
+}
+
+/**
+ * What a chat screen previews: the segments it streamed, and where it joined.
+ * `joined` is `null` until the first event says the tab is watching a turn.
+ */
+export interface LivePreview {
+  segments: LiveSegment[];
+  joined: JoinPoint | null;
+}
+
+/** Nothing streamed, join not yet measured: a fresh stream or a new chat. */
+export const UNJOINED: LivePreview = { segments: [], joined: null };
+
+/** A turn this tab started itself: it streams every segment, so nothing was missed. */
+export const FROM_TURN_START: LivePreview = {
+  segments: [],
+  joined: { stored: 0, userRowId: null },
+};
+
+function lastUserRowId(messages: readonly StoredRow[]): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role === 'user') return m.id ?? null;
+  }
+  return null;
+}
+
+/**
+ * Fold one streamed event into the preview, measuring the join on the first
+ * event after an unjoined start against the rows stored at that moment. A
+ * rejoin forgets both: the stream that held them is gone.
+ */
+export function advanceLive(
+  preview: LivePreview,
+  event: LiveEvent,
+  stored: readonly StoredRow[]
+): LivePreview {
+  if (event.kind === 'rejoin') return UNJOINED;
+  const joined = preview.joined ?? {
+    stored: persistedSegmentCount(stored),
+    userRowId: lastUserRowId(stored),
+  };
+  return { segments: reduceLive(preview.segments, event), joined };
+}
+
+/**
  * The segments that still need previewing: everything the database has not
- * caught up with yet.
+ * caught up with yet, counting only rows stored since this tab joined.
  *
  * Slicing rather than clearing is what makes this self-correcting. If the
  * mirror of the server's segmentation is ever wrong, the error lasts until the
@@ -149,8 +219,11 @@ export function persistedSegmentCount(
  */
 export function pendingSegments(
   segments: LiveSegment[],
-  messages: { role: string; content: string; thinking?: string | null }[]
+  messages: readonly StoredRow[],
+  joined: JoinPoint | null = null
 ): LiveSegment[] {
-  const pending = segments.slice(persistedSegmentCount(messages));
+  const missed =
+    joined !== null && joined.userRowId === lastUserRowId(messages) ? joined.stored : 0;
+  const pending = segments.slice(Math.max(0, persistedSegmentCount(messages) - missed));
   return pending.filter(hasSubstance);
 }

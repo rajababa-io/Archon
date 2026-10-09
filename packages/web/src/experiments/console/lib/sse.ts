@@ -75,12 +75,21 @@ export interface OpenableStream {
  * The FIRST open is skipped: the mount that opened the stream already fetched
  * these keys, and invalidating there would double every request on page load.
  *
+ * `onOpen` runs on EVERY open, the first included: a stream reader that holds
+ * what it heard rather than a cache key — the streamed reply preview — starts
+ * over whenever the stream does, because it cannot know what came before.
+ *
  * A plain function rather than a hook, so the skip-first-open lifecycle is
  * unit-testable — the same extraction shape as `subscribeKey` in store/cache.
  */
-export function recoverOnReconnect(es: OpenableStream, keys: readonly string[]): void {
+export function recoverOnReconnect(
+  es: OpenableStream,
+  keys: readonly string[],
+  onOpen?: () => void
+): void {
   let opened = false;
   es.onopen = (): void => {
+    onOpen?.();
     if (!opened) {
       opened = true;
       return;
@@ -132,10 +141,11 @@ const CONVERSATION_EVENT_TARGETS = new Map<string, readonly ConversationTarget[]
   ['text', ['messages']],
   ['tool_call', ['messages']],
   ['tool_result', ['messages']],
-  // Listed even though the live path WRITES this key rather than refetching it
-  // — the table names what an event changes, and recovery always refetches
-  // because a lock event emitted during a gap is exactly what was lost.
-  ['conversation_lock', ['lock']],
+  // `lock` is listed even though the live path WRITES it rather than refetching
+  // it — the table names what an event changes, and recovery always refetches
+  // because a lock event emitted during a gap is exactly what was lost. The
+  // release also changes `messages`: see {@link conversationEventTargets}.
+  ['conversation_lock', ['lock', 'messages']],
   // A queued message leaving the queue is also the moment it enters the
   // history, so both are asked again.
   ['conversation_queue', ['queue', 'messages']],
@@ -173,6 +183,24 @@ const DASHBOARD_EVENT_TARGETS = new Map<string, readonly DashboardTarget[]>([
   ['dag_node', ['runs', 'runCounts', 'activeChats', 'projectCounts']],
   ['conversation_changed', ['conversations', 'projectCounts']],
 ]);
+
+/**
+ * What one conversation-stream event asks to be read again.
+ *
+ * The lock carries its answer and is written, never refetched. Its RELEASE is
+ * still a read trigger: the server writes the turn's last buffered rows and only
+ * then emits the release (`adapters/web.ts`), so it is the first moment the
+ * final reply is in the database. The refetch the last `text` event caused ran
+ * before that write, and without this one an open tab never asked again — the
+ * reply stayed missing until reload (#375).
+ */
+export function conversationEventTargets(ev: {
+  type: string;
+  locked?: unknown;
+}): readonly ConversationTarget[] {
+  if (ev.type === 'conversation_lock') return ev.locked === false ? ['messages'] : [];
+  return CONVERSATION_EVENT_TARGETS.get(ev.type) ?? [];
+}
 
 function conversationStreamTargetKeys(
   conversationPlatformId: string
@@ -469,7 +497,9 @@ export function useRunStreamSSE(conversationPlatformId: string | null, runId: st
  * lock current so the composer can disable while the agent is responding.
  *
  *   text / tool_call / tool_result → messages changed (debounced refetch)
- *   conversation_lock              → the lock cache key, written from the event
+ *   conversation_lock              → the lock cache key, written from the event;
+ *                                    its release also refetches messages
+ *   (every open)                   → onLive({ kind: 'rejoin' }): the preview starts over
  *   text / tool_call / thinking / retract → onLive(event), for the streamed preview
  *
  * The lock is a cache key rather than a callback so it can survive a gap. A
@@ -519,9 +549,8 @@ export function useConversationSSE(
       // only be told the same thing. Written into the cache key the composer
       // reads, so the live path and the reconnect refetch land in one place
       // instead of two that have to agree.
-      if (ev.type === 'conversation_lock') {
-        if (typeof ev.locked === 'boolean') applyLockEvent(conversationPlatformId, ev.locked);
-        return;
+      if (ev.type === 'conversation_lock' && typeof ev.locked === 'boolean') {
+        applyLockEvent(conversationPlatformId, ev.locked);
       }
 
       // The live preview renders straight from the payload and never stands in
@@ -568,13 +597,15 @@ export function useConversationSSE(
 
       // No run-detail cache here; an event absent from the table (workflow_*
       // and everything else) changes nothing this stream renders.
-      const targets = CONVERSATION_EVENT_TARGETS.get(ev.type);
-      if (targets === undefined) return;
+      const targets = conversationEventTargets({ type: ev.type, locked: ev.locked });
+      if (targets.length === 0) return;
       for (const target of targets) dirty.add(target);
       scheduleFlush();
     };
 
-    recoverOnReconnect(es, conversationStreamKeys(conversationPlatformId));
+    recoverOnReconnect(es, conversationStreamKeys(conversationPlatformId), () => {
+      onLive?.({ kind: 'rejoin' });
+    });
 
     es.onerror = (): void => {
       if (es.readyState === EventSource.CLOSED) {

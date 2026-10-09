@@ -1,7 +1,11 @@
 import { describe, test, expect } from 'bun:test';
 import {
+  advanceLive,
+  FROM_TURN_START,
   reduceLive,
   pendingSegments,
+  UNJOINED,
+  type LivePreview,
   persistedSegmentCount,
   type LiveSegment,
   type LiveEvent,
@@ -161,5 +165,55 @@ describe('reduceLive — thinking, mirroring appendThinking', () => {
     const landed = [user('go'), { role: 'assistant', content: '', thinking: 'look first' }];
     expect(persistedSegmentCount(landed)).toBe(1);
     expect(pendingSegments(segments, landed).map(s => s.content)).toEqual(['found it']);
+  });
+});
+
+describe('advanceLive — a tab that joins a turn part-way (#375)', () => {
+  const think = (content: string): LiveEvent => ({ kind: 'thinking', content });
+  const rejoin: LiveEvent = { kind: 'rejoin' };
+  type Row = { id?: string; role: string; content: string; thinking?: string };
+  const turnUser: Row = { id: 'u1', role: 'user', content: 'where do we begin?' };
+  const thought = (thinking: string): Row => ({
+    role: 'assistant',
+    content: '',
+    thinking,
+  });
+  // The turn as stored when the tab opened the chat: four thinking rows.
+  const storedAtJoin: Row[] = [turnUser, thought('a'), thought('b'), thought('c'), thought('d')];
+  const shown = (p: LivePreview, rows: Row[]): string[] =>
+    pendingSegments(p.segments, rows, p.joined).map(s => s.content);
+  const play = (start: LivePreview, events: LiveEvent[], rows: Row[]): LivePreview =>
+    events.reduce((p, e) => advanceLive(p, e, rows), start);
+
+  test('previews the reply it streamed, though the turn stored rows before it joined', () => {
+    // The case that hid a finished reply: one streamed segment against four
+    // stored rows sliced the reply away as if it had already landed.
+    const preview = play(UNJOINED, [text('the reply')], storedAtJoin);
+    expect(preview.joined).toEqual({ stored: 4, userRowId: 'u1' });
+    expect(shown(preview, storedAtJoin)).toEqual(['the reply']);
+  });
+
+  test('stops previewing once that reply is stored', () => {
+    const preview = play(UNJOINED, [text('the reply')], storedAtJoin);
+    expect(shown(preview, [...storedAtJoin, assistant('the reply')])).toEqual([]);
+  });
+
+  test('a turn the tab saw from its start counts every stored row', () => {
+    const preview = play(FROM_TURN_START, [think('a'), tool, text('reply')], [turnUser]);
+    expect(shown(preview, [turnUser, thought('a')])).toEqual(['reply']);
+  });
+
+  test('a turn that starts after the join counts from zero again', () => {
+    const preview = play(UNJOINED, [text('next reply')], storedAtJoin);
+    const nextTurn: Row[] = [...storedAtJoin, { id: 'u2', role: 'user', content: 'go on' }];
+    expect(shown(preview, nextTurn)).toEqual(['next reply']);
+    expect(shown(preview, [...nextTurn, assistant('next reply')])).toEqual([]);
+  });
+
+  test('a reopened stream forgets what it streamed and measures the join again', () => {
+    const before = play(UNJOINED, [text('partial')], [turnUser]);
+    const after = play(before, [rejoin, text('the reply')], storedAtJoin);
+    expect(after.segments.map(s => s.content)).toEqual(['the reply']);
+    expect(after.joined).toEqual({ stored: 4, userRowId: 'u1' });
   });
 });

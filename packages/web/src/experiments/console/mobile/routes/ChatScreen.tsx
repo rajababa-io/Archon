@@ -23,7 +23,13 @@ import { QueuedMessages } from '../../components/QueuedMessages';
 import { EmptyState } from '../../components/EmptyState';
 import { chatStatus } from '../../primitives/chat-status';
 import { baselineUserIds, echoHasLanded } from '../../primitives/pending-echo';
-import { reduceLive, type LiveEvent, type LiveSegment } from '../../primitives/live-text';
+import {
+  advanceLive,
+  FROM_TURN_START,
+  UNJOINED,
+  type LiveEvent,
+  type LivePreview,
+} from '../../primitives/live-text';
 import {
   renderedMessages,
   withoutThinking,
@@ -197,9 +203,12 @@ function ChatView({
     });
   }, [offline, messages, hasSummary, projectId]);
 
-  const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
+  const [livePreview, setLivePreview] = useState<LivePreview>(UNJOINED);
+  // See the desktop chat page: the stored rows an event arrives against.
+  const storedRef = useRef<readonly Message[]>([]);
+  storedRef.current = messages ?? [];
   const onLive = useCallback((event: LiveEvent): void => {
-    setLiveSegments(prev => reduceLive(prev, event));
+    setLivePreview(prev => advanceLive(prev, event, storedRef.current));
   }, []);
   const streamEpoch = useReturnEpoch(() => {
     for (const key of conversationStreamKeys(conversationId)) invalidate(key);
@@ -225,7 +234,7 @@ function ChatView({
   // would otherwise be previewed again under the new user row.
   const wasLockedRef = useRef(locked);
   useEffect(() => {
-    if (locked && !wasLockedRef.current) setLiveSegments([]);
+    if (locked && !wasLockedRef.current) setLivePreview(FROM_TURN_START);
     wasLockedRef.current = locked;
   }, [locked]);
 
@@ -313,7 +322,7 @@ function ChatView({
     }
     setError(null);
     scrollToBottom();
-    setLiveSegments([]);
+    setLivePreview(FROM_TURN_START);
     setSending(true);
     setWorkingSince(Date.now());
     pendingBaseRef.current = baselineUserIds(messages ?? []);
@@ -357,9 +366,9 @@ function ChatView({
   const rendered = useMemo(
     () =>
       withoutThinking(
-        renderedMessages(messageList, pendingUser, liveSegments, new Date().toISOString())
+        renderedMessages(messageList, pendingUser, livePreview, new Date().toISOString())
       ),
-    [messageList, pendingUser, liveSegments]
+    [messageList, pendingUser, livePreview]
   );
 
   const turnTrace = useMemo<InlineToolCall[]>(() => {
