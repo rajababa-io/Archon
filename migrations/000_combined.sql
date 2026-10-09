@@ -381,6 +381,14 @@ ALTER TABLE remote_agent_codebases
 ALTER TABLE remote_agent_codebases
   ADD COLUMN IF NOT EXISTS kind VARCHAR(10) NOT NULL DEFAULT 'repo';
 
+-- From migration 027: the console's per-project presentation (icon, colour,
+-- brief) as one opaque blob, and the hand-arranged rail position. sort_order is
+-- its own column because the rail is ordered in SQL.
+ALTER TABLE remote_agent_codebases
+  ADD COLUMN IF NOT EXISTS presentation JSONB;
+ALTER TABLE remote_agent_codebases
+  ADD COLUMN IF NOT EXISTS sort_order INTEGER;
+
 -- From migration 028: hand-arranged position of a chat in the console rail.
 ALTER TABLE remote_agent_conversations
   ADD COLUMN IF NOT EXISTS sort_order INTEGER;
@@ -1030,6 +1038,12 @@ CREATE INDEX IF NOT EXISTS "remote_agent_auth_account_userId_idx"
   ON remote_agent_auth_account("userId");
 CREATE INDEX IF NOT EXISTS "remote_agent_auth_verification_identifier_idx"
   ON remote_agent_auth_verification("identifier");
+
+-- Codebases
+COMMENT ON COLUMN remote_agent_codebases.presentation IS
+  'Console presentation: {icon, color, brief:{why,doing,where,updatedAt}}. Opaque to the server.';
+COMMENT ON COLUMN remote_agent_codebases.sort_order IS
+  'Hand-arranged rail position. NULL means never dragged, and sorts last.';
 
 -- Conversations
 CREATE INDEX IF NOT EXISTS idx_remote_agent_conversations_codebase
