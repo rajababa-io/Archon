@@ -6,6 +6,7 @@ import {
   runStreamKeys,
   dashboardStreamKeys,
   conversationFlushKeys,
+  conversationEventTargets,
   type OpenableStream,
 } from './sse';
 import { subscribeKey, get } from '../store/cache';
@@ -352,5 +353,37 @@ describe('conversationFlushKeys', () => {
     const keys = conversationFlushKeys(['conversation_lock'], null);
     expect(keys).toContain('conversations');
     expect(keys).toContain(K.activeChats);
+  });
+});
+
+describe('conversationEventTargets', () => {
+  // The server writes the turn's last rows and then releases the lock, so the
+  // release is the one event after which the final reply can be read (#375).
+  test('a released lock re-reads the messages', () => {
+    expect(conversationEventTargets({ type: 'conversation_lock', locked: false })).toEqual([
+      'messages',
+    ]);
+  });
+
+  test('a lock going up refetches nothing — it is written from the event', () => {
+    expect(conversationEventTargets({ type: 'conversation_lock', locked: true })).toEqual([]);
+  });
+
+  test('other events follow the target table', () => {
+    expect(conversationEventTargets({ type: 'text' })).toEqual(['messages']);
+    expect(conversationEventTargets({ type: 'thinking' })).toEqual([]);
+  });
+});
+
+describe('recoverOnReconnect onOpen', () => {
+  test('runs on every open, the first included', () => {
+    const { stream, open } = fakeStream();
+    let opens = 0;
+    recoverOnReconnect(stream, [], () => {
+      opens += 1;
+    });
+    open();
+    open();
+    expect(opens).toBe(2);
   });
 });

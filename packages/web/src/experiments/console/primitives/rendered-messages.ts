@@ -5,7 +5,7 @@
  * show a turn in flight the same way.
  */
 import type { Message } from './message';
-import { pendingSegments, type LiveSegment } from './live-text';
+import { pendingSegments, type LivePreview } from './live-text';
 
 /** Id prefix of a streamed reply the database has not stored yet. */
 const LIVE_PREFIX = 'live-';
@@ -53,14 +53,14 @@ function synthetic(
 
 /**
  * Each preview disappears the moment its real row lands: `pendingSegments`
- * slices by how many rows this turn already has, measured against the STORED
- * rows alone — the echo is not one — so nothing is compared by content and
- * nothing needs de-duplicating.
+ * slices by how many rows this turn has stored since the tab joined it,
+ * measured against the STORED rows alone — the echo is not one — so nothing is
+ * compared by content and nothing needs de-duplicating.
  */
 export function renderedMessages(
   stored: readonly Message[],
   pendingUser: PendingUser | null,
-  live: LiveSegment[],
+  live: LivePreview,
   now: string
 ): Message[] {
   const out: Message[] = [...stored];
@@ -69,7 +69,7 @@ export function renderedMessages(
       synthetic('pending-user', 'user', pendingUser.content, now, { files: pendingUser.files })
     );
   }
-  pendingSegments(live, [...stored]).forEach((seg, i) => {
+  pendingSegments(live.segments, stored, live.joined).forEach((seg, i) => {
     out.push(
       synthetic(`${LIVE_PREFIX}${String(i)}`, 'assistant', seg.content, now, {
         category: seg.category,

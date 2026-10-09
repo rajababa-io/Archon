@@ -40,7 +40,13 @@ import { askAwaitsAnswer } from '../lib/ask-keys';
 import { chatDraftKey, loadDraftText } from '../lib/draft-store';
 import * as skill from '../skills';
 import type { InlineToolCall, Message } from '../primitives/message';
-import { reduceLive, type LiveSegment, type LiveEvent } from '../primitives/live-text';
+import {
+  advanceLive,
+  FROM_TURN_START,
+  UNJOINED,
+  type LiveEvent,
+  type LivePreview,
+} from '../primitives/live-text';
 import { renderedMessages, type PendingUser } from '../primitives/rendered-messages';
 import { resolveConversationDbId } from '../primitives/conversation';
 import { isChecklistCall, turnChecklist, type ChecklistCall } from '../primitives/checklist';
@@ -381,13 +387,18 @@ export function ChatPage(): ReactElement {
   // holds assistant text in memory and persists it late, so without this the
   // reply is invisible until a flush — the reload-to-see-it bug. See
   // `primitives/live-text.ts` for why persisting sooner is not the fix.
-  const [liveSegments, setLiveSegments] = useState<LiveSegment[]>([]);
+  const [livePreview, setLivePreview] = useState<LivePreview>(UNJOINED);
+  // The rows stored when a streamed event arrives, for measuring where this
+  // tab joined the turn (see `advanceLive`). Read from the event callback,
+  // which is stable across renders and so cannot close over `messages`.
+  const storedRef = useRef<readonly Message[]>([]);
+  storedRef.current = messages ?? [];
   // Checklist tool calls streamed this turn, for the same reason: tool calls
   // are written when the turn ends, and the checklist is only worth showing
   // while it runs. See `primitives/checklist.ts`.
   const [liveChecklist, setLiveChecklist] = useState<ChecklistCall[]>([]);
   const onLive = useCallback((event: LiveEvent): void => {
-    setLiveSegments(prev => reduceLive(prev, event));
+    setLivePreview(prev => advanceLive(prev, event, storedRef.current));
     if (
       event.kind === 'tool' &&
       event.name !== undefined &&
@@ -405,7 +416,7 @@ export function ChatPage(): ReactElement {
 
   // Switching chats must not carry one conversation's preview into another.
   useEffect(() => {
-    setLiveSegments([]);
+    setLivePreview(UNJOINED);
     setLiveChecklist([]);
     setSuggestion(null);
   }, [activeConvId]);
@@ -666,7 +677,7 @@ export function ChatPage(): ReactElement {
     // The reader may be up in the history; their own message is the one thing
     // they always want to see land, so sending re-pins the tail.
     scrollToBottom();
-    setLiveSegments([]); // a new turn — the previous reply is history now
+    setLivePreview(FROM_TURN_START); // a new turn — the previous reply is history now
     setLiveChecklist([]);
     setSending(true); // optimistic: disable the composer immediately
     setWorkingSince(Date.now()); // this turn has a known start, not an inferred one
@@ -727,8 +738,8 @@ export function ChatPage(): ReactElement {
   // What actually renders: the persisted rows, the user's echo, then the
   // streamed text the database has not caught up with.
   const rendered = useMemo<Message[]>(
-    () => renderedMessages(messageList, pendingUser, liveSegments, new Date().toISOString()),
-    [messageList, liveSegments, pendingUser]
+    () => renderedMessages(messageList, pendingUser, livePreview, new Date().toISOString()),
+    [messageList, livePreview, pendingUser]
   );
 
   // Cheap enough to derive per render; the composer re-renders with the page anyway.
