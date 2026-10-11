@@ -41,6 +41,7 @@ import {
 import {
   CODE_MAP_MERGED_PAGE,
   CODE_MAP_QUERY,
+  isRefusedCheckDetail,
   readCodingBranches,
   resolveBase,
   toPulls,
@@ -6791,11 +6792,12 @@ export function registerApiRoutes(
 
     const slug = repoSlug(src);
     try {
-      const out = await githubGraphQl(src, CODE_MAP_QUERY, {
-        owner: src.owner,
-        repo: src.repo,
-        merged: CODE_MAP_MERGED_PAGE,
-      });
+      const out = await githubGraphQl(
+        src,
+        CODE_MAP_QUERY,
+        { owner: src.owner, repo: src.repo, merged: CODE_MAP_MERGED_PAGE },
+        isRefusedCheckDetail
+      );
       if ('reason' in out) return c.json({ ...empty, repo: slug, reason: out.reason });
       const deploy = await projectDeployDb.getProjectDeploy(projectId);
       const base = resolveBase(out.data, deploy?.branch ?? null);

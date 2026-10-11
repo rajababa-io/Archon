@@ -138,6 +138,24 @@ describe('githubGraphQl', () => {
     expect(await githubGraphQl(src, 'q', {})).toEqual({ reason: 'github-error' });
   });
 
+  test('errors the caller tolerates return the partial data', async () => {
+    stub(200, { data: { a: null, b: 1 }, errors: [{ type: 'FORBIDDEN', path: ['a'] }] });
+    const out = await githubGraphQl(src, 'q', {}, e => e.type === 'FORBIDDEN');
+    expect(out).toEqual({ data: { a: null, b: 1 } });
+  });
+
+  test('one untolerated error among tolerated ones still fails the read', async () => {
+    stub(200, {
+      data: { a: null, b: null },
+      errors: [
+        { type: 'FORBIDDEN', path: ['a'] },
+        { type: 'NOT_FOUND', path: ['b'], message: 'gone' },
+      ],
+    });
+    const out = await githubGraphQl(src, 'q', {}, e => e.type === 'FORBIDDEN');
+    expect(out).toEqual({ reason: 'gone' });
+  });
+
   test('data passes through', async () => {
     stub(200, { data: { repository: { issue: RAW_ISSUE } } });
     const out = await githubGraphQl(src, 'q', {});

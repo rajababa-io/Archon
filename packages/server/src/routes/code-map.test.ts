@@ -4,16 +4,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { removeTempTree } from '@archon/paths/test-utils';
-import { readCodingBranches, resolveBase, toChecks, toPulls } from './code-map';
+import {
+  isRefusedCheckDetail,
+  readCodingBranches,
+  resolveBase,
+  toChecks,
+  toPulls,
+} from './code-map';
 
-function rollup(state: string, nodes: unknown[]): unknown {
-  return {
-    commits: {
-      nodes: [
-        { commit: { statusCheckRollup: { state, contexts: { totalCount: nodes.length, nodes } } } },
-      ],
-    },
+function rollup(
+  state: string,
+  nodes: unknown[],
+  counts: { runs?: unknown[]; statuses?: unknown[] } = {}
+): unknown {
+  const contexts = {
+    totalCount: nodes.length,
+    checkRunCountsByState: counts.runs ?? [],
+    statusContextCountsByState: counts.statuses ?? [],
+    nodes,
   };
+  return { commits: { nodes: [{ commit: { statusCheckRollup: { state, contexts } } }] } };
 }
 
 describe('toChecks', () => {
@@ -26,12 +36,26 @@ describe('toChecks', () => {
     });
   });
 
-  test('counts finished checks while the rollup is pending', () => {
-    const raw = rollup('PENDING', [
-      { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' },
-      { __typename: 'CheckRun', name: 'test', status: 'IN_PROGRESS', conclusion: null },
-      { __typename: 'StatusContext', context: 'deploy/preview', state: 'SUCCESS' },
-    ]);
+  test('counts finished checks from the per-state counts while the rollup is pending', () => {
+    const raw = rollup(
+      'PENDING',
+      [
+        { __typename: 'CheckRun', name: 'lint', status: 'COMPLETED', conclusion: 'SUCCESS' },
+        { __typename: 'CheckRun', name: 'test', status: 'IN_PROGRESS', conclusion: null },
+        { __typename: 'StatusContext', context: 'deploy/preview', state: 'SUCCESS' },
+      ],
+      {
+        runs: [
+          { state: 'SUCCESS', count: 1 },
+          { state: 'IN_PROGRESS', count: 1 },
+          { state: 'QUEUED', count: 0 },
+        ],
+        statuses: [
+          { state: 'SUCCESS', count: 1 },
+          { state: 'PENDING', count: 0 },
+        ],
+      }
+    );
     expect(toChecks(raw as never)).toEqual({
       state: 'running',
       total: 3,
@@ -51,8 +75,55 @@ describe('toChecks', () => {
     expect(toChecks(status as never)).toMatchObject({ state: 'failed', failedName: 'ci/x' });
   });
 
+  test('check-run nodes refused to the token still count, and name no failure', () => {
+    // What a fine-grained token gets back (#379): every CheckRun node nulled,
+    // the counts and the verdict intact.
+    const raw = rollup('FAILURE', [null, null], {
+      runs: [
+        { state: 'SUCCESS', count: 1 },
+        { state: 'FAILURE', count: 1 },
+      ],
+    });
+    expect(toChecks(raw as never)).toEqual({
+      state: 'failed',
+      total: 2,
+      done: 2,
+      failedName: null,
+    });
+  });
+
   test('success is passed', () => {
     expect(toChecks(rollup('SUCCESS', []) as never).state).toBe('passed');
+  });
+});
+
+describe('isRefusedCheckDetail', () => {
+  const nodePath = [
+    'repository',
+    'open',
+    'nodes',
+    0,
+    'commits',
+    'nodes',
+    0,
+    'commit',
+    'statusCheckRollup',
+    'contexts',
+    'nodes',
+    3,
+  ];
+
+  test('a FORBIDDEN check-context node is the error the map draws without', () => {
+    expect(isRefusedCheckDetail({ type: 'FORBIDDEN', path: nodePath })).toBe(true);
+  });
+
+  test('any other error still fails the read', () => {
+    expect(isRefusedCheckDetail({ type: 'NOT_FOUND', path: nodePath })).toBe(false);
+    expect(isRefusedCheckDetail({ type: 'FORBIDDEN', path: ['repository'] })).toBe(false);
+    expect(isRefusedCheckDetail({ type: 'FORBIDDEN' })).toBe(false);
+    expect(
+      isRefusedCheckDetail({ type: 'FORBIDDEN', path: ['repository', 'open', 'contexts', 'nodes'] })
+    ).toBe(false);
   });
 });
 
