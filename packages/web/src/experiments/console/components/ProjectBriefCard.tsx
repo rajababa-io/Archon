@@ -136,6 +136,19 @@ export function BriefPictureStrip({
 }
 
 /**
+ * Said when the pictures could not be fetched, so a card the agent gave
+ * pictures never reads as one it did not.
+ */
+export function BriefPicturesUnavailable(): ReactElement {
+  return (
+    <p className="mb-2.5 flex items-center gap-1.5 text-mini text-text-tertiary">
+      <ImageOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      This brief&apos;s pictures could not be loaded.
+    </p>
+  );
+}
+
+/**
  * The brief's pictures, fetched through the Pictures listing so each comes
  * with its thumbnail and is confirmed to still be this project's. Nothing is
  * drawn until that answers: the text below does not wait on it.
@@ -148,10 +161,10 @@ function BriefPictures({
   pictures: readonly BriefPicture[];
 }): ReactElement | null {
   const paths = pictures.map(p => p.path);
-  const { data } = useEntity<ProjectPictures>(K.briefPictures(projectId, paths), () =>
+  const { data, error } = useEntity<ProjectPictures>(K.briefPictures(projectId, paths), () =>
     skill.listProjectPictures(projectId, { limit: paths.length, paths })
   );
-  if (data === undefined) return null;
+  if (data === undefined) return error !== undefined ? <BriefPicturesUnavailable /> : null;
   return <BriefPictureStrip shown={shownPictures(pictures, data.pictures)} />;
 }
 

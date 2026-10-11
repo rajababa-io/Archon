@@ -4,6 +4,7 @@ import type { ProjectPicture } from '../skills';
 import type { ProjectBrief } from '../primitives/project';
 import {
   BriefPictureStrip,
+  BriefPicturesUnavailable,
   BriefText,
   ProjectBriefView,
   shownPictures,
@@ -108,5 +109,13 @@ describe('BriefPictureStrip', () => {
     );
     expect(html).not.toContain('<img');
     expect(html).toContain('No preview');
+  });
+});
+
+describe('BriefPicturesUnavailable', () => {
+  test('a failed fetch says so instead of looking like a brief with no pictures', () => {
+    const html = renderToStaticMarkup(<BriefPicturesUnavailable />);
+    expect(html).toContain('could not be loaded');
+    expect(html).not.toContain('<img');
   });
 });
