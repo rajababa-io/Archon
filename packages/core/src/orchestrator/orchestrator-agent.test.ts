@@ -4150,6 +4150,94 @@ describe('workflow dispatch routing — interactive flag', () => {
     expect(opts.preCreatedRun).toBeUndefined();
     expect(opts.priorCompletedNodes).toBeUndefined();
   });
+
+  // #383 — a chat bound to one project starts a run on another. The run is the other
+  // project's; the chat keeps its own project and its own worktree.
+  describe('cross-project dispatch (#383)', () => {
+    const home = makeCodebase({ id: 'codebase-1', name: 'home-repo', default_cwd: '/repos/home' });
+    const other = makeCodebase({
+      id: 'codebase-2',
+      name: 'other-repo',
+      default_cwd: '/repos/other',
+    });
+
+    function invokeOn(projectName: string): void {
+      mockListCodebases.mockResolvedValue([home, other]);
+      mockSendQuery.mockImplementationOnce(async function* () {
+        yield {
+          type: 'assistant',
+          content: `Starting it.\n/invoke-workflow test-workflow --project ${projectName}`,
+        };
+        yield { type: 'result', sessionId: 'sess-1' };
+      });
+    }
+
+    function resolverCallFor(codebaseId: string): unknown[] | undefined {
+      return (mockValidateAndResolveIsolation.mock.calls as unknown[][]).find(
+        call => (call[1] as Codebase | null)?.id === codebaseId
+      );
+    }
+
+    function boundCodebaseWrites(): unknown[] {
+      return (mockUpdateConversation.mock.calls as unknown[][]).filter(
+        ([, patch]) => (patch as Record<string, unknown>).codebase_id !== undefined
+      );
+    }
+
+    test('a bound chat keeps its project and worktree; the run targets the other project', async () => {
+      mockGetOrCreateConversation.mockReturnValueOnce(
+        Promise.resolve(
+          makeDispatchConversation({ isolation_env_id: 'env-home', cwd: '/wt/home-thread' })
+        )
+      );
+      mockGetCodebase.mockImplementation(id =>
+        Promise.resolve(id === home.id ? home : id === other.id ? other : null)
+      );
+      invokeOn('other-repo');
+
+      await handleMessage(makePlatform(), 'conv-1', 'build this on other-repo');
+
+      expect(mockExecuteWorkflow).toHaveBeenCalled();
+      expect(boundCodebaseWrites()).toEqual([]);
+      const call = resolverCallFor(other.id);
+      expect(call).toBeDefined();
+      // The other project's worktree is neither taken from nor written back to this chat.
+      expect(call?.[7]).toEqual({ linkToConversation: false });
+    });
+
+    test('a bound chat starting a run on its own project links the worktree as before', async () => {
+      mockGetOrCreateConversation.mockReturnValueOnce(Promise.resolve(makeDispatchConversation()));
+      mockGetCodebase.mockImplementation(id =>
+        Promise.resolve(id === home.id ? home : id === other.id ? other : null)
+      );
+      invokeOn('home-repo');
+
+      await handleMessage(makePlatform(), 'conv-1', 'build this here');
+
+      expect(mockExecuteWorkflow).toHaveBeenCalled();
+      expect(boundCodebaseWrites()).toEqual([]);
+      const dispatchCall = (mockValidateAndResolveIsolation.mock.calls as unknown[][]).at(-1);
+      expect(dispatchCall?.[7]).toEqual({ linkToConversation: true });
+    });
+
+    test('an unbound chat adopts the project of the run it starts', async () => {
+      mockGetOrCreateConversation.mockReturnValueOnce(
+        Promise.resolve(makeConversation({ codebase_id: null }))
+      );
+      mockGetCodebase.mockImplementation(id =>
+        Promise.resolve(id === home.id ? home : id === other.id ? other : null)
+      );
+      invokeOn('other-repo');
+
+      await handleMessage(makePlatform(), 'conv-1', 'build this on other-repo');
+
+      expect(mockExecuteWorkflow).toHaveBeenCalled();
+      expect(mockUpdateConversation).toHaveBeenCalledWith('conv-1-db', {
+        codebase_id: other.id,
+      });
+      expect(resolverCallFor(other.id)?.[7]).toEqual({ linkToConversation: true });
+    });
+  });
 });
 
 // ─── Natural-language approval routing ──────────────────────────────────────

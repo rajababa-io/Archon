@@ -466,6 +466,42 @@ describe('validateAndResolveIsolation', () => {
     const request = mockResolve.mock.calls.at(-1)?.[0];
     expect(request?.codebase?.defaultBranch).toBeNull();
   });
+
+  // #383 — another project's run must not take this chat's worktree, nor move the chat
+  // into the one it gets.
+  test('linkToConversation: false neither reuses nor replaces the conversation worktree', async () => {
+    const conversation = makeConversation({ isolation_env_id: 'env-home', cwd: '/wt/home' });
+    const codebase = makeCodebase();
+
+    mockResolve.mockResolvedValueOnce(resolvedIsolation({ type: 'created' }));
+
+    const result = await validateAndResolveIsolation(
+      conversation,
+      codebase,
+      platform,
+      'conv-1',
+      undefined,
+      false,
+      undefined,
+      { linkToConversation: false }
+    );
+
+    expect(mockResolve.mock.calls.at(-1)?.[0].existingEnvId).toBeNull();
+    expect(mockUpdateConversation).not.toHaveBeenCalled();
+    expect(result.status).toBe('new');
+  });
+
+  test('links the resolved worktree to the conversation by default', async () => {
+    const conversation = makeConversation({ isolation_env_id: 'env-home' });
+    const codebase = makeCodebase();
+
+    mockResolve.mockResolvedValueOnce(resolvedIsolation({ type: 'existing' }));
+
+    await validateAndResolveIsolation(conversation, codebase, platform, 'conv-1');
+
+    expect(mockResolve.mock.calls.at(-1)?.[0].existingEnvId).toBe('env-home');
+    expect(mockUpdateConversation).toHaveBeenCalled();
+  });
 });
 
 describe('dispatchBackgroundWorkflow', () => {

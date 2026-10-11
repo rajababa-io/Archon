@@ -1302,10 +1302,16 @@ async function dispatchOrchestratorWorkflowOwned(
     }
   }
 
-  // Auto-attach project to conversation
-  await db.updateConversation(conversation.id, {
-    codebase_id: codebase.id,
-  });
+  // A chat already bound to a project keeps it when it starts work on another
+  // (#383): the run targets `codebase`, but project-scoped tools (the brief) and the
+  // chat's listing read the conversation's binding. Only an unbound chat adopts it.
+  const crossProject =
+    conversation.codebase_id !== null && conversation.codebase_id !== codebase.id;
+  if (conversation.codebase_id === null) {
+    await db.updateConversation(conversation.id, {
+      codebase_id: codebase.id,
+    });
+  }
 
   // Validate and resolve isolation.
   // A workflow with `worktree.enabled: false` short-circuits the resolver entirely
@@ -1318,19 +1324,21 @@ async function dispatchOrchestratorWorkflowOwned(
     // Adoption lane: the adopted run's worktree survives — run in it dirty-as-is
     // instead of cutting a fresh one (same shape as the background dispatch in
     // orchestrator.ts). Linking the env keeps isolation hygiene pointed at this
-    // checkout.
+    // checkout — unless the checkout is another project's.
     cwd = adoptionLane.workingPath;
-    await db
-      .updateConversation(conversation.id, {
-        cwd,
-        ...(adoptionLane.envId ? { isolation_env_id: adoptionLane.envId } : {}),
-      })
-      .catch((e: unknown) => {
-        getLog().warn(
-          { err: toError(e), conversationId },
-          'orchestrator.worker_cwd_persist_failed'
-        );
-      });
+    if (!crossProject) {
+      await db
+        .updateConversation(conversation.id, {
+          cwd,
+          ...(adoptionLane.envId ? { isolation_env_id: adoptionLane.envId } : {}),
+        })
+        .catch((e: unknown) => {
+          getLog().warn(
+            { err: toError(e), conversationId },
+            'orchestrator.worker_cwd_persist_failed'
+          );
+        });
+    }
   } else if (workflow.worktree?.enabled === false) {
     getLog().info(
       { workflowName: workflow.name, conversationId, codebaseId: codebase.id },
@@ -1363,7 +1371,9 @@ async function dispatchOrchestratorWorkflowOwned(
             }
           : isolationHints,
         false,
-        userId
+        userId,
+        // Another project's run neither reuses nor replaces this chat's own worktree.
+        { linkToConversation: !crossProject }
       );
       cwd = result.cwd;
       if (result.status === 'new') cutFromCommit = result.cutFromCommit;
@@ -4703,7 +4713,6 @@ async function handleWorkflowRunCommand(
       return;
     }
 
-    await db.updateConversation(conversation.id, { codebase_id: codebase.id });
     await dispatchOrchestratorWorkflow(
       platform,
       conversationId,
