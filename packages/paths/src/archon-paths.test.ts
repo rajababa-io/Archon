@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { homedir, tmpdir } from 'os';
-import { dirname, join, posix, sep, win32 } from 'path';
+import { dirname, join, posix, resolve, sep, win32 } from 'path';
 import { existsSync, readFileSync } from 'fs';
 import { mkdir, rm, writeFile, lstat, readlink, symlink as fsSymlink } from 'fs/promises';
 import { honorArchonHomeEnv, removeTempTree } from './test-utils';
@@ -14,6 +14,7 @@ import {
   getArchonHome,
   getArchonTempPath,
   getArchonPublicPath,
+  projectPictureRoot,
   getArchonWorkspacesPath,
   ensureArchonWorkspacesPath,
   getArchonWorktreesPath,
@@ -363,6 +364,15 @@ describe('archon-paths', () => {
       delete process.env.ARCHON_DOCKER;
       process.env.ARCHON_HOME = '/custom/archon';
       expect(getArchonTempPath()).toBe(join('/custom/archon', 'temp'));
+    });
+  });
+
+  describe('projectPictureRoot', () => {
+    test('refuses a name that leaves the public root or names a dot-folder', () => {
+      expect(projectPictureRoot('/pub', '../etc')).toBeNull();
+      expect(projectPictureRoot('/pub', '.')).toBeNull();
+      expect(projectPictureRoot('/pub', '.thumbs')).toBeNull();
+      expect(projectPictureRoot('/pub', 'owner/repo')).toBe(resolve('/pub', 'owner', 'repo'));
     });
   });
 

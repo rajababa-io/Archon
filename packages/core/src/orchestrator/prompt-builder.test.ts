@@ -247,6 +247,10 @@ describe('buildProjectOverviewSection', () => {
     const section = buildProjectOverviewSection();
     expect(section).toMatch(/omitting a field keeps it/i);
   });
+
+  test('tells the agent the overview can carry pictures', () => {
+    expect(buildProjectOverviewSection()).toContain('`pictures`');
+  });
 });
 
 describe('formatPausedGateSection', () => {

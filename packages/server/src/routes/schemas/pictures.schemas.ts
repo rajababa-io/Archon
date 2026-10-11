@@ -11,6 +11,14 @@ export const picturesQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   /** Only pictures in this topic folder. */
   topic: z.string().min(1).optional(),
+  /**
+   * Only these pictures, by path under the project's folder, in the order
+   * given — repeat the parameter for each. The brief card's pictures (#381).
+   */
+  path: z
+    .union([z.string().min(1), z.array(z.string().min(1))])
+    .optional()
+    .transform(p => (typeof p === 'string' ? [p] : p)),
 });
 
 export const pictureSchema = z

@@ -7,10 +7,10 @@
 import { afterAll, describe, expect, test } from 'bun:test';
 import { mkdtemp, mkdir, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join } from 'node:path';
 import { removeTempTree } from '@archon/paths/test-utils';
 import sharp from 'sharp';
-import { listProjectPictures, projectPictureRoot, type ThumbnailMaker } from './project-pictures';
+import { listProjectPictures, type ThumbnailMaker } from './project-pictures';
 
 const roots: string[] = [];
 afterAll(async () => {
@@ -93,6 +93,26 @@ describe('listProjectPictures', () => {
       makeThumbnail: fakeThumb,
     });
     expect(outer.pictures.map(p => p.path)).toEqual(['form/t/outer.png']);
+  });
+
+  test('`paths` picks those pictures in the order given, leaving out any that are gone', async () => {
+    const root = await makeRoot();
+    await put(root, 'p/a/old.png', 30);
+    await put(root, 'p/a/new.png', 1);
+    await put(root, 'p/b/mid.png', 10);
+
+    const listing = await listProjectPictures({
+      publicRoot: root,
+      projectName: 'p',
+      otherProjectNames: [],
+      paths: ['a/old.png', 'gone.png', 'b/mid.png', 'a/new.png'],
+      limit: 8,
+      offset: 0,
+      makeThumbnail: fakeThumb,
+    });
+    expect(listing.pictures.map(p => p.path)).toEqual(['a/old.png', 'b/mid.png', 'a/new.png']);
+    expect(listing.pictures.every(p => p.thumbUrl?.startsWith('/files/.thumbs/p/'))).toBe(true);
+    expect(listing.total).toBe(3);
   });
 
   test('pages and filters by topic; total counts the filter, all counts everything', async () => {
@@ -192,14 +212,5 @@ describe('listProjectPictures', () => {
     const meta = await sharp(join(root, '.thumbs/p/t/big.png.webp')).metadata();
     expect(meta.format).toBe('webp');
     expect(meta.width).toBe(480);
-  });
-});
-
-describe('projectPictureRoot', () => {
-  test('refuses a name that leaves the public root or names a dot-folder', () => {
-    expect(projectPictureRoot('/pub', '../etc')).toBeNull();
-    expect(projectPictureRoot('/pub', '.')).toBeNull();
-    expect(projectPictureRoot('/pub', '.thumbs')).toBeNull();
-    expect(projectPictureRoot('/pub', 'owner/repo')).toBe(resolve('/pub', 'owner', 'repo'));
   });
 });

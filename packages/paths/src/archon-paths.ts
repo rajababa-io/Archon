@@ -281,6 +281,39 @@ export function getArchonPublicPath(): string {
 }
 
 /**
+ * The file extensions that count as pictures — what a project's gallery lists
+ * and what its brief may show (#350, #381). One set, so a picture the gallery
+ * shows is never one the brief refuses.
+ */
+export const PICTURE_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.svg',
+]);
+
+/**
+ * The folder a project's pictures live in — `<public>/<project name>/` — or
+ * null when its name cannot be one: a name that resolves outside the public
+ * root, or to a dot-folder such as the thumbnails' `.thumbs`, is not a folder
+ * in it.
+ */
+export function projectPictureRoot(publicRoot: string, projectName: string): string | null {
+  const root = resolve(publicRoot, projectName);
+  const base = resolve(publicRoot);
+  if (root === base || !root.startsWith(base + sep)) return null;
+  if (
+    relative(base, root)
+      .split(sep)
+      .some(seg => seg.startsWith('.'))
+  )
+    return null;
+  return root;
+}
+
+/**
  * Ensure the public directory exists and return its path. Safe to call on a
  * fresh install, where nothing has been published yet.
  */

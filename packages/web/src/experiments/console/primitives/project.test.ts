@@ -16,7 +16,7 @@ describe('toProject', () => {
       ...base,
       presentation: { brief: { why: 'w', doing: 'd', where: 'r', updatedAt: 42 } },
     });
-    expect(p.brief).toEqual({ why: 'w', doing: 'd', where: 'r', updatedAt: 42 });
+    expect(p.brief).toEqual({ why: 'w', doing: 'd', where: 'r', pictures: [], updatedAt: 42 });
   });
 
   test('no presentation at all is no brief, not a crash', () => {
@@ -37,7 +37,42 @@ describe('toProject', () => {
 
   test('a partial brief keeps the fields it has and blanks the rest', () => {
     const p = toProject({ ...base, presentation: { brief: { doing: 'shipping the rail' } } });
-    expect(p.brief).toEqual({ why: '', doing: 'shipping the rail', where: '', updatedAt: null });
+    expect(p.brief).toEqual({
+      why: '',
+      doing: 'shipping the rail',
+      where: '',
+      pictures: [],
+      updatedAt: null,
+    });
+  });
+
+  test('reads the pictures in order, dropping malformed entries', () => {
+    const p = toProject({
+      ...base,
+      presentation: {
+        brief: {
+          why: 'w',
+          pictures: [
+            { path: 'b.png', caption: 'B' },
+            { path: 'x.png' },
+            'c.png',
+            { path: 'a.png', caption: 'A' },
+          ],
+        },
+      },
+    });
+    expect(p.brief?.pictures).toEqual([
+      { path: 'b.png', caption: 'B' },
+      { path: 'a.png', caption: 'A' },
+    ]);
+  });
+
+  test('pictures alone are a brief', () => {
+    const p = toProject({
+      ...base,
+      presentation: { brief: { pictures: [{ path: 'a.png', caption: 'A' }] } },
+    });
+    expect(p.brief?.pictures).toHaveLength(1);
   });
 });
 

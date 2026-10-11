@@ -59,6 +59,22 @@ describe('GET /api/projects/:projectId/pictures', () => {
     expect(body.pictures.map(p => p.url)).toEqual(['/files/owner/repo/topic/inner.png']);
   });
 
+  test("`path` picks pictures, once or repeated, and never a nested project's", async () => {
+    const one = await (
+      await app()
+    ).request('/api/projects/p-outer/pictures?path=topic%2Fouter.png');
+    const oneBody = (await one.json()) as { pictures: { path: string }[] };
+    expect(oneBody.pictures.map(p => p.path)).toEqual(['topic/outer.png']);
+
+    const many = await (
+      await app()
+    ).request(
+      '/api/projects/p-outer/pictures?path=repo%2Ftopic%2Finner.png&path=topic%2Fouter.png'
+    );
+    const manyBody = (await many.json()) as { pictures: { path: string }[] };
+    expect(manyBody.pictures.map(p => p.path)).toEqual(['topic/outer.png']);
+  });
+
   test('an unknown project is a 404', async () => {
     const res = await (await app()).request('/api/projects/nope/pictures');
     expect(res.status).toBe(404);

@@ -32,7 +32,7 @@
  */
 import { mkdir, readdir, stat } from 'node:fs/promises';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
-import { createLogger } from '@archon/paths';
+import { createLogger, PICTURE_EXTENSIONS, projectPictureRoot } from '@archon/paths';
 
 let cachedLog: ReturnType<typeof createLogger> | undefined;
 function getLog(): ReturnType<typeof createLogger> {
@@ -40,7 +40,6 @@ function getLog(): ReturnType<typeof createLogger> {
   return cachedLog;
 }
 
-const PICTURE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg']);
 const THUMB_DIR = '.thumbs';
 const THUMB_WIDTH = 480;
 /** Thumbnails made at once; the rest of a page waits its turn. */
@@ -85,23 +84,6 @@ interface Found {
   name: string;
   mtimeMs: number;
   bytes: number;
-}
-
-/**
- * The folder a project's pictures live in, or null when its name cannot be
- * one — a name that resolves outside the public root is not a folder in it.
- */
-export function projectPictureRoot(publicRoot: string, projectName: string): string | null {
-  const root = resolve(publicRoot, projectName);
-  const base = resolve(publicRoot);
-  if (root === base || !root.startsWith(base + sep)) return null;
-  if (
-    relative(base, root)
-      .split(sep)
-      .some(seg => seg.startsWith('.'))
-  )
-    return null;
-  return root;
 }
 
 function toFilesUrl(publicPath: string): string {
@@ -266,18 +248,30 @@ async function mapPooled<T, R>(
   return out;
 }
 
+function pick(found: readonly Found[], paths: readonly string[]): Found[] {
+  const byPath = new Map(found.map(f => [f.path, f]));
+  return paths.map(p => byPath.get(p)).filter((f): f is Found => f !== undefined);
+}
+
 export async function listProjectPictures(opts: {
   publicRoot: string;
   projectName: string;
   /** Every other registered project's name, so a nested project's folder is skipped. */
   otherProjectNames: readonly string[];
   topic?: string;
+  /**
+   * Only these pictures, by path under the project's folder, in this order —
+   * the brief's pictures (#381). One that is gone, or is no longer this
+   * project's, is left out rather than failing the rest.
+   */
+  paths?: readonly string[];
   limit: number;
   offset: number;
   makeThumbnail?: ThumbnailMaker;
 }): Promise<PictureListing> {
   const found = await findPictures(opts.publicRoot, opts.projectName, opts.otherProjectNames);
-  const filtered = opts.topic === undefined ? found : found.filter(f => f.topic === opts.topic);
+  const byTopic = opts.topic === undefined ? found : found.filter(f => f.topic === opts.topic);
+  const filtered = opts.paths === undefined ? byTopic : pick(byTopic, opts.paths);
   const page = filtered.slice(opts.offset, opts.offset + opts.limit);
   const make = opts.makeThumbnail ?? sharpThumbnail;
   const pictures = await mapPooled(page, THUMB_CONCURRENCY, async f => ({
