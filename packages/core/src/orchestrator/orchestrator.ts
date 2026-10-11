@@ -137,6 +137,10 @@ export { ensureIsolationConfigured };
  * Validate existing isolation reference and coordinate creation of new isolation if needed.
  * Delegates resolution logic to IsolationResolver; handles messaging and conversation updates.
  *
+ * `linkToConversation: false` resolves a worktree for a run that does not belong to the
+ * conversation's own project: the conversation's environment is neither reused nor
+ * replaced, so a chat bound to one project keeps its folder while it starts work on another.
+ *
  * @throws {IsolationBlockedError} When isolation is required but blocked (user already notified)
  */
 export async function validateAndResolveIsolation(
@@ -146,7 +150,8 @@ export async function validateAndResolveIsolation(
   conversationId: string,
   hints?: IsolationHints,
   _isRetry = false,
-  userId?: string
+  userId?: string,
+  { linkToConversation = true }: { linkToConversation?: boolean } = {}
 ): Promise<IsolationResolution> {
   // Resolve the originating user's git identity (no-reply email) so a freshly
   // created worktree stamps commits with the human. Only when per-user GitHub is
@@ -159,7 +164,7 @@ export async function validateAndResolveIsolation(
   }
 
   const result = await getResolver().resolve({
-    existingEnvId: conversation.isolation_env_id,
+    existingEnvId: linkToConversation ? conversation.isolation_env_id : null,
     codebase: codebase
       ? {
           id: codebase.id,
@@ -180,26 +185,28 @@ export async function validateAndResolveIsolation(
   switch (result.status) {
     case 'resolved': {
       // Link env to conversation
-      try {
-        await db.updateConversation(conversation.id, {
-          isolation_env_id: result.env.id,
-          cwd: result.cwd,
-        });
-      } catch (updateError) {
-        const err = toError(updateError);
-        getLog().error(
-          { err, conversationId: conversation.id, isolationEnvId: result.env.id },
-          'isolation_link_failed'
-        );
+      if (linkToConversation) {
         try {
-          await createIsolationStore().updateStatus(result.env.id, 'destroyed');
-        } catch (rollbackError) {
+          await db.updateConversation(conversation.id, {
+            isolation_env_id: result.env.id,
+            cwd: result.cwd,
+          });
+        } catch (updateError) {
+          const err = toError(updateError);
           getLog().error(
-            { err: toError(rollbackError), isolationEnvId: result.env.id },
-            'isolation_rollback_failed'
+            { err, conversationId: conversation.id, isolationEnvId: result.env.id },
+            'isolation_link_failed'
           );
+          try {
+            await createIsolationStore().updateStatus(result.env.id, 'destroyed');
+          } catch (rollbackError) {
+            getLog().error(
+              { err: toError(rollbackError), isolationEnvId: result.env.id },
+              'isolation_rollback_failed'
+            );
+          }
+          throw err;
         }
-        throw err;
       }
       // Send contextual messages
       if (result.method.type === 'linked_issue_reuse') {
