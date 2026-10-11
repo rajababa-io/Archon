@@ -4149,6 +4149,7 @@ export interface paths {
           limit?: number;
           offset?: number | null;
           topic?: string;
+          path?: string | string[];
         };
         header?: never;
         path: {

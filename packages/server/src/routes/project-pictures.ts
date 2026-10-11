@@ -47,7 +47,7 @@ export function registerProjectPicturesRoutes(
     // routes registered beside it.
     const publicRoot = opts.publicRoot ?? getArchonPublicPath();
     const { projectId } = c.req.valid('param');
-    const { limit, offset, topic } = c.req.valid('query');
+    const { limit, offset, topic, path } = c.req.valid('query');
     const codebase = await codebaseDb.getCodebase(projectId);
     if (codebase === null) return c.json({ error: 'Project not found' }, 404);
     const others = (await codebaseDb.listCodebases())
@@ -58,6 +58,7 @@ export function registerProjectPicturesRoutes(
       projectName: codebase.name,
       otherProjectNames: others,
       topic,
+      paths: path,
       limit,
       offset,
       makeThumbnail: opts.makeThumbnail,

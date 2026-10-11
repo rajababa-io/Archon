@@ -64,6 +64,9 @@ export {
   getSourceWebDistDir,
   getArchonPublicPath,
   ensureArchonPublicPath,
+  PICTURE_EXTENSIONS,
+  projectPictureOwner,
+  projectPictureRoot,
 } from './archon-paths';
 export type { ProjectStorageKey, ProjectStoragePaths } from './archon-paths';
 

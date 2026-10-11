@@ -10,14 +10,16 @@ export const PICTURES_BAND_SIZE = 8;
 
 /**
  * A project's pictures, newest first — the ones published under its own
- * `/files/<project>/` folder and no other's. `topic` keeps only one topic folder.
+ * `/files/<project>/` folder and no other's. `topic` keeps only one topic
+ * folder; `paths` keeps only those pictures, in that order.
  */
 export async function listProjectPictures(
   projectId: string,
-  opts: { limit: number; offset?: number; topic?: string | null }
+  opts: { limit: number; offset?: number; topic?: string | null; paths?: readonly string[] }
 ): Promise<ProjectPictures> {
   const q = new URLSearchParams({ limit: String(opts.limit), offset: String(opts.offset ?? 0) });
   if (opts.topic !== undefined && opts.topic !== null) q.set('topic', opts.topic);
+  for (const path of opts.paths ?? []) q.append('path', path);
   return requestJson<ProjectPictures>(
     `/api/projects/${encodeURIComponent(projectId)}/pictures?${q.toString()}`
   );

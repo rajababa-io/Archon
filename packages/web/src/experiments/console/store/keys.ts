@@ -106,6 +106,9 @@ export const K = {
   /** One page of a project's pictures; `topic` is '' for all of them. */
   pictures: (projectId: string, topic: string, limit: number, offset: number): string =>
     `pictures:${projectId}:${String(limit)}:${String(offset)}:${topic}`,
+  /** The brief card's pictures, by their paths in display order (#381). */
+  briefPictures: (projectId: string, paths: readonly string[]): string =>
+    `briefPictures:${projectId}:${paths.join('\n')}`,
   issue: (projectId: string, number: number): string => `issue:${projectId}:${String(number)}`,
   presentation: (projectId: string): string => `presentation:${projectId}`,
   providerConnections: 'provider-connections' as const,

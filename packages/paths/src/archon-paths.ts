@@ -281,6 +281,57 @@ export function getArchonPublicPath(): string {
 }
 
 /**
+ * The file extensions that count as pictures — what a project's gallery lists
+ * and what its brief may show (#350, #381). One set, so a picture the gallery
+ * shows is never one the brief refuses.
+ */
+export const PICTURE_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.svg',
+]);
+
+/**
+ * The folder a project's pictures live in — `<public>/<project name>/` — or
+ * null when its name cannot be one: a name that resolves outside the public
+ * root, or to a dot-folder such as the thumbnails' `.thumbs`, is not a folder
+ * in it.
+ */
+export function projectPictureRoot(publicRoot: string, projectName: string): string | null {
+  const root = resolve(publicRoot, projectName);
+  const base = resolve(publicRoot);
+  if (root === base || !root.startsWith(base + sep)) return null;
+  if (
+    relative(base, root)
+      .split(sep)
+      .some(seg => seg.startsWith('.'))
+  )
+    return null;
+  return root;
+}
+
+/**
+ * Which project a path under the public root belongs to: the one whose picture
+ * folder holds it most deeply, so a project nested in another's folder claims
+ * its own pictures and no picture belongs to two projects. Null when no
+ * project's folder holds it. The gallery and the brief both decide with this.
+ */
+export function projectPictureOwner(
+  publicRoot: string,
+  projectNames: readonly string[]
+): (path: string) => string | null {
+  // Folders holding one path are nested in each other, so the longest is the deepest.
+  const roots = projectNames
+    .map(name => ({ name, root: projectPictureRoot(publicRoot, name) }))
+    .filter((p): p is { name: string; root: string } => p.root !== null)
+    .sort((a, b) => b.root.length - a.root.length);
+  return path => roots.find(p => isPathInside(p.root, path, { includeRoot: true }))?.name ?? null;
+}
+
+/**
  * Ensure the public directory exists and return its path. Safe to call on a
  * fresh install, where nothing has been published yet.
  */

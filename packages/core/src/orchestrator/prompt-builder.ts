@@ -432,7 +432,7 @@ When the user asks what's running, whether a run passed/failed, or to approve / 
 export function buildProjectOverviewSection(): string {
   return `## Project Overview
 
-This project has an overview — \`why\` it exists, what we are \`doing\`, and \`where\` it has got to — written with the \`update_project_brief\` tool and shown on the project's Overview page. It is the first thing anyone sees, including you at the start of a later conversation, so a stale one is worse than an empty one.
+This project has an overview — \`why\` it exists, what we are \`doing\`, \`where\` it has got to, and the \`pictures\` that explain it — written with the \`update_project_brief\` tool and shown on the project's Overview page. The pictures sit at the top of the overview, the first one large: when this project has published a picture that explains it (how it works, its architecture, its current state), list it there in order with a caption, rather than describing it in the text. It is the first thing anyone sees, including you at the start of a later conversation, so a stale one is worse than an empty one.
 
 Keep it current as a side effect of real work, on the trigger the tool's own description states: when a piece of work LANDS. Not every turn, and not for a question you merely answered.
 

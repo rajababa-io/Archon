@@ -311,6 +311,9 @@
       "src/orchestrator/update-project-brief-tool.test.ts",
       "src/orchestrator/share-tool.test.ts",
       "src/handlers/provider-commands.test.ts"
+    ],
+    [
+      "src/orchestrator/update-project-brief-tool.handler.test.ts"
     ]
   ]
 }

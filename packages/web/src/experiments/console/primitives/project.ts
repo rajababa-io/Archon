@@ -27,9 +27,22 @@ export interface ProjectBrief {
   why: string;
   doing: string;
   where: string;
+  /**
+   * Pictures at the top of the card, in the agent's order (#381). Empty for a
+   * brief written before there were any.
+   */
+  pictures: BriefPicture[];
   /** Epoch ms of the last rewrite, so the card can say how fresh it is. */
   updatedAt: number | null;
 }
+
+export interface BriefPicture {
+  /** Path under the project's picture folder — a gallery picture's `path`. */
+  path: string;
+  caption: string;
+}
+
+type RawBrief = Partial<Omit<ProjectBrief, 'pictures'>> & { pictures?: unknown };
 
 interface RawCodebase {
   id: string;
@@ -42,7 +55,16 @@ interface RawCodebase {
   created_at: string;
   /** The console's own view of the project. Rides along on the row; no
    *  separate request. */
-  presentation?: { brief?: Partial<ProjectBrief> | null } | null;
+  presentation?: { brief?: RawBrief | null } | null;
+}
+
+function toBriefPictures(raw: unknown): BriefPicture[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((p: unknown): BriefPicture[] => {
+    if (typeof p !== 'object' || p === null) return [];
+    const { path, caption } = p as Record<string, unknown>;
+    return typeof path === 'string' && typeof caption === 'string' ? [{ path, caption }] : [];
+  });
 }
 
 /** A brief is worth showing only if it says something. Whitespace is nothing. */
@@ -53,9 +75,13 @@ function toBrief(raw: RawCodebase): ProjectBrief | null {
     why: b.why ?? '',
     doing: b.doing ?? '',
     where: b.where ?? '',
+    pictures: toBriefPictures(b.pictures),
     updatedAt: b.updatedAt ?? null,
   };
-  return brief.why.trim() === '' && brief.doing.trim() === '' && brief.where.trim() === ''
+  return brief.why.trim() === '' &&
+    brief.doing.trim() === '' &&
+    brief.where.trim() === '' &&
+    brief.pictures.length === 0
     ? null
     : brief;
 }
