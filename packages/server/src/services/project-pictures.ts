@@ -32,7 +32,12 @@
  */
 import { mkdir, readdir, stat } from 'node:fs/promises';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
-import { createLogger, PICTURE_EXTENSIONS, projectPictureRoot } from '@archon/paths';
+import {
+  createLogger,
+  PICTURE_EXTENSIONS,
+  projectPictureOwner,
+  projectPictureRoot,
+} from '@archon/paths';
 
 let cachedLog: ReturnType<typeof createLogger> | undefined;
 function getLog(): ReturnType<typeof createLogger> {
@@ -90,7 +95,7 @@ function toFilesUrl(publicPath: string): string {
   return `/files/${publicPath.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-async function walk(dir: string, skip: Set<string>, out: string[]): Promise<void> {
+async function walk(dir: string, mine: (full: string) => boolean, out: string[]): Promise<void> {
   let entries;
   try {
     entries = await readdir(dir, { withFileTypes: true });
@@ -101,10 +106,10 @@ async function walk(dir: string, skip: Set<string>, out: string[]): Promise<void
     throw err;
   }
   for (const entry of entries) {
-    if (entry.name.startsWith('.')) continue;
     const full = join(dir, entry.name);
+    if (entry.name.startsWith('.') || !mine(full)) continue;
     if (entry.isDirectory()) {
-      if (!skip.has(full)) await walk(full, skip, out);
+      await walk(full, mine, out);
     } else if (entry.isFile() && PICTURE_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
       out.push(full);
     }
@@ -118,13 +123,9 @@ async function findPictures(
 ): Promise<Found[]> {
   const root = projectPictureRoot(publicRoot, projectName);
   if (root === null) return [];
-  const skip = new Set<string>();
-  for (const other of otherProjectNames) {
-    const otherRoot = projectPictureRoot(publicRoot, other);
-    if (otherRoot?.startsWith(root + sep)) skip.add(otherRoot);
-  }
+  const ownerOf = projectPictureOwner(publicRoot, [projectName, ...otherProjectNames]);
   const files: string[] = [];
-  await walk(root, skip, files);
+  await walk(root, full => ownerOf(full) === projectName, files);
   const base = resolve(publicRoot);
   const found = await Promise.all(
     files.map(async (full): Promise<Found | null> => {

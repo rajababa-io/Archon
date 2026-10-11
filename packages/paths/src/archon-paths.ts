@@ -314,6 +314,24 @@ export function projectPictureRoot(publicRoot: string, projectName: string): str
 }
 
 /**
+ * Which project a path under the public root belongs to: the one whose picture
+ * folder holds it most deeply, so a project nested in another's folder claims
+ * its own pictures and no picture belongs to two projects. Null when no
+ * project's folder holds it. The gallery and the brief both decide with this.
+ */
+export function projectPictureOwner(
+  publicRoot: string,
+  projectNames: readonly string[]
+): (path: string) => string | null {
+  // Folders holding one path are nested in each other, so the longest is the deepest.
+  const roots = projectNames
+    .map(name => ({ name, root: projectPictureRoot(publicRoot, name) }))
+    .filter((p): p is { name: string; root: string } => p.root !== null)
+    .sort((a, b) => b.root.length - a.root.length);
+  return path => roots.find(p => isPathInside(p.root, path, { includeRoot: true }))?.name ?? null;
+}
+
+/**
  * Ensure the public directory exists and return its path. Safe to call on a
  * fresh install, where nothing has been published yet.
  */

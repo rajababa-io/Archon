@@ -14,6 +14,7 @@ import {
   getArchonHome,
   getArchonTempPath,
   getArchonPublicPath,
+  projectPictureOwner,
   projectPictureRoot,
   getArchonWorkspacesPath,
   ensureArchonWorkspacesPath,
@@ -373,6 +374,25 @@ describe('archon-paths', () => {
       expect(projectPictureRoot('/pub', '.')).toBeNull();
       expect(projectPictureRoot('/pub', '.thumbs')).toBeNull();
       expect(projectPictureRoot('/pub', 'owner/repo')).toBe(resolve('/pub', 'owner', 'repo'));
+    });
+  });
+
+  describe('projectPictureOwner', () => {
+    const ownerOf = projectPictureOwner('/pub', ['owner', 'owner/repo', 'other', '../escape']);
+    const at = (...segments: string[]): string => resolve('/pub', ...segments);
+
+    test('the deepest project folder holding a path owns it', () => {
+      expect(ownerOf(at('owner', 'repo', 'a.png'))).toBe('owner/repo');
+      expect(ownerOf(at('owner', 'repo'))).toBe('owner/repo');
+      expect(ownerOf(at('owner', 'b.png'))).toBe('owner');
+      expect(ownerOf(at('owner', 'repo-old', 'c.png'))).toBe('owner');
+      expect(ownerOf(at('other', 'd.png'))).toBe('other');
+    });
+
+    test('a path in no project folder has no owner', () => {
+      expect(ownerOf(at('stray', 'e.png'))).toBeNull();
+      expect(ownerOf(resolve('/escape', 'f.png'))).toBeNull();
+      expect(ownerOf(at('a.png'))).toBeNull();
     });
   });
 

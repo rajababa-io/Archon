@@ -5,6 +5,7 @@ import {
   createLogger,
   getArchonPublicPath,
   PICTURE_EXTENSIONS,
+  projectPictureOwner,
   projectPictureRoot,
 } from '@archon/paths';
 import {
@@ -125,10 +126,6 @@ export type ResolvedPictures =
   | { ok: true; pictures: BriefPicture[] }
   | { ok: false; error: string };
 
-function isInside(dir: string, full: string): boolean {
-  return full.startsWith(dir + sep);
-}
-
 /**
  * Check a call's `pictures` against the files on disk, and store each path
  * relative to the project's folder.
@@ -156,9 +153,10 @@ export async function resolveBriefPictures(
   if (root === null) {
     return { ok: false, error: `project "${scope.projectName}" has no picture folder.` };
   }
-  const others = scope.otherProjectNames
-    .map(name => ({ name, root: projectPictureRoot(scope.publicRoot, name) }))
-    .filter((o): o is { name: string; root: string } => o.root !== null);
+  const ownerOf = projectPictureOwner(scope.publicRoot, [
+    scope.projectName,
+    ...scope.otherProjectNames,
+  ]);
 
   const pictures: BriefPicture[] = [];
   for (const [i, entry] of raw.entries()) {
@@ -175,18 +173,12 @@ export async function resolveBriefPictures(
       return { ok: false, error: `${named} has no caption.` };
     }
     const full = resolve(root, path.trim());
-    // Deepest folder wins, so a project nested inside this one claims its own.
-    const owner = others
-      .filter(o => isInside(o.root, full))
-      .sort((a, b) => b.root.length - a.root.length)[0];
-    if (owner !== undefined && (!isInside(root, full) || isInside(root, owner.root))) {
-      return {
-        ok: false,
-        error: `${named} is project ${owner.name}'s picture, not this project's.`,
-      };
-    }
-    if (!isInside(root, full)) {
+    const owner = ownerOf(full);
+    if (owner === null) {
       return { ok: false, error: `${named} is outside this project's folder, ${root}.` };
+    }
+    if (owner !== scope.projectName) {
+      return { ok: false, error: `${named} is project ${owner}'s picture, not this project's.` };
     }
     const rel = relative(root, full).split(sep);
     if (rel.some(seg => seg.startsWith('.'))) {
