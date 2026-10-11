@@ -13,6 +13,7 @@
 
 import { execFileAsync } from '@archon/git';
 import { createLogger } from '@archon/paths';
+import type { GraphQlError } from './github-issues';
 
 let cachedLog: ReturnType<typeof createLogger> | undefined;
 function getLog(): ReturnType<typeof createLogger> {
@@ -75,6 +76,12 @@ export const CODE_MAP_MERGED_PAGE = 30;
  * row naming one), the open pull requests with their head commit's rollup,
  * and the recently merged ones. `$base` filters both lists to the trunk;
  * `null` lets GitHub return every base, and the caller filters once it knows.
+ *
+ * The counts come from `*CountsByState`, not from the nodes: reading a
+ * `CheckRun` node needs the Checks permission, which GitHub never grants a
+ * fine-grained personal access token (#379). The counts and the rollup state
+ * need no such permission, so the nodes are read only to name a failure, and
+ * a refused node is tolerated — see `isRefusedCheckDetail`.
  */
 export const CODE_MAP_QUERY = `
   query($owner:String!,$repo:String!,$merged:Int!){
@@ -87,6 +94,8 @@ export const CODE_MAP_QUERY = `
             state
             contexts(first:100){
               totalCount
+              checkRunCountsByState{ state count }
+              statusContextCountsByState{ state count }
               nodes{
                 __typename
                 ... on CheckRun{ name status conclusion }
@@ -111,6 +120,11 @@ interface RawContext {
   state?: string;
 }
 
+interface RawCount {
+  state?: string;
+  count?: number;
+}
+
 interface RawPull {
   number?: number;
   title?: string;
@@ -125,7 +139,12 @@ interface RawPull {
       commit?: {
         statusCheckRollup?: {
           state?: string;
-          contexts?: { totalCount?: number; nodes?: (RawContext | null)[] | null } | null;
+          contexts?: {
+            totalCount?: number;
+            checkRunCountsByState?: RawCount[] | null;
+            statusContextCountsByState?: RawCount[] | null;
+            nodes?: (RawContext | null)[] | null;
+          } | null;
         } | null;
       } | null;
     } | null)[];
@@ -147,9 +166,26 @@ const FAILED_CONCLUSIONS = new Set([
   'STARTUP_FAILURE',
 ]);
 
-function contextFinished(c: RawContext): boolean {
-  if (c.__typename === 'StatusContext') return c.state !== 'PENDING' && c.state !== 'EXPECTED';
-  return c.status === 'COMPLETED';
+/** Check-run states that have not finished; every other state has. */
+const UNFINISHED_RUN_STATES = new Set(['QUEUED', 'IN_PROGRESS', 'WAITING', 'PENDING', 'REQUESTED']);
+/** Status-context states that have not finished. */
+const UNFINISHED_STATUS_STATES = new Set(['PENDING', 'EXPECTED']);
+
+function finishedCount(counts: RawCount[] | null | undefined, unfinished: Set<string>): number {
+  return (counts ?? [])
+    .filter(c => !unfinished.has(c.state ?? ''))
+    .reduce((sum, c) => sum + (c.count ?? 0), 0);
+}
+
+/**
+ * True for the one GraphQL error the map can draw without: a context node
+ * GitHub refused to show (a `CheckRun`, to a token without the Checks
+ * permission). Judged by GitHub's `type` and `path`, never by the message.
+ */
+export function isRefusedCheckDetail(error: GraphQlError): boolean {
+  if (error.type !== 'FORBIDDEN' || error.path === undefined) return false;
+  const at = error.path.indexOf('contexts');
+  return at > 0 && error.path[at - 1] === 'statusCheckRollup' && error.path[at + 1] === 'nodes';
 }
 
 function contextFailed(c: RawContext): boolean {
@@ -158,9 +194,11 @@ function contextFailed(c: RawContext): boolean {
 }
 
 /**
- * GitHub's rollup state is the verdict; the contexts only count. A failure
- * while other checks still run is `failed`, as GitHub's own badge says — the
- * change will not merge as it stands, whatever the rest decide.
+ * GitHub's rollup state is the verdict and its per-state counts say how far
+ * along it is. A failure while other checks still run is `failed`, as GitHub's
+ * own badge says — the change will not merge as it stands, whatever the rest
+ * decide. `failedName` comes from whichever nodes the token could read, and is
+ * null when the failing one was refused rather than guessed.
  */
 export function toChecks(raw: RawPull): CodeMapChecks {
   const rollup = raw.commits?.nodes?.[0]?.commit?.statusCheckRollup ?? null;
@@ -175,8 +213,10 @@ export function toChecks(raw: RawPull): CodeMapChecks {
         : 'running';
   return {
     state,
-    total: rollup.contexts?.totalCount ?? contexts.length,
-    done: contexts.filter(contextFinished).length,
+    total: rollup.contexts?.totalCount ?? 0,
+    done:
+      finishedCount(rollup.contexts?.checkRunCountsByState, UNFINISHED_RUN_STATES) +
+      finishedCount(rollup.contexts?.statusContextCountsByState, UNFINISHED_STATUS_STATES),
     failedName: failed === undefined ? null : (failed.name ?? failed.context ?? null),
   };
 }

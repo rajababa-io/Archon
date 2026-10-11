@@ -232,15 +232,30 @@ export function isIssueReadFailure(src: IssueSource | IssueReadFailure): src is 
 
 export const repoSlug = (src: IssueSource): string => `${src.owner}/${src.repo}`;
 
+/** One entry of a GraphQL response's `errors`, as GitHub shapes it. */
+export interface GraphQlError {
+  message?: string;
+  /** GitHub's machine token for the error class, e.g. `FORBIDDEN`. */
+  type?: string;
+  /** Where in `data` the field that failed sits; GitHub nulls it there. */
+  path?: (string | number)[];
+}
+
 /**
  * One GraphQL POST. A transport failure, an HTTP status and a GraphQL error
  * all arrive here as a `reason` string, because to every caller they are the
  * same outcome: the read did not happen, and the reader has to say why.
+ *
+ * `tolerate` is the one exception: a caller that can draw without some field
+ * names the errors it expects, and when every error is one of those and data
+ * came back, the data is returned with those fields nulled. Judge by `type`
+ * and `path`, never by `message` — the message is prose GitHub may reword.
  */
 export async function githubGraphQl(
   src: IssueSource,
   query: string,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
+  tolerate?: (error: GraphQlError) => boolean
 ): Promise<{ data: unknown } | { reason: string }> {
   const res = await fetch('https://api.github.com/graphql', {
     method: 'POST',
@@ -254,10 +269,13 @@ export async function githubGraphQl(
   if (!res.ok) return { reason: `github-${String(res.status)}` };
   const body = (await res.json()) as {
     data?: unknown;
-    errors?: ({ message?: string } | null)[];
+    errors?: (GraphQlError | null)[];
   };
-  const firstError = (body.errors ?? []).find(e => e !== null && e !== undefined);
-  if (firstError !== undefined) return { reason: firstError.message ?? 'github-error' };
+  const errors = (body.errors ?? []).filter(
+    (e): e is GraphQlError => e !== null && e !== undefined
+  );
+  const fatal = errors.find(e => tolerate?.(e) !== true);
+  if (fatal !== undefined) return { reason: fatal.message ?? 'github-error' };
   if (body.data === null || body.data === undefined) return { reason: 'github-error' };
   return { data: body.data };
 }
