@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createLogger, setLogLevel, getLogLevel, rootLogger, setLogDestination } from './logger';
+import * as rotatingLogFile from './rotating-log-file';
 import { trackTempRoots } from './test-utils';
 
 const trackTempRoot = trackTempRoots();
@@ -210,6 +211,37 @@ describe('logger', () => {
           'still_logged'
         );
       } finally {
+        consoleError.mockRestore();
+        stdoutWrite.mockRestore();
+      }
+    });
+
+    it('moves to stdout without losing the line when a later write fails', () => {
+      let writes = 0;
+      const openFile = spyOn(rotatingLogFile, 'openRotatingLogFile').mockReturnValue({
+        write(): void {
+          if (++writes === 2) throw new Error('simulated ENOSPC');
+        },
+        close(): void {},
+      });
+      const consoleError = spyOn(console, 'error').mockImplementation(() => undefined);
+      const stdoutWrite = spyOn(process.stdout, 'write').mockImplementation(() => true);
+      try {
+        setLogDestination({ file: join(tmpdir(), 'never-opened.log') });
+        const log = createLogger('file-test');
+        log.info('in_the_file');
+        log.info('survives_the_failure');
+        log.info('after_the_failure');
+
+        expect(writes).toBe(2);
+        expect(consoleError).toHaveBeenCalledTimes(1);
+        expect(String(consoleError.mock.calls[0][0])).toContain('Writing the log file');
+        const stdout = stdoutWrite.mock.calls.map(([chunk]) => String(chunk)).join('');
+        expect(stdout).not.toContain('in_the_file');
+        expect(stdout).toContain('survives_the_failure');
+        expect(stdout).toContain('after_the_failure');
+      } finally {
+        openFile.mockRestore();
         consoleError.mockRestore();
         stdoutWrite.mockRestore();
       }
