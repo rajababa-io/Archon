@@ -24,6 +24,7 @@ import {
   removeWorktree,
   unlockWorktree,
   syncWorkspace,
+  GitIndexLockedError,
   verifyWorktreeOwnership,
   worktreeExists,
   toRepoPath,
@@ -1185,6 +1186,7 @@ export class WorktreeProvider implements IIsolationProvider {
    * - Permission denied → file permission hint
    * - Not a git repository → workspace integrity hint
    * - Configured base branch missing → config fix hint
+   * - Index lock held by another git process → names the lock
    * - Network errors, timeouts → connectivity hint
    */
   private async syncWorkspaceBeforeCreate(
@@ -1222,6 +1224,8 @@ export class WorktreeProvider implements IIsolationProvider {
           `${repoPath} is not a valid git repository. ` +
             'Ensure the workspace was cloned correctly.'
         );
+      } else if (error instanceof GitIndexLockedError) {
+        throw error;
       } else if (errorMessage.includes('configured base branch')) {
         // Configured branch errors are fatal - user needs to fix their config
         throw err;

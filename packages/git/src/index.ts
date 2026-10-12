@@ -84,6 +84,7 @@ export {
   getRemoteUrl,
   listChildRepos,
   syncWorkspace,
+  GitIndexLockedError,
   fetchWithRefLockRetry,
   cloneRepository,
   validateCloneUrl,

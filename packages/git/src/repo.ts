@@ -1,6 +1,6 @@
 import { existsSync } from 'fs';
 import { readdir } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { createLogger } from '@archon/paths';
 import { execFileAsync } from './exec';
 import { getDefaultBranch } from './branch';
@@ -177,9 +177,74 @@ export async function fetchWithRefLockRetry(
   }
 }
 
+const INDEX_LOCK_WAIT_MS = 10_000;
+const INDEX_LOCK_POLL_MS = 100;
+
+/**
+ * Another git process holds the checkout's index lock and did not release it
+ * within INDEX_LOCK_WAIT_MS. Archon never removes the lock:
+ * it cannot tell a live holder from one that crashed and left the file behind.
+ */
+export class GitIndexLockedError extends Error {
+  constructor(readonly lockPath: string) {
+    super(
+      `Another git process holds ${lockPath} and did not release it within ` +
+        `${INDEX_LOCK_WAIT_MS / 1000}s. If no git command is running in that checkout, ` +
+        'the lock was left by one that crashed: remove the file, then try again.'
+    );
+    this.name = 'GitIndexLockedError';
+  }
+}
+
+/**
+ * Git refuses an index lock that is already taken rather than waiting for it,
+ * so wait here, bounded, for a holder outside the sync queue — an operator's
+ * command, another tool — before touching the index. A holder that takes the
+ * lock after this check still makes git fail at once; this only absorbs the
+ * common short-lived one.
+ */
+async function waitForIndexLock(workspacePath: RepoPath): Promise<void> {
+  const { stdout } = await execFileAsync(
+    'git',
+    ['-C', workspacePath, 'rev-parse', '--git-path', 'index.lock'],
+    { timeout: 10000 }
+  );
+  const lockPath = resolve(workspacePath, stdout.trim());
+  const deadline = Date.now() + INDEX_LOCK_WAIT_MS;
+  while (existsSync(lockPath)) {
+    if (Date.now() >= deadline) throw new GitIndexLockedError(lockPath);
+    await new Promise(done => setTimeout(done, INDEX_LOCK_POLL_MS));
+  }
+}
+
+/** The tail of each checkout's queue of syncs, keyed by resolved checkout path. */
+const workspaceSyncQueues = new Map<string, Promise<unknown>>();
+
+/**
+ * Run `sync` after every earlier sync of the same checkout has settled. Chats
+ * created together in one project each sync its shared source checkout, and
+ * concurrent `reset --hard`s there race on the index lock; git admits one and
+ * fails the rest. Different checkouts never wait on each other.
+ */
+function serializeWorkspaceSync<T>(workspacePath: RepoPath, sync: () => Promise<T>): Promise<T> {
+  const key = resolve(workspacePath);
+  const result = (workspaceSyncQueues.get(key) ?? Promise.resolve()).then(sync);
+  // The caller receives the sync's own outcome; the queue only needs to know it settled.
+  const tail = result.then(
+    () => undefined,
+    () => undefined
+  );
+  workspaceSyncQueues.set(key, tail);
+  void tail.then(() => {
+    if (workspaceSyncQueues.get(key) === tail) workspaceSyncQueues.delete(key);
+  });
+  return result;
+}
+
 /**
  * Sync workspace with its remote.
  * Fetches the base branch from the remote, then updates local state according to mode.
+ * Syncs of the same checkout run one at a time, in call order.
  *
  * Modes:
  * - fast-forward (default): fetch, classify state, and fast-forward only when safe.
@@ -200,7 +265,17 @@ export async function fetchWithRefLockRetry(
  * @returns Branch used plus whether sync was performed
  * @throws Error with actionable message if configured branch doesn't exist
  */
-export async function syncWorkspace(
+export function syncWorkspace(
+  workspacePath: RepoPath,
+  baseBranch?: BranchName,
+  options?: { mode?: WorkspaceSyncMode; remote?: string }
+): Promise<WorkspaceSyncResult> {
+  return serializeWorkspaceSync(workspacePath, () =>
+    syncWorkspaceNow(workspacePath, baseBranch, options)
+  );
+}
+
+async function syncWorkspaceNow(
   workspacePath: RepoPath,
   baseBranch?: BranchName,
   options?: { mode?: WorkspaceSyncMode; remote?: string }
@@ -247,6 +322,7 @@ export async function syncWorkspace(
       return unchangedSyncResult(branchToSync, mode, state, previousHead);
     }
 
+    await waitForIndexLock(workspacePath);
     try {
       await execFileAsync(
         'git',
@@ -274,6 +350,7 @@ export async function syncWorkspace(
 
   // Hard-reset local working tree to match the remote — only safe for Archon-managed
   // clones, never for a user's local working directory.
+  await waitForIndexLock(workspacePath);
   try {
     await execFileAsync(
       'git',

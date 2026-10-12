@@ -2616,6 +2616,93 @@ branch refs/heads/feature/auth
         git.syncWorkspace(repo('/workspace/repo'), branch('does-not-exist'), { remote: 'mar' })
       ).rejects.toThrow("Configured base branch 'does-not-exist' not found on remote 'mar'");
     });
+
+    test('a sync of one checkout does not wait on a sync of another', async () => {
+      let releaseSlowFetch = (): void => undefined;
+      execSpy.mockImplementation(async (_cmd: string, args: string[]) => {
+        if (args.includes('fetch') && args.includes('/workspace/slow')) {
+          await new Promise<void>(release => {
+            releaseSlowFetch = release;
+          });
+        }
+        return { stdout: '', stderr: '' };
+      });
+
+      const slow = git.syncWorkspace(repo('/workspace/slow'), branch('main'), { mode: 'reset' });
+      const other = await git.syncWorkspace(repo('/workspace/other'), branch('main'), {
+        mode: 'reset',
+      });
+
+      expect(other.synced).toBe(true);
+      releaseSlowFetch();
+      expect((await slow).synced).toBe(true);
+    });
+
+    test('a failed sync does not block the next sync of the same checkout', async () => {
+      execSpy.mockImplementation(async (_cmd: string, args: string[]) => {
+        if (args.includes('reset')) throw new Error('fatal: Could not reset index file');
+        return { stdout: '', stderr: '' };
+      });
+      const failing = git.syncWorkspace(repo('/workspace/repo'), branch('main'), { mode: 'reset' });
+      const next = git.syncWorkspace(repo('/workspace/repo'), branch('main'));
+
+      await expect(failing).rejects.toThrow('Reset to origin/main failed');
+      expect((await next).synced).toBe(true);
+    });
+
+    describe('when another git process holds the index lock', () => {
+      let checkout: string;
+      let lockPath: string;
+
+      function runGit(cwd: string, ...args: string[]): void {
+        const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+        if (result.exitCode !== 0) {
+          throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
+        }
+      }
+
+      beforeEach(async () => {
+        const root = trackTempRoot(await mkdtemp(join(tmpdir(), 'archon-sync-index-lock-')));
+        const seed = join(root, 'seed');
+        await realMkdir(seed);
+        runGit(seed, 'init', '-q', '-b', 'main');
+        runGit(seed, 'config', 'user.email', 'test@example.com');
+        runGit(seed, 'config', 'user.name', 'Archon Test');
+        runGit(seed, 'config', 'commit.gpgsign', 'false');
+        await writeFile(join(seed, 'README.md'), '# fixture\n');
+        runGit(seed, 'add', 'README.md');
+        runGit(seed, 'commit', '-qm', 'initial commit');
+        runGit(root, 'clone', '-q', '--bare', seed, 'origin.git');
+        runGit(root, 'clone', '-q', 'origin.git', 'source');
+        checkout = join(root, 'source');
+        lockPath = join(checkout, '.git', 'index.lock');
+        await writeFile(lockPath, '');
+      });
+
+      test('waits for it to be released, then syncs', async () => {
+        const sync = git.syncWorkspace(repo(checkout), branch('main'), { mode: 'reset' });
+        setTimeout(() => void rm(lockPath), 300);
+
+        expect((await sync).synced).toBe(true);
+      });
+
+      test('gives up after a bounded wait, naming the lock and leaving it in place', async () => {
+        // Each read of the clock lands well past the previous one, so the wait
+        // runs out on its first poll instead of after real seconds.
+        const realNow = Date.now.bind(Date);
+        let skipped = 0;
+        const nowSpy = spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000 * skipped++);
+        try {
+          const sync = git.syncWorkspace(repo(checkout), branch('main'), { mode: 'reset' });
+          await expect(sync).rejects.toBeInstanceOf(git.GitIndexLockedError);
+          await expect(sync).rejects.toThrow(resolve(lockPath));
+        } finally {
+          nowSpy.mockRestore();
+        }
+
+        expect(await readFile(lockPath, 'utf-8')).toBe('');
+      });
+    });
   });
 
   describe('fetchWithRefLockRetry', () => {
