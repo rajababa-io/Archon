@@ -244,7 +244,7 @@ ss -tlnp | grep :3000
 # Expected: 127.0.0.1:3000   (NOT 0.0.0.0:3000)
 
 # Startup log should contain:
-docker compose logs app --tail 200 | grep "internal_endpoint_exposed_acknowledged"
+docker compose exec app grep "internal_endpoint_exposed_acknowledged" /.archon/logs/server.log
 # This event confirms the opt-out path was taken (audit trail).
 ```
 

@@ -1,27 +1,12 @@
-import { describe, it, expect, beforeEach, mock } from 'bun:test';
-import pino from 'pino';
+import { describe, it, expect, beforeEach, afterEach, spyOn } from 'bun:test';
+import { mkdtempSync, readFileSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+import { createLogger, setLogLevel, getLogLevel, rootLogger, setLogDestination } from './logger';
+import * as rotatingLogFile from './rotating-log-file';
+import { trackTempRoots } from './test-utils';
 
-// Previous test files mock './logger' via mock.module which persists across files
-// in Bun's single-process test runner. Re-mock with the real implementation.
-const VALID_LEVELS = new Set(['fatal', 'error', 'warn', 'info', 'debug', 'trace']);
-const realRootLogger = pino({ level: 'info' });
-
-mock.module('./logger', () => ({
-  rootLogger: realRootLogger,
-  createLogger: (module: string) => realRootLogger.child({ module }),
-  setLogLevel: (level: string) => {
-    const normalized = level.toLowerCase();
-    if (!VALID_LEVELS.has(normalized)) {
-      throw new Error(
-        `Invalid log level: '${level}'. Valid levels: ${[...VALID_LEVELS].join(', ')}`
-      );
-    }
-    realRootLogger.level = normalized;
-  },
-  getLogLevel: () => realRootLogger.level,
-}));
-
-const { createLogger, setLogLevel, getLogLevel, rootLogger } = await import('./logger');
+const trackTempRoot = trackTempRoots();
 
 describe('logger', () => {
   beforeEach(() => {
@@ -179,6 +164,87 @@ describe('logger', () => {
       expect(getLogLevel()).toBe('fatal');
       setLogLevel('WaRn');
       expect(getLogLevel()).toBe('warn');
+    });
+  });
+
+  describe('setLogDestination with a file', () => {
+    afterEach(() => {
+      setLogDestination('stdout');
+    });
+
+    it('writes JSON lines to the file and nothing to stdout', () => {
+      const path = join(
+        trackTempRoot(mkdtempSync(join(tmpdir(), 'logger-'))),
+        'logs',
+        'server.log'
+      );
+      const stdoutWrite = spyOn(process.stdout, 'write');
+      try {
+        setLogDestination({ file: path });
+        createLogger('file-test').info({ conversationId: 'c1' }, 'orchestrator_message_failed');
+
+        const lines = readFileSync(path, 'utf8').trim().split('\n');
+        expect(lines).toHaveLength(1);
+        expect(JSON.parse(lines[0])).toMatchObject({
+          module: 'file-test',
+          conversationId: 'c1',
+          msg: 'orchestrator_message_failed',
+        });
+        expect(stdoutWrite).not.toHaveBeenCalled();
+      } finally {
+        stdoutWrite.mockRestore();
+      }
+    });
+
+    it('says so on stderr and keeps logging to stdout when the file cannot be opened', () => {
+      const blocker = join(trackTempRoot(mkdtempSync(join(tmpdir(), 'logger-'))), 'not-a-dir');
+      writeFileSync(blocker, '');
+      const consoleError = spyOn(console, 'error').mockImplementation(() => undefined);
+      const stdoutWrite = spyOn(process.stdout, 'write').mockImplementation(() => true);
+      try {
+        setLogDestination({ file: join(blocker, 'server.log') });
+        createLogger('file-test').info('still_logged');
+
+        expect(consoleError).toHaveBeenCalledTimes(1);
+        expect(String(consoleError.mock.calls[0][0])).toContain('Cannot open the log file');
+        expect(stdoutWrite.mock.calls.map(([chunk]) => String(chunk)).join('')).toContain(
+          'still_logged'
+        );
+      } finally {
+        consoleError.mockRestore();
+        stdoutWrite.mockRestore();
+      }
+    });
+
+    it('moves to stdout without losing the line when a later write fails', () => {
+      let writes = 0;
+      const openFile = spyOn(rotatingLogFile, 'openRotatingLogFile').mockReturnValue({
+        write(): void {
+          if (++writes === 2) throw new Error('simulated ENOSPC');
+        },
+        close(): void {},
+      });
+      const consoleError = spyOn(console, 'error').mockImplementation(() => undefined);
+      const stdoutWrite = spyOn(process.stdout, 'write').mockImplementation(() => true);
+      try {
+        setLogDestination({ file: join(tmpdir(), 'never-opened.log') });
+        const log = createLogger('file-test');
+        log.info('in_the_file');
+        log.info('survives_the_failure');
+        log.info('after_the_failure');
+
+        expect(writes).toBe(2);
+        expect(consoleError).toHaveBeenCalledTimes(1);
+        expect(String(consoleError.mock.calls[0][0])).toContain('Writing the log file');
+        const stdout = stdoutWrite.mock.calls.map(([chunk]) => String(chunk)).join('');
+        expect(stdout).not.toContain('in_the_file');
+        expect(stdout).toContain('survives_the_failure');
+        expect(stdout).toContain('after_the_failure');
+      } finally {
+        openFile.mockRestore();
+        consoleError.mockRestore();
+        stdoutWrite.mockRestore();
+      }
     });
   });
 });

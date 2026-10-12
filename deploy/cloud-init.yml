@@ -137,7 +137,7 @@ runcmd:
 
       4. Open https://your-domain.com
 
-    Logs:     docker compose logs -f
+    Logs:     docker compose exec app tail -f /.archon/logs/server.log
     Health:   curl https://your-domain.com/api/health
     Docs:     https://archon.diy/deployment/docker/
     ============================================

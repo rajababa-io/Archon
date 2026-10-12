@@ -457,6 +457,7 @@ Environment variables override all other configuration. They are organized by ca
 | `ARCHON_HOME` | Base directory for all Archon-managed files. **Ignored in Docker** — the container always uses `/.archon`. | `~/.archon` |
 | `PORT` | HTTP server listen port | `3090` (auto-allocated in worktrees) |
 | `LOG_LEVEL` | Logging verbosity (`fatal`, `error`, `warn`, `info`, `debug`, `trace`). CLI commands other than `archon serve` log at `warn` unless `--verbose` or `LOG_LEVEL=debug`/`trace` is set (a quieter `LOG_LEVEL` such as `error` is kept); see [CLI logs](/reference/cli/#logs). | `info` |
+| `ARCHON_SERVER_LOG_FILE` | Path the server (`bun run start` or `archon serve`) writes its log to instead of stdout. The file rotates at 10 MB and five older files are kept. Other CLI commands ignore it. If the file cannot be opened, the server says so on stderr and logs to stdout. Both Docker Compose files set it to `/.archon/logs/server.log`. | -- (stdout) |
 | `BOT_DISPLAY_NAME` | Bot name shown in batch-mode "starting" messages | `Archon` |
 | `DEFAULT_AI_ASSISTANT` | Fallback AI assistant when no config file sets the assistant. Overridden by `defaultAssistant` in global config or `assistant` in repo config. Must match a registered provider id — currently `claude`, `codex`, `pi`, or `copilot`. | `claude` |
 | `MAX_CONCURRENT_CONVERSATIONS` | Maximum concurrent AI conversations | `10` |

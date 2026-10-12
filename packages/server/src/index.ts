@@ -147,6 +147,7 @@ import * as conversationDb from '@archon/core/db/conversations';
 import type { IWorkflowPlatform } from '@archon/workflows/deps';
 import {
   createLogger,
+  setLogDestination,
   logArchonPaths,
   validateAppDefaultsPaths,
   shutdownTelemetry,
@@ -274,6 +275,10 @@ export interface ServerOptions {
 }
 
 export async function startServer(opts: ServerOptions = {}): Promise<void> {
+  // Read here, not in the logger, so only the long-running server moves its
+  // log; a CLI command run under the same environment keeps writing to stderr.
+  const logFile = process.env.ARCHON_SERVER_LOG_FILE;
+  if (logFile) setLogDestination({ file: logFile });
   getLog().info('server_starting');
   // Anonymous once-per-boot startup event (self-gates on opt-out). Flushed by
   // the shutdownTelemetry() call in the SIGINT/SIGTERM shutdown handler.

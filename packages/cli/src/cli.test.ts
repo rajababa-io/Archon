@@ -1605,3 +1605,30 @@ describe('log output channel (#3444)', () => {
     }
   }, 30_000);
 });
+
+describe('server log file', () => {
+  it('a command keeps its logs on stderr when the server log file is configured', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'archon-server-log-'));
+    const serverLog = join(root, 'logs', 'server.log');
+    try {
+      const result = spawnSync(process.execPath, [CLI_ENTRY, 'workflow', 'list', '--verbose'], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ...SCRATCH_REGISTRY_ENV,
+          ARCHON_HOME: join(root, 'home'),
+          ARCHON_TELEMETRY_DISABLED: '1',
+          ARCHON_SERVER_LOG_FILE: serverLog,
+          LOG_LEVEL: '',
+        },
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toContain('"msg":');
+      expect(existsSync(serverLog)).toBe(false);
+    } finally {
+      await removeTempTree(root);
+    }
+  });
+});

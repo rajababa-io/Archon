@@ -36,7 +36,7 @@ Local:
 
 Docker:
 ```bash
-docker compose logs -f app
+docker compose exec app tail -f /.archon/logs/server.log
 ```
 
 **Verify bot token:**
@@ -134,7 +134,7 @@ Local:
 
 Docker:
 ```bash
-docker compose logs -f app | grep GitHub
+docker compose exec app tail -f /.archon/logs/server.log | grep GitHub
 ```
 
 ## Port Conflicts
@@ -228,7 +228,8 @@ These issues are specific to running Archon inside Docker containers.
 
 **Check logs for specific errors:**
 ```bash
-docker compose logs app
+docker compose logs app   # output from before the logger starts
+docker compose run --rm --no-deps --entrypoint tail app -n 100 /.archon/logs/server.log
 ```
 
 **Verify environment variables:**
