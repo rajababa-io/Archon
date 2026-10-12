@@ -1153,7 +1153,7 @@ archon version
 |--------|--------|
 | `--cwd <path>` | Override working directory (default: current directory) |
 | `--quiet`, `-q` | Log warnings and errors only (the default for every command except `archon serve`) |
-| `--verbose`, `-v` | Show debug-level logs on stderr (on stdout for `archon serve`) |
+| `--verbose`, `-v` | Show debug-level logs on stderr (on stdout for `archon serve`, or its log file when `ARCHON_SERVER_LOG_FILE` is set) |
 | `--json` | Output machine-readable JSON (workflow `list`, `status`, `runs`, `get`, `wait`, and the write commands `approve`/`reject`/`abandon`/`resume`). Implies log suppression so stdout is exactly the JSON payload. |
 | `--timeout <seconds>` | For `workflow wait`: give up after N seconds and exit `3`. Omitted means wait indefinitely. |
 | `--follow` | For `workflow logs`: wait for the transcript and stream appended rows until the run ends. |
@@ -1168,7 +1168,8 @@ warnings and errors appear. `--verbose` (or `LOG_LEVEL=debug`) adds debug logs, 
 stderr. `--json` and `workflow logs` print no logs at all.
 
 `archon serve` is the exception: its logs are its output, so it logs at `info` (or debug with `--verbose`) on stdout,
-as the server does when started directly.
+as the server does when started directly — unless `ARCHON_SERVER_LOG_FILE` is set, which sends them to that file
+instead (see [Environment Variables](/reference/configuration/#environment-variables)).
 
 Workflow definition problems, such as deprecated or unknown keys, are reported by
 `archon validate workflows`, inline under the workflow in `workflow list`, and on stderr
