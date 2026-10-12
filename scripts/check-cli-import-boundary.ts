@@ -95,6 +95,7 @@ try {
     'packages/paths/src/archon-paths.ts',
     'packages/paths/src/effort.ts',
     'packages/paths/src/logger.ts',
+    'packages/paths/src/rotating-log-file.ts',
     'packages/workflows/src/schemas/durable-wait.ts',
     'packages/workflows/src/schemas/effort.ts',
     'packages/workflows/src/schemas/model-binding.ts',

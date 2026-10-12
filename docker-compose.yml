@@ -42,6 +42,9 @@ services:
     env_file: .env
     environment:
       ARCHON_DOCKER: "true"
+      # The server's log, readable from inside the container; `docker logs`
+      # keeps only output written before the logger starts.
+      ARCHON_SERVER_LOG_FILE: /.archon/logs/server.log
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     volumes:

@@ -19,7 +19,8 @@
  *
  * Configuration:
  *   LOG_LEVEL env var or setLogLevel() at startup
- *   stdout by default; setLogDestination('stderr') moves every logger there
+ *   stdout by default; setLogDestination('stderr') moves every logger there,
+ *   setLogDestination({ file }) to a size-rotated file
  *   Pretty-printed when the destination is a TTY and NODE_ENV !== 'production'
  *   Newline-delimited JSON otherwise (piped, redirected, or production)
  */
@@ -27,6 +28,8 @@
 import pino from 'pino';
 import type { DestinationStream, Logger } from 'pino';
 import pretty from 'pino-pretty';
+import { openRotatingLogFile } from './rotating-log-file';
+import type { RotatingLogFile } from './rotating-log-file';
 
 export type { Logger } from 'pino';
 
@@ -49,10 +52,16 @@ function getInitialLevel(): string {
   return 'info';
 }
 
-export type LogDestination = 'stdout' | 'stderr';
+type ProcessStream = 'stdout' | 'stderr';
+export type LogDestination = ProcessStream | { file: string };
 
-let destination: LogDestination = 'stdout';
-const streams: Partial<Record<LogDestination, DestinationStream>> = {};
+// Bounds the server log at about 60 MB on disk.
+const LOG_FILE_LIMITS = { maxBytes: 10 * 1024 * 1024, keep: 5 };
+
+let destination: ProcessStream = 'stdout';
+const streams: Partial<Record<ProcessStream, DestinationStream>> = {};
+// When set, every line goes here instead of `destination`.
+let logFile: { path: string; file: RotatingLogFile } | undefined;
 
 /**
  * Build the stream for one destination.
@@ -67,7 +76,7 @@ const streams: Partial<Record<LogDestination, DestinationStream>> = {};
  * The same code path runs in dev and compiled binaries — no environment
  * detection required.
  */
-function buildStream(target: LogDestination): DestinationStream {
+function buildStream(target: ProcessStream): DestinationStream {
   const fd = target === 'stdout' ? 1 : 2;
   const isTTY = target === 'stdout' ? process.stdout.isTTY : process.stderr.isTTY;
 
@@ -109,6 +118,20 @@ function buildLogger(): Logger {
     { level: getInitialLevel() },
     {
       write(line: string): void {
+        if (logFile) {
+          try {
+            logFile.file.write(line);
+            return;
+          } catch (err) {
+            const failed = logFile;
+            logFile = undefined;
+            console.error(
+              `[logger] Writing the log file ${failed.path} failed: ${(err as Error).message}. ` +
+                `Logging to ${destination} from now on.`
+            );
+            closeQuietly(failed.file);
+          }
+        }
         const stream = (streams[destination] ??= buildStream(destination));
         stream.write(line);
       },
@@ -154,10 +177,38 @@ export function getLogLevel(): string {
 
 /**
  * Choose where every logger writes from now on, including loggers already
- * created. The server keeps the default, stdout, which container runtimes
- * collect. The CLI moves logs to stderr so a command's stdout carries only
- * that command's output.
+ * created. The server defaults to stdout, which container runtimes collect,
+ * and moves to a file when its deployment names one. The CLI moves logs to
+ * stderr so a command's stdout carries only that command's output.
+ *
+ * A file that cannot be opened is reported on stderr and logging stays on
+ * stdout, so no line is dropped; a later write failure does the same.
  */
 export function setLogDestination(target: LogDestination): void {
-  destination = target;
+  if (logFile) {
+    closeQuietly(logFile.file);
+    logFile = undefined;
+  }
+  if (typeof target === 'string') {
+    destination = target;
+    return;
+  }
+  destination = 'stdout';
+  try {
+    logFile = { path: target.file, file: openRotatingLogFile(target.file, LOG_FILE_LIMITS) };
+  } catch (err) {
+    console.error(
+      `[logger] Cannot open the log file ${target.file}: ${(err as Error).message}. ` +
+        'Logging to stdout instead.'
+    );
+  }
+}
+
+function closeQuietly(file: RotatingLogFile): void {
+  try {
+    file.close();
+  } catch {
+    // The file is being abandoned, after a failure already reported or on a
+    // deliberate switch; a close error adds nothing an operator can act on.
+  }
 }
