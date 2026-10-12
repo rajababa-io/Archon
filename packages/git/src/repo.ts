@@ -222,22 +222,22 @@ const workspaceSyncQueues = new Map<string, Promise<unknown>>();
 
 /**
  * Run `sync` after every earlier sync of the same checkout has settled. Chats
- * created together in one project each sync its shared source checkout, and
- * concurrent `reset --hard`s there race on the index lock; git admits one and
- * fails the rest. Different checkouts never wait on each other.
+ * created together in one project each sync its shared source checkout, a forge
+ * webhook can sync it at the same moment, and concurrent `reset --hard`s there
+ * race on the index lock; git admits one and fails the rest. Different
+ * checkouts never wait on each other.
  */
 function serializeWorkspaceSync<T>(workspacePath: RepoPath, sync: () => Promise<T>): Promise<T> {
   const key = resolve(workspacePath);
   const result = (workspaceSyncQueues.get(key) ?? Promise.resolve()).then(sync);
   // The caller receives the sync's own outcome; the queue only needs to know it settled.
-  const tail = result.then(
-    () => undefined,
-    () => undefined
+  workspaceSyncQueues.set(
+    key,
+    result.then(
+      () => undefined,
+      () => undefined
+    )
   );
-  workspaceSyncQueues.set(key, tail);
-  void tail.then(() => {
-    if (workspaceSyncQueues.get(key) === tail) workspaceSyncQueues.delete(key);
-  });
   return result;
 }
 
@@ -641,6 +641,7 @@ export async function cloneRepository(
 /**
  * Sync a repository to match a remote branch.
  * Runs sequential fetch + reset --hard. If fetch fails, reset is skipped.
+ * Shares syncWorkspace's queue, so it never races a sync of the same checkout.
  * Uses execFileAsync (no shell interpolation) for safety.
  *
  * Note: the reset uses the `cwd` option; the fetch goes through
@@ -651,10 +652,18 @@ export async function cloneRepository(
  * @param remote - Remote name to fetch from (default: 'origin')
  * @returns GitResult<void>
  */
-export async function syncRepository(
+export function syncRepository(
   repoPath: RepoPath,
   branch: BranchName,
   remote = 'origin'
+): Promise<GitResult<void>> {
+  return serializeWorkspaceSync(repoPath, () => syncRepositoryNow(repoPath, branch, remote));
+}
+
+async function syncRepositoryNow(
+  repoPath: RepoPath,
+  branch: BranchName,
+  remote: string
 ): Promise<GitResult<void>> {
   try {
     await fetchWithRefLockRetry(repoPath, remote, undefined, { timeoutMs: 60000 });
@@ -676,6 +685,7 @@ export async function syncRepository(
   }
 
   try {
+    await waitForIndexLock(repoPath);
     await execFileAsync('git', ['reset', '--hard', `${remote}/${branch}`], {
       cwd: repoPath,
       timeout: 30000,

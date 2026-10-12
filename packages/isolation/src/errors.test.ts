@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'bun:test';
+import { GitIndexLockedError } from '@archon/git';
 import { classifyIsolationError, isKnownIsolationError, IsolationBlockedError } from './errors';
 
 describe('classifyIsolationError', () => {
@@ -163,5 +164,17 @@ describe('IsolationBlockedError', () => {
   test('has correct message', () => {
     const err = new IsolationBlockedError('test message', 'creation_failed');
     expect(err.message).toBe('test message');
+  });
+});
+
+describe('an index lock another git process would not release', () => {
+  test('blocks the workspace instead of crashing', () => {
+    const err = new GitIndexLockedError('/workspaces/acme/widgets/source/.git/index.lock');
+    expect(isKnownIsolationError(err)).toBe(true);
+  });
+
+  test('tells the operator which lock to check, whatever the path contains', () => {
+    const err = new GitIndexLockedError('/workspaces/acme/timeout/source/.git/index.lock');
+    expect(classifyIsolationError(err)).toBe(`**Error:** ${err.message}`);
   });
 });

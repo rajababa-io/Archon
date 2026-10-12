@@ -250,9 +250,10 @@ describe('WorktreeProvider creating several worktrees at once for one project', 
     await git(seedPath, 'config', 'user.name', 'Archon Test');
     await git(seedPath, 'config', 'commit.gpgsign', 'false');
     // Enough files that each `reset --hard` holds the index lock long enough
-    // for the concurrent ones to meet it.
+    // for the concurrent ones to meet it (every run without the sync queue
+    // fails), and few enough that Windows checks them out six times in budget.
     await Promise.all(
-      Array.from({ length: 2000 }, (_, index) =>
+      Array.from({ length: 200 }, (_, index) =>
         writeFile(join(seedPath, `file-${index}.txt`), `${index}\n`)
       )
     );

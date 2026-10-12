@@ -1,3 +1,5 @@
+import { GitIndexLockedError } from '@archon/git';
+
 import type { IsolationBlockReason } from './types';
 
 /**
@@ -193,7 +195,12 @@ export function classifyIsolationError(err: Error): string {
   const stderr = (err as Error & { stderr?: string }).stderr ?? '';
   const errorLower = `${err.message} ${stderr}`.toLowerCase();
 
-  const message = ERROR_PATTERNS.find(({ pattern }) => errorLower.includes(pattern))?.message;
+  // Recognized by type, ahead of the patterns: its message is already the
+  // action, and the lock path it names can contain any pattern text.
+  const message =
+    err instanceof GitIndexLockedError
+      ? (cause: string): string => `**Error:** ${cause}`
+      : ERROR_PATTERNS.find(({ pattern }) => errorLower.includes(pattern))?.message;
   const classified =
     message === undefined
       ? `**Error:** Could not create isolated workspace (${err.message}).`
@@ -213,6 +220,7 @@ export function classifyIsolationError(err: Error): string {
  * so they are visible as crashes rather than silent workspace failures.
  */
 export function isKnownIsolationError(err: Error): boolean {
+  if (err instanceof GitIndexLockedError) return true;
   const stderr = (err as Error & { stderr?: string }).stderr ?? '';
   const errorLower = `${err.message} ${stderr}`.toLowerCase();
 
