@@ -239,7 +239,7 @@ This starts three containers:
 docker compose --profile with-db --profile cloud ps
 
 # Watch logs
-docker compose logs -f app
+docker compose exec app tail -f /.archon/logs/server.log
 docker compose logs -f caddy
 
 # Test HTTPS (from your local machine)
@@ -447,7 +447,7 @@ See `.env.example` for the full list with documentation.
 
 ### Data Directory
 
-The container stores all data at `/.archon/` (workspaces, worktrees, artifacts, logs, SQLite DB).
+The container stores all data at `/.archon/` (workspaces, worktrees, artifacts, logs, SQLite DB). The server's own log is `/.archon/logs/server.log` — see [View Logs](#view-logs).
 
 By default this is a Docker-managed volume. To store data at a specific location on the host, set `ARCHON_DATA` in `.env`:
 
@@ -663,10 +663,20 @@ To add extra tools without modifying the tracked Dockerfile:
 
 ### View Logs
 
+The Archon server writes its log, one JSON object per line, to `/.archon/logs/server.log` on the data volume rather than to the container's stdout. Both `docker-compose.yml` files set this with `ARCHON_SERVER_LOG_FILE`; remove that line to send the log back to stdout. Agents working inside the container can read the file directly, and on the host it lives under the data directory (`$ARCHON_DATA/logs/`, or the `archon_data` volume's `_data/logs/`).
+
 ```bash
-docker compose logs -f              # All services
-docker compose logs -f app          # App only
-docker compose logs --tail=100 app  # Last 100 lines
+docker compose exec app tail -f /.archon/logs/server.log                 # Follow the server log
+docker compose exec app grep '"level":50' /.archon/logs/server.log       # Error-level lines
+docker compose logs -f                                                   # Other services, and app output from before the logger starts
+```
+
+The file rotates at 10 MB and keeps five older files (`server.log.1` is the newest of them), so it stays under about 60 MB. If the server cannot open the file, it prints a `[logger] Cannot open the log file` line to the container's stderr and logs to stdout as before.
+
+`docker compose logs app` still shows output written before the logger starts, such as a crash while loading configuration. A failure the server logs after that, such as `no_ai_credentials`, is in the file. When the container is restarting too fast to `exec` into, read the file through a one-off container that mounts the same volume:
+
+```bash
+docker compose run --rm --no-deps --entrypoint tail app -n 100 /.archon/logs/server.log
 ```
 
 ### Update
@@ -788,6 +798,7 @@ PORT=3001
 ```bash
 docker compose ps
 docker compose logs --tail=50 app
+docker compose run --rm --no-deps --entrypoint tail app -n 50 /.archon/logs/server.log
 ```
 
 Common causes: missing `.env` file, invalid credentials, database unreachable.

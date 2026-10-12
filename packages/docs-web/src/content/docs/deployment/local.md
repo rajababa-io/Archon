@@ -107,7 +107,7 @@ nano .env
 docker compose up -d
 
 # 4. View logs
-docker compose logs -f app
+docker compose exec app tail -f /.archon/logs/server.log
 
 # 5. Verify
 curl http://localhost:3000/api/health
@@ -149,7 +149,7 @@ Use this option to run both the app and PostgreSQL in Docker containers. The dat
 docker compose --profile with-db up -d --build
 
 # 3. Wait for startup (watch logs)
-docker compose logs -f app
+docker compose exec app tail -f /.archon/logs/server.log
 
 # 4. Verify
 curl http://localhost:3000/api/health
@@ -241,8 +241,8 @@ curl http://localhost:3090/health/concurrency  # Concurrency status
 
 ```bash
 # Check logs
-docker compose logs app          # default (SQLite or external DB)
-docker compose logs app          # --profile with-db
+docker compose logs app          # output from before the logger starts
+docker compose run --rm --no-deps --entrypoint tail app -n 100 /.archon/logs/server.log
 
 # Verify environment
 docker compose config
