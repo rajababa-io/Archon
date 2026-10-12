@@ -231,3 +231,64 @@ describe('WorktreeProvider against real git', () => {
     expect(adopted.metadata.adopted).toBe(true);
   });
 });
+
+describe('WorktreeProvider creating several worktrees at once for one project', () => {
+  const trackTempRoot = trackTempRoots();
+  honorArchonHomeEnv();
+
+  const originalArchonHome = process.env.ARCHON_HOME;
+  let sourcePath: string;
+
+  beforeEach(async () => {
+    const root = trackTempRoot(await realpath(await mkdtemp(join(tmpdir(), 'archon-worktree-'))));
+    process.env.ARCHON_HOME = join(root, 'archon-home');
+
+    const seedPath = join(root, 'seed');
+    await mkdir(seedPath, { recursive: true });
+    await git(seedPath, 'init', '-q', '-b', 'main');
+    await git(seedPath, 'config', 'user.email', 'test@example.com');
+    await git(seedPath, 'config', 'user.name', 'Archon Test');
+    await git(seedPath, 'config', 'commit.gpgsign', 'false');
+    // Enough files that each `reset --hard` holds the index lock long enough
+    // for the concurrent ones to meet it (every run without the sync queue
+    // fails), and few enough that Windows checks them out six times in budget.
+    await Promise.all(
+      Array.from({ length: 200 }, (_, index) =>
+        writeFile(join(seedPath, `file-${index}.txt`), `${index}\n`)
+      )
+    );
+    await git(seedPath, 'add', '.');
+    await git(seedPath, 'commit', '-qm', 'initial commit');
+    const originPath = join(root, 'origin.git');
+    await git(root, 'clone', '-q', '--bare', seedPath, originPath);
+
+    // Inside the Archon workspaces tree, so each create hard-resets this shared
+    // checkout — the managed-clone path every project's chats go through.
+    sourcePath = join(process.env.ARCHON_HOME, 'workspaces', 'acme', 'widgets', 'source');
+    await mkdir(join(sourcePath, '..'), { recursive: true });
+    await git(root, 'clone', '-q', originPath, sourcePath);
+  });
+
+  afterEach(() => {
+    if (originalArchonHome === undefined) delete process.env.ARCHON_HOME;
+    else process.env.ARCHON_HOME = originalArchonHome;
+  });
+
+  test('every chat started together gets its worktree', async () => {
+    const provider = new WorktreeProvider();
+    const requests: IsolationRequest[] = Array.from({ length: 6 }, (_, index) => ({
+      codebaseId: 'cb-1',
+      codebaseName: CODEBASE_NAME,
+      canonicalRepoPath: toRepoPath(sourcePath),
+      workflowType: 'thread',
+      identifier: `chat-${index}`,
+    }));
+
+    const outcomes = await Promise.allSettled(requests.map(request => provider.create(request)));
+
+    const failures = outcomes.flatMap(outcome =>
+      outcome.status === 'rejected' ? [String(outcome.reason)] : []
+    );
+    expect(failures).toEqual([]);
+  });
+});

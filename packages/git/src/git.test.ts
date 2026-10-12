@@ -2616,6 +2616,133 @@ branch refs/heads/feature/auth
         git.syncWorkspace(repo('/workspace/repo'), branch('does-not-exist'), { remote: 'mar' })
       ).rejects.toThrow("Configured base branch 'does-not-exist' not found on remote 'mar'");
     });
+
+    test('a sync of one checkout does not wait on a sync of another', async () => {
+      let releaseSlowFetch = (): void => undefined;
+      execSpy.mockImplementation(async (_cmd: string, args: string[]) => {
+        if (args.includes('fetch') && args.includes('/workspace/slow')) {
+          await new Promise<void>(release => {
+            releaseSlowFetch = release;
+          });
+        }
+        return { stdout: '', stderr: '' };
+      });
+
+      const slow = git.syncWorkspace(repo('/workspace/slow'), branch('main'), { mode: 'reset' });
+      const other = await git.syncWorkspace(repo('/workspace/other'), branch('main'), {
+        mode: 'reset',
+      });
+
+      expect(other.synced).toBe(true);
+      releaseSlowFetch();
+      expect((await slow).synced).toBe(true);
+    });
+
+    test('a failed sync does not block the next sync of the same checkout', async () => {
+      execSpy.mockImplementation(async (_cmd: string, args: string[]) => {
+        if (args.includes('reset')) throw new Error('fatal: Could not reset index file');
+        return { stdout: '', stderr: '' };
+      });
+      const failing = git.syncWorkspace(repo('/workspace/repo'), branch('main'), { mode: 'reset' });
+      const next = git.syncWorkspace(repo('/workspace/repo'), branch('main'));
+
+      await expect(failing).rejects.toThrow('Reset to origin/main failed');
+      expect((await next).synced).toBe(true);
+    });
+
+    describe('when another git process holds the index lock', () => {
+      let seed: string;
+      let checkout: string;
+      let lockPath: string;
+
+      function runGit(cwd: string, ...args: string[]): string {
+        const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
+        if (result.exitCode !== 0) {
+          throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
+        }
+        return result.stdout.toString().trim();
+      }
+
+      beforeEach(async () => {
+        const root = trackTempRoot(await mkdtemp(join(tmpdir(), 'archon-sync-index-lock-')));
+        seed = join(root, 'seed');
+        await realMkdir(seed);
+        runGit(seed, 'init', '-q', '-b', 'main');
+        runGit(seed, 'config', 'user.email', 'test@example.com');
+        runGit(seed, 'config', 'user.name', 'Archon Test');
+        runGit(seed, 'config', 'commit.gpgsign', 'false');
+        await writeFile(join(seed, 'README.md'), '# fixture\n');
+        runGit(seed, 'add', 'README.md');
+        runGit(seed, 'commit', '-qm', 'initial commit');
+        runGit(root, 'clone', '-q', '--bare', seed, 'origin.git');
+        runGit(root, 'clone', '-q', 'origin.git', 'source');
+        // The remote moves on, so a fast-forward sync has to touch the index too.
+        await writeFile(join(seed, 'CHANGELOG.md'), '# changes\n');
+        runGit(seed, 'add', 'CHANGELOG.md');
+        runGit(seed, 'commit', '-qm', 'second commit');
+        runGit(seed, 'push', '-q', join(root, 'origin.git'), 'main');
+        checkout = join(root, 'source');
+        lockPath = join(checkout, '.git', 'index.lock');
+        await writeFile(lockPath, '');
+      });
+
+      /** Each read of the clock lands well past the previous one, so a wait runs out on its first poll. */
+      async function withClockRunningOut<T>(run: () => Promise<T>): Promise<T> {
+        const realNow = Date.now.bind(Date);
+        let skipped = 0;
+        const nowSpy = spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000 * skipped++);
+        try {
+          return await run();
+        } finally {
+          nowSpy.mockRestore();
+        }
+      }
+
+      for (const mode of ['reset', 'fast-forward'] as const) {
+        test(`${mode}: waits for it to be released, then syncs`, async () => {
+          const sync = git.syncWorkspace(repo(checkout), branch('main'), { mode });
+          setTimeout(() => void rm(lockPath), 300);
+
+          const result = await sync;
+          expect(result.synced).toBe(true);
+          expect(result.updated).toBe(true);
+        });
+
+        test(`${mode}: gives up after a bounded wait, naming the lock and leaving it in place`, async () => {
+          await withClockRunningOut(async () => {
+            const sync = git.syncWorkspace(repo(checkout), branch('main'), { mode });
+            await expect(sync).rejects.toBeInstanceOf(git.GitIndexLockedError);
+            await expect(sync).rejects.toThrow(resolve(lockPath));
+          });
+
+          expect(await readFile(lockPath, 'utf-8')).toBe('');
+        });
+      }
+
+      test('syncRepository waits for it to be released, then resets', async () => {
+        const sync = git.syncRepository(repo(checkout), branch('main'));
+        setTimeout(() => void rm(lockPath), 300);
+
+        expect(await sync).toEqual({ ok: true, value: undefined });
+        expect(runGit(checkout, 'rev-parse', 'HEAD')).toBe(runGit(seed, 'rev-parse', 'HEAD'));
+        expect(runGit(checkout, 'status', '--porcelain')).toBe('');
+      });
+
+      test('syncRepository gives up after a bounded wait, naming the lock', async () => {
+        const result = await withClockRunningOut(() =>
+          git.syncRepository(repo(checkout), branch('main'))
+        );
+
+        expect(result).toEqual({
+          ok: false,
+          error: {
+            code: 'unknown',
+            message: `Reset failed: ${new git.GitIndexLockedError(resolve(lockPath)).message}`,
+          },
+        });
+        expect(await readFile(lockPath, 'utf-8')).toBe('');
+      });
+    });
   });
 
   describe('fetchWithRefLockRetry', () => {
@@ -3213,6 +3340,35 @@ branch refs/heads/feature/auth
       }
       const fetches = execSpy.mock.calls.filter(([, args]) => (args as string[])[2] === 'fetch');
       expect(fetches).toHaveLength(1);
+    });
+
+    // A forge webhook syncs the same source checkout chats are created from.
+    test('waits for a sync of the same checkout already under way', async () => {
+      let releaseFirstFetch = (): void => undefined;
+      const firstFetch = new Promise<void>(release => {
+        releaseFirstFetch = release;
+      });
+      const commands: string[] = [];
+      execSpy.mockImplementation(async (_cmd: string, args: string[]) => {
+        const command = args.find(arg => arg === 'fetch' || arg === 'reset') ?? '';
+        commands.push(command);
+        if (command === 'fetch' && commands.filter(c => c === 'fetch').length === 1) {
+          await firstFetch;
+        }
+        return { stdout: '', stderr: '' };
+      });
+
+      const chatSync = git.syncWorkspace(repo('/workspace/repo'), branch('main'), {
+        mode: 'reset',
+      });
+      const webhookSync = git.syncRepository(repo('/workspace/repo'), branch('main'));
+      await new Promise(done => setTimeout(done, 20));
+      expect(commands.filter(c => c === 'fetch')).toHaveLength(1);
+
+      releaseFirstFetch();
+      await chatSync;
+      expect(await webhookSync).toEqual({ ok: true, value: undefined });
+      expect(commands.filter(c => c !== '')).toEqual(['fetch', 'reset', 'fetch', 'reset']);
     });
 
     test('fetches and resets using a custom remote', async () => {
