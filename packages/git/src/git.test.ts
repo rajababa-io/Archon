@@ -2651,19 +2651,21 @@ branch refs/heads/feature/auth
     });
 
     describe('when another git process holds the index lock', () => {
+      let seed: string;
       let checkout: string;
       let lockPath: string;
 
-      function runGit(cwd: string, ...args: string[]): void {
+      function runGit(cwd: string, ...args: string[]): string {
         const result = Bun.spawnSync(['git', ...args], { cwd, stdout: 'pipe', stderr: 'pipe' });
         if (result.exitCode !== 0) {
           throw new Error(`git ${args.join(' ')} failed: ${result.stderr.toString()}`);
         }
+        return result.stdout.toString().trim();
       }
 
       beforeEach(async () => {
         const root = trackTempRoot(await mkdtemp(join(tmpdir(), 'archon-sync-index-lock-')));
-        const seed = join(root, 'seed');
+        seed = join(root, 'seed');
         await realMkdir(seed);
         runGit(seed, 'init', '-q', '-b', 'main');
         runGit(seed, 'config', 'user.email', 'test@example.com');
@@ -2722,7 +2724,8 @@ branch refs/heads/feature/auth
         setTimeout(() => void rm(lockPath), 300);
 
         expect(await sync).toEqual({ ok: true, value: undefined });
-        expect(await readFile(join(checkout, 'CHANGELOG.md'), 'utf-8')).toBe('# changes\n');
+        expect(runGit(checkout, 'rev-parse', 'HEAD')).toBe(runGit(seed, 'rev-parse', 'HEAD'));
+        expect(runGit(checkout, 'status', '--porcelain')).toBe('');
       });
 
       test('syncRepository gives up after a bounded wait, naming the lock', async () => {
