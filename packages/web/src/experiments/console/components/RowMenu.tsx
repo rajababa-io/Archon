@@ -11,6 +11,53 @@ interface Anchor {
   left: number;
 }
 
+/** A pointer position in viewport coordinates — where a right-click landed. */
+export interface MenuPoint {
+  x: number;
+  y: number;
+}
+
+interface Box {
+  top: number;
+  bottom: number;
+  right: number;
+}
+
+/**
+ * Where the menu's top-left corner goes.
+ *
+ * Opened from a right-click, the menu opens AT the pointer, the way every
+ * native context menu does, and swings left or up across the pointer when the
+ * window has no room on that side. Opened from the ⋯ button there is no
+ * pointer to honour, so it hangs under the row, right-aligned to it. Either
+ * way it is pulled back on-screen rather than allowed to run off the edge.
+ */
+export function placeMenu(
+  target: { point: MenuPoint } | { row: Box },
+  size: { width: number; height: number },
+  viewport: { width: number; height: number }
+): Anchor {
+  const { width, height } = size;
+  const maxLeft = Math.max(MARGIN, viewport.width - MARGIN - width);
+  const maxTop = Math.max(MARGIN, viewport.height - MARGIN - height);
+  if ('point' in target) {
+    const { x, y } = target.point;
+    const left = x + width > viewport.width - MARGIN ? x - width : x;
+    const top = y + height > viewport.height - MARGIN ? y - height : y;
+    return {
+      top: Math.min(Math.max(MARGIN, top), maxTop),
+      left: Math.min(Math.max(MARGIN, left), maxLeft),
+    };
+  }
+  const rect = target.row;
+  const below = viewport.height - rect.bottom - MARGIN;
+  const flip = height > below && rect.top - MARGIN > below;
+  return {
+    top: flip ? Math.max(MARGIN, rect.top - GAP - height) : rect.bottom + GAP,
+    left: Math.min(Math.max(MARGIN, rect.right - width), maxLeft),
+  };
+}
+
 /**
  * The geometry every row in a menu shares.
  *
@@ -212,6 +259,12 @@ export interface RowMenuProps {
    * that sets state, and that is a render loop.
    */
   anchor: HTMLElement | null;
+  /**
+   * Where a right-click landed. When set, the menu opens at the pointer rather
+   * than under the row. Hold it in state: a fresh object each render re-runs
+   * the placement effect, the same render loop `anchor` avoids.
+   */
+  point?: MenuPoint;
   open: boolean;
   onClose: () => void;
   width: number;
@@ -236,6 +289,7 @@ export interface RowMenuProps {
  */
 export function RowMenu({
   anchor: row,
+  point,
   open,
   onClose,
   width,
@@ -248,21 +302,17 @@ export function RowMenu({
   // Measured from the rendered panel rather than guessed: the menu is placed
   // after it exists, which is why it renders hidden until there is a position.
   const place = useCallback((): void => {
-    if (row === null) return;
-    const rect = row.getBoundingClientRect();
-    const height = panelRef.current?.offsetHeight ?? 0;
-    const below = window.innerHeight - rect.bottom - MARGIN;
-    const flip = height > below && rect.top - MARGIN > below;
-    setAt({
-      top: flip ? Math.max(MARGIN, rect.top - GAP - height) : rect.bottom + GAP,
-      // Right-aligned to the row, then pulled back on-screen rather than
-      // allowed to run off the edge of a narrow window.
-      left: Math.min(
-        Math.max(MARGIN, rect.right - width),
-        Math.max(MARGIN, window.innerWidth - MARGIN - width)
-      ),
-    });
-  }, [row, width]);
+    const target =
+      point !== undefined ? { point } : row !== null ? { row: row.getBoundingClientRect() } : null;
+    if (target === null) return;
+    setAt(
+      placeMenu(
+        target,
+        { width, height: panelRef.current?.offsetHeight ?? 0 },
+        { width: window.innerWidth, height: window.innerHeight }
+      )
+    );
+  }, [row, point, width]);
 
   useLayoutEffect(() => {
     if (!open) {
