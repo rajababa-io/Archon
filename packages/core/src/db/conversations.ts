@@ -403,8 +403,11 @@ export async function touchConversation(id: string): Promise<void> {
  *   Writes only while the row is unpinned, and leaves the pin as it is.
  * - `request` — an explicit re-title a person asked for (`/retitle`). Overrides
  *   the pin without clearing it: the chat was still named on a person's say-so.
+ * - `agent` — the chat's own agent naming its work (`set_chat_title`, #393).
+ *   Writes and pins like `person`: the name follows the operator's standing
+ *   title rule, so automatic titling must not undo it.
  */
-export type ConversationTitleWriter = 'person' | 'automation' | 'request';
+export type ConversationTitleWriter = 'person' | 'automation' | 'request' | 'agent';
 
 /**
  * Update conversation title. Returns whether the title was written.
@@ -429,7 +432,7 @@ export async function updateConversationTitle(
   writer: ConversationTitleWriter
 ): Promise<boolean> {
   const dialect = getDialect();
-  const pin = writer === 'person' ? ', title_pinned = TRUE' : '';
+  const pin = writer === 'person' || writer === 'agent' ? ', title_pinned = TRUE' : '';
   // NULL means not pinned (migration 029), so `IS NOT TRUE`, never `= FALSE`.
   const guard = writer === 'automation' ? ' AND title_pinned IS NOT TRUE' : '';
   const result = await pool.query(
