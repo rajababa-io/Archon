@@ -55,6 +55,13 @@ describe('watch_ci', () => {
     expect(calls).toEqual([]);
   });
 
+  test('warns that a running background shell holds the turn open', () => {
+    // The SDK keeps a turn alive until every background task ends, so a check
+    // left running after this call keeps the chat Working for the whole CI wait.
+    const { tool } = harness();
+    expect(tool.description).toContain('while one is still running the turn cannot end');
+  });
+
   test('asking twice says nothing changed', async () => {
     const { tool } = harness(async () => ({ created: false }));
     expect(await tool.handler({ repo: 'o/r', sha: SHA })).toContain('already watching');
