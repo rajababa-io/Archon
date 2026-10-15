@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { MenuCheckItem, MenuItem, RowMenuButton } from './RowMenu';
+import { MenuCheckItem, MenuItem, RowMenuButton, placeMenu } from './RowMenu';
 
 const noop = (): void => undefined;
 
@@ -67,5 +67,32 @@ describe('RowMenuButton', () => {
     expect(renderToStaticMarkup(<RowMenuButton open={false} onToggle={noop} />)).toContain(
       'aria-expanded="false"'
     );
+  });
+});
+
+describe('placeMenu', () => {
+  const size = { width: 220, height: 100 };
+  const viewport = { width: 1000, height: 800 };
+
+  test('a right-click opens the menu at the pointer', () => {
+    expect(placeMenu({ point: { x: 300, y: 200 } }, size, viewport)).toEqual({
+      top: 200,
+      left: 300,
+    });
+  });
+
+  test('near the right edge it swings left of the pointer', () => {
+    expect(placeMenu({ point: { x: 900, y: 200 } }, size, viewport).left).toBe(680);
+  });
+
+  test('near the bottom edge it swings above the pointer', () => {
+    expect(placeMenu({ point: { x: 300, y: 750 } }, size, viewport).top).toBe(650);
+  });
+
+  test('the ⋯ button still hangs it under the row, right-aligned', () => {
+    expect(placeMenu({ row: { top: 100, bottom: 140, right: 500 } }, size, viewport)).toEqual({
+      top: 144,
+      left: 280,
+    });
   });
 });

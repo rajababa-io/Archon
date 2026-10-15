@@ -6,6 +6,7 @@ import { setIdentity, useProjectIdentity } from '../lib/project-identity';
 import { pushDisplayName, pushIdentity } from '../lib/presentation-sync';
 import { ProjectCountCells } from './ProjectCountCells';
 import { MenuItem, MenuSeparator, RowMenu, RowMenuButton } from './RowMenu';
+import type { MenuPoint } from './RowMenu';
 import { projectLabel, useDisplayName, setDisplayName } from '../lib/display-name';
 import { formatProjectLocator } from '../lib/format';
 import type { Project } from '../primitives/project';
@@ -52,6 +53,8 @@ export function ProjectRow({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(displayName);
   const [menuOpen, setMenuOpen] = useState(false);
+  // Where the right-click landed; undefined when the ⋯ button opened the menu.
+  const [menuPoint, setMenuPoint] = useState<MenuPoint | undefined>(undefined);
   // The row element, kept in state rather than a ref so opening the menu has a
   // node to measure on the render it opens.
   const [rowEl, setRowEl] = useState<HTMLElement | null>(null);
@@ -110,6 +113,7 @@ export function ProjectRow({
         onContextMenu={e => {
           if (onRemove === undefined || editing || removing) return;
           e.preventDefault();
+          setMenuPoint({ x: e.clientX, y: e.clientY });
           setMenuOpen(true);
         }}
         role="button"
@@ -241,11 +245,13 @@ export function ProjectRow({
               <RowMenuButton
                 open={menuOpen}
                 onToggle={() => {
+                  setMenuPoint(undefined);
                   setMenuOpen(v => !v);
                 }}
               />
               <RowMenu
                 anchor={rowEl}
+                point={menuPoint}
                 open={menuOpen}
                 onClose={closeMenu}
                 width={220}

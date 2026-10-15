@@ -24,6 +24,7 @@ import {
 } from '../primitives/chat-status';
 import { groupChatsByStatus } from '../primitives/chat-groups';
 import { MenuCheckItem, MenuItem, RowMenu, RowMenuButton } from './RowMenu';
+import type { MenuPoint } from './RowMenu';
 import { IssueDialog } from './IssueDialog';
 import { titleParts } from '../lib/title-issues';
 import { clampPaneWidth, readPaneWidth, writePaneWidth, type PaneBounds } from '../lib/pane-width';
@@ -185,6 +186,8 @@ export function ConversationRail({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // Where the right-click landed; undefined when the ⋯ button opened the menu.
+  const [menuPoint, setMenuPoint] = useState<MenuPoint | undefined>(undefined);
   // Stable, because RowMenu holds it in a listener effect.
   const closeMenu = useCallback((): void => {
     setMenuFor(null);
@@ -486,6 +489,7 @@ export function ConversationRail({
         }}
         onContextMenu={e => {
           e.preventDefault();
+          setMenuPoint({ x: e.clientX, y: e.clientY });
           setMenuFor(c.id);
         }}
       >
@@ -609,6 +613,7 @@ export function ConversationRail({
           <RowMenuButton
             open={menuFor === c.id}
             onToggle={() => {
+              setMenuPoint(undefined);
               setMenuFor(menuFor === c.id ? null : c.id);
             }}
           />
@@ -616,6 +621,7 @@ export function ConversationRail({
 
         <RowMenu
           anchor={rowRefs.current.get(c.id) ?? null}
+          point={menuPoint}
           open={menuFor === c.id}
           onClose={closeMenu}
           width={220}
