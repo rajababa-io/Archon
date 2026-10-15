@@ -64,9 +64,10 @@ function parseRequest(input: Record<string, unknown>): WatchCiRequest | string {
 /**
  * Lets a chat hear when CI finishes, after its turn has ended.
  *
- * The in-turn alternatives — a monitor, a background shell, a scheduled wake-up
- * — all die when the turn ends or the container is replaced, so "I'll tell you
- * when CI is done" was a promise nothing kept. This one is a row: a GitHub
+ * The in-turn alternatives — a monitor, a scheduled wake-up — die when the turn
+ * ends or the container is replaced, and a background shell holds the turn open
+ * until it exits (the SDK waits on live background tasks), so "I'll tell you
+ * when CI is done" was either a promise nothing kept or a chat stuck on Working. This one is a row: a GitHub
  * `check_run` webhook, or the reconcile sweep that backs it up, sends this chat
  * one message when every check on the commit has finished. Until then the rail
  * shows the chat as "Waiting on CI" rather than Idle.
@@ -77,7 +78,7 @@ function parseRequest(input: Record<string, unknown>): WatchCiRequest | string {
 export function buildWatchCiTool(ctx: WatchCiContext): NativeTool {
   return {
     name: 'watch_ci',
-    description: `Wait for CI on one commit without staying in this turn. When every GitHub check on that commit has finished, this chat receives one automated message saying which passed and which failed, and a new turn starts to act on it. Use it instead of a monitor, background shell, sleep, or scheduled wake-up — those die when the turn ends. After calling it, end your turn and tell the user you will report back. Watching the same commit twice is one watch. Only a result that begins "${OPENED}" or "${ALREADY_OPEN}" means a watch is open; any other result, including an interrupted call, means nothing was saved — call it again, and if it keeps failing, tell the user CI is not being watched.`,
+    description: `Wait for CI on one commit without staying in this turn. When every GitHub check on that commit has finished, this chat receives one automated message saying which passed and which failed, and a new turn starts to act on it. Use it instead of a monitor, sleep, or scheduled wake-up — those die when the turn ends. A background shell is the opposite: while one is still running the turn cannot end, so the chat shows Working instead of Waiting on CI. Before ending the turn, let any background command finish or stop it — CI runs the same checks. After calling it, end your turn and tell the user you will report back. Watching the same commit twice is one watch. Only a result that begins "${OPENED}" or "${ALREADY_OPEN}" means a watch is open; any other result, including an interrupted call, means nothing was saved — call it again, and if it keeps failing, tell the user CI is not being watched.`,
     inputSchema: INPUT_SCHEMA,
     handler: async (input): Promise<string> => {
       const request = parseRequest(input);
