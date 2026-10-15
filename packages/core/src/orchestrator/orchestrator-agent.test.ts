@@ -182,12 +182,16 @@ const mockGetConversationByPlatformId = mock<typeof ConversationDb.getConversati
 const mockSetConversationReady = mock<typeof ConversationDb.setConversationReady>(() =>
   Promise.resolve()
 );
+const mockUpdateConversationTitle = mock<typeof ConversationDb.updateConversationTitle>(() =>
+  Promise.resolve(true)
+);
 mock.module('../db/conversations', () => ({
   getOrCreateConversation: mockGetOrCreateConversation,
   getConversationByPlatformId: mockGetConversationByPlatformId,
   updateConversation: mockUpdateConversation,
   touchConversation: mock(() => Promise.resolve()),
   setConversationReady: mockSetConversationReady,
+  updateConversationTitle: mockUpdateConversationTitle,
   setConversationArchived: mockSetConversationArchived,
   setConversationCompleted: mockSetConversationCompleted,
 }));
@@ -8457,6 +8461,33 @@ describe('mark_ready_to_close', () => {
     expect(names).toContain('mark_ready_to_close');
     expect(names).not.toContain('mark_done');
     expect(names).not.toContain('close_chat');
+  });
+
+  test('set_chat_title renames THIS conversation and pins the name (#393)', async () => {
+    mockUpdateConversationTitle.mockClear();
+    const results: string[] = [];
+    mockSendQuery.mockImplementationOnce(async function* () {
+      const call = mockSendQuery.mock.calls.at(-1) as unknown[] | undefined;
+      const options = call?.[3] as {
+        nativeTools?: {
+          name: string;
+          handler: (input: Record<string, unknown>) => Promise<string>;
+        }[];
+      };
+      const tool = options.nativeTools?.find(t => t.name === 'set_chat_title');
+      if (tool) results.push(await tool.handler({ title: '#96 Ask card: attach a file' }));
+      yield { type: 'assistant', content: 'named' };
+      yield { type: 'result', sessionId: 'session-1' };
+    });
+
+    await handleMessage(makePlatform(), 'conv-1', 'filed #96');
+
+    expect(results).toHaveLength(1);
+    // The DB id, and the `agent` writer — which pins, so automatic titling
+    // cannot undo it.
+    expect(mockUpdateConversationTitle.mock.calls).toEqual([
+      ['conv-1-db', '#96 Ask card: attach a file', 'agent'],
+    ]);
   });
 
   test('share_page is offered, so a chat can hand out a link to what it published (#345)', async () => {

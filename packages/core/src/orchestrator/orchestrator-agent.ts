@@ -54,6 +54,7 @@ import { getAgentProvider } from '../services/provider-admission';
 import { buildManageRunTool } from './manage-run-tool';
 import { buildProjectBriefTool } from './update-project-brief-tool';
 import { buildReadyToCloseTool } from './ready-to-close-tool';
+import { buildSetChatTitleTool } from './set-chat-title-tool';
 import { buildShareTool } from './share-tool';
 import { setShareAccess } from '../db/shares';
 import { shareTarget } from '../services/shares';
@@ -3200,6 +3201,14 @@ export async function handleMessage(
           conversationId: conversation.id,
           mark: async (ready): Promise<void> => {
             await db.setConversationReady(conversation.id, ready);
+          },
+        }),
+        // Naming the chat after its issue (#393). Scoped to this conversation,
+        // like the ready mark: a chat may only rename itself.
+        buildSetChatTitleTool({
+          conversationId: conversation.id,
+          write: async (title): Promise<void> => {
+            await db.updateConversationTitle(conversation.id, title, 'agent');
           },
         }),
         // Letting one published page past the deployment's login (#345).

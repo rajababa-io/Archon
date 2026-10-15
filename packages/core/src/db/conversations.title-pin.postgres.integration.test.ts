@@ -107,6 +107,14 @@ describe.skipIf(!baseUrl)('updateConversationTitle — real Postgres behavior', 
     expect(await row(id)).toEqual({ title: 'Requested', pinned: true });
   });
 
+  test("a chat's own agent pins, so automation cannot undo it (#393)", async () => {
+    const id = await insertChat('agent', false);
+    await conversations.updateConversationTitle(id, '#96 Named by agent', 'agent');
+    expect(await row(id)).toEqual({ title: '#96 Named by agent', pinned: true });
+    expect(await conversations.updateConversationTitle(id, 'Generated', 'automation')).toBe(false);
+    expect(await row(id)).toEqual({ title: '#96 Named by agent', pinned: true });
+  });
+
   test('an automatic write to a missing chat is still an error', async () => {
     await expect(
       conversations.updateConversationTitle(crypto.randomUUID(), 'x', 'automation')
