@@ -159,7 +159,7 @@ export function ChatPage(): ReactElement {
     if (activeConvId !== null || startingNew) return;
     const web = (conversations ?? []).filter(c => c.platformType === 'web');
     if (web.length === 0) return;
-    // byMostRecent already ordered the list, so [0] is the newest.
+    // byMostRecent already ordered the list, so the first match is the newest.
     const open = chooseOpenChat(readLastChat(listScope), web);
     if (open !== null) setActiveConvId(open);
   }, [conversations, activeConvId, startingNew, listScope]);
