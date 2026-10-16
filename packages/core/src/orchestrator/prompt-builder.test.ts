@@ -100,6 +100,7 @@ describe('buildOrchestratorSystemAppend', () => {
     pinned_provider: null,
     pinned_model: null,
     pinned_effort: null,
+    folder: null,
     deleted_at: null,
     user_id: null,
     last_activity_at: null,

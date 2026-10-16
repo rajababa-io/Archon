@@ -26,6 +26,7 @@ import {
   setConversationReady,
   setConversationModelPin,
   setConversationCompleted,
+  updateConversationFolder,
   setConversationOrder,
 } from './conversations';
 import type { Conversation } from '../types';
@@ -67,6 +68,7 @@ describe('conversations', () => {
       pinned_provider: null,
       pinned_model: null,
       pinned_effort: null,
+      folder: null,
       hidden: false,
       deleted_at: null,
       user_id: null,
@@ -320,6 +322,7 @@ describe('conversations', () => {
       pinned_provider: null,
       pinned_model: null,
       pinned_effort: null,
+      folder: null,
       hidden: false,
       deleted_at: null,
       user_id: null,
@@ -609,6 +612,35 @@ describe('conversations', () => {
       const sql = await sqlOf('open');
       expect(sql).toContain('deleted_at IS NULL');
       expect(sql).toContain('completed_at IS NULL');
+    });
+  });
+
+  describe('updateConversationFolder', () => {
+    test('writes the name, and null takes the chat out', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await updateConversationFolder('conv-1', 'Van');
+      expect(String(mockQuery.mock.calls[0]?.[0])).toContain('SET folder = $1');
+      expect(mockQuery.mock.calls[0]?.[1]).toEqual(['Van', 'conv-1']);
+
+      mockQuery.mockClear();
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await updateConversationFolder('conv-1', null);
+      expect(mockQuery.mock.calls[0]?.[1]).toEqual([null, 'conv-1']);
+    });
+
+    test('filing never touches whether the chat is open, closed or archived', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 1));
+      await updateConversationFolder('conv-1', 'Van');
+      const sql = String(mockQuery.mock.calls[0]?.[0]);
+      expect(sql).not.toContain('completed_at');
+      expect(sql).not.toContain('deleted_at');
+    });
+
+    test('throws when no chat has that id', async () => {
+      mockQuery.mockResolvedValueOnce(createQueryResult([], 0));
+      await expect(updateConversationFolder('missing', 'Van')).rejects.toBeInstanceOf(
+        ConversationNotFoundError
+      );
     });
   });
 

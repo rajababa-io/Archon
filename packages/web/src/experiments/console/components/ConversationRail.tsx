@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { ChevronRight, Folder, Plus } from 'lucide-react';
 import {
   Fragment,
   useCallback,
@@ -23,7 +23,7 @@ import {
   type ChatStatusSets,
 } from '../primitives/chat-status';
 import { groupChatsByStatus } from '../primitives/chat-groups';
-import { MenuCheckItem, MenuItem, RowMenu, RowMenuButton } from './RowMenu';
+import { MenuCheckItem, MenuItem, MenuSeparator, RowMenu, RowMenuButton } from './RowMenu';
 import type { MenuPoint } from './RowMenu';
 import { IssueDialog } from './IssueDialog';
 import { titleParts } from '../lib/title-issues';
@@ -37,6 +37,7 @@ import {
   type ChatSelection,
 } from '../lib/chat-selection';
 import { NEW_CHAT_KEY_LABEL } from '../lib/new-chat-key';
+import { groupChatsByFolder, readOpenFolders, writeOpenFolders } from '../lib/chat-folders';
 import {
   applyChatOrder,
   clearChatOrder,
@@ -87,6 +88,8 @@ interface ConversationRailProps {
   activeConvId: string | null;
   onSelect: (id: string | null) => void;
   onRename: (id: string, title: string) => void;
+  /** File a chat under a folder, or take it out of one with `null` (#396). */
+  onFolder: (id: string, folder: string | null) => void;
   /**
    * Mark a chat's unit of work finished, or reopen it.
    *
@@ -167,6 +170,7 @@ export function ConversationRail({
   activeConvId,
   onSelect,
   onRename,
+  onFolder,
   onComplete,
   onMarkUnread,
   onReorder,
@@ -184,6 +188,9 @@ export function ConversationRail({
   /* No filter box: a permanent text field for one project's chats was chrome.
      Finding a chat by name is the ⌘K palette's job, across every project. */
   const [renamingId, setRenamingId] = useState<string | null>(null);
+  // What the row's text field is for while `renamingId` is set: the chat's
+  // title, or the name of a new folder to file it under.
+  const [editing, setEditing] = useState<'title' | 'folder'>('title');
   const [draft, setDraft] = useState('');
   const [menuFor, setMenuFor] = useState<string | null>(null);
   // Where the right-click landed; undefined when the ⋯ button opened the menu.
@@ -340,10 +347,46 @@ export function ConversationRail({
     () => (everyProject ? groupChatsByStatus(visible, id => chatStatus(id, statusSets)) : null),
     [everyProject, visible, statusSets]
   );
-  /** The rows in the order they are drawn, which is what "the next chat" means. */
-  const ordered = groups === null ? visible : groups.flatMap(g => g.chats);
+  /**
+   * A project's chats split into those in no folder and the folders (#396).
+   * The every-project list has none: folders belong to one project, and that
+   * list is grouped by status instead.
+   */
+  const foldered = useMemo(
+    () => (everyProject ? null : groupChatsByFolder(visible)),
+    [everyProject, visible]
+  );
+  // Remembered per project; the rail remounts on a project change, so the
+  // initial read is the only one it needs.
+  const [openFolders, setOpenFolders] = useState<Set<string>>(() =>
+    projectId === null ? new Set() : readOpenFolders(projectId)
+  );
+  const toggleFolder = (name: string): void => {
+    const next = new Set(openFolders);
+    if (next.has(name)) next.delete(name);
+    else next.add(name);
+    setOpenFolders(next);
+    if (projectId !== null) writeOpenFolders(projectId, next);
+  };
+  // A folder holding the chat you are reading is drawn open: filing the open
+  // chat must not make the row you are on disappear from under you.
+  const isFolderOpen = (folder: { name: string; chats: ConversationSummary[] }): boolean =>
+    openFolders.has(folder.name) || folder.chats.some(c => c.id === activeConvId);
 
-  const dragFrom = dragId === null ? -1 : visible.findIndex(c => c.id === dragId);
+  /** The rows in the order they are drawn, which is what "the next chat" means. */
+  const ordered =
+    groups !== null
+      ? groups.flatMap(g => g.chats)
+      : foldered !== null
+        ? [...foldered.loose, ...foldered.folders.filter(isFolderOpen).flatMap(f => f.chats)]
+        : visible;
+
+  /**
+   * The rows a drag rearranges: the chats in no folder. A folder's chats are
+   * one row until opened, so there is no single position to drop them at.
+   */
+  const dragList = foldered?.loose ?? visible;
+  const dragFrom = dragId === null ? -1 : dragList.findIndex(c => c.id === dragId);
 
   const endDrag = (): void => {
     setDragId(null);
@@ -353,7 +396,7 @@ export function ConversationRail({
   };
 
   const beginDrag = (id: string, index: number): void => {
-    const rects = visible.map(c => {
+    const rects = dragList.map(c => {
       const el = rowRefs.current.get(c.id);
       const r = el?.getBoundingClientRect();
       return { top: r?.top ?? 0, bottom: r?.bottom ?? 0 };
@@ -365,9 +408,16 @@ export function ConversationRail({
   };
 
   const onDropHere = (): void => {
-    const target = visible[dropIndex];
+    const target = dragList[dropIndex];
     if (dragId !== null && target !== undefined && target.id !== dragId) {
-      const next = reorder(visible, dragId, target.id);
+      // The whole list, so the arrangement held until the server agrees is
+      // complete: the rearranged loose chats, then every foldered chat where
+      // it already stood.
+      const moved = new Set(dragList.map(c => c.id));
+      const next = [
+        ...reorder(dragList, dragId, target.id),
+        ...visible.filter(c => !moved.has(c.id)).map(c => c.id),
+      ];
       // Shown immediately, sent once. Recording it as sent also stops the
       // seeding effect above from answering the same render with a second,
       // contradictory arrangement.
@@ -380,6 +430,12 @@ export function ConversationRail({
 
   const commitRename = (id: string): void => {
     const next = draft.trim();
+    if (editing === 'folder') {
+      // An empty name is a no-op, the same as an empty rename.
+      if (next.length > 0) onFolder(id, next);
+      setRenamingId(null);
+      return;
+    }
     const current = conversations.find(c => c.id === id);
     // An empty rename is a no-op, not a way to blank a title: a nameless row
     // cannot be told apart from any other in the list.
@@ -455,11 +511,13 @@ export function ConversationRail({
     clearSelection();
   };
 
-  const renderRow = (c: ConversationSummary, index: number): ReactElement => {
+  const renderRow = (c: ConversationSummary, index: number, inFolder = false): ReactElement => {
     const isActive = c.id === activeConvId;
     const status = chatStatus(c.id, statusSets);
     const unread = statusSets.unread.has(c.id);
-    const shift = dragId === null ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
+    const canDrag = !everyProject && !inFolder;
+    const shift =
+      dragId === null || inFolder ? 0 : previewShift(boxesRef.current, dragFrom, dropIndex, index);
     return (
       <div
         key={c.id}
@@ -468,7 +526,7 @@ export function ConversationRail({
           else rowRefs.current.set(c.id, el);
         }}
         aria-current={isActive}
-        className={`rail-row group${unread ? ' is-unread' : ''}${dragId === c.id ? ' opacity-40' : ''}${
+        className={`rail-row group${inFolder ? ' is-foldered' : ''}${unread ? ' is-unread' : ''}${dragId === c.id ? ' opacity-40' : ''}${
           selection.ids.has(c.id) ? ' is-selected' : ''
         }`}
         style={{
@@ -477,7 +535,7 @@ export function ConversationRail({
           transform: shift === 0 ? undefined : `translateY(${String(shift)}px)`,
           transition: 'transform 150ms, opacity 150ms, background-color 110ms',
         }}
-        draggable={!everyProject && armed === c.id && renamingId === null}
+        draggable={canDrag && armed === c.id && renamingId === null}
         onDragStart={e => {
           beginDrag(c.id, index);
           e.dataTransfer.effectAllowed = 'move';
@@ -496,7 +554,7 @@ export function ConversationRail({
         {/* Six dots in the row's reserved gutter, invisible until hover
                   — the same handle the project rail uses, so reordering is one
                   gesture to learn rather than two. */}
-        {renamingId !== c.id && !everyProject ? (
+        {renamingId !== c.id && canDrag ? (
           <span
             aria-hidden
             title="Drag to reorder"
@@ -539,8 +597,9 @@ export function ConversationRail({
             onBlur={() => {
               commitRename(c.id);
             }}
-            maxLength={255}
-            aria-label="Rename chat"
+            maxLength={editing === 'folder' ? 100 : 255}
+            placeholder={editing === 'folder' ? 'Folder name' : undefined}
+            aria-label={editing === 'folder' ? 'New folder name' : 'Rename chat'}
             className="chat-rename"
           />
         ) : (
@@ -630,6 +689,7 @@ export function ConversationRail({
           <MenuItem
             label="Rename…"
             onSelect={() => {
+              setEditing('title');
               setDraft(conversationLabel(c));
               setRenamingId(c.id);
               setMenuFor(null);
@@ -663,6 +723,35 @@ export function ConversationRail({
               setMenuFor(null);
             }}
           />
+          {/* Folders, as states: the ticked one holds this chat, and clicking
+                    it takes the chat out. Only in a project's own list, which
+                    is the only list that draws folders. */}
+          {foldered !== null ? (
+            <>
+              <MenuSeparator />
+              {foldered.folders.map(f => (
+                <MenuCheckItem
+                  key={f.name}
+                  label={f.name}
+                  checked={c.folder === f.name}
+                  checkedAction="Take out"
+                  onSelect={() => {
+                    onFolder(c.id, c.folder === f.name ? null : f.name);
+                    setMenuFor(null);
+                  }}
+                />
+              ))}
+              <MenuItem
+                label="Move to new folder…"
+                onSelect={() => {
+                  setEditing('folder');
+                  setDraft('');
+                  setRenamingId(c.id);
+                  setMenuFor(null);
+                }}
+              />
+            </>
+          ) : null}
         </RowMenu>
       </div>
     );
@@ -795,17 +884,48 @@ export function ConversationRail({
           <p className="px-2 py-1.75 text-body text-text-tertiary">No chats yet.</p>
         ) : null}
 
-        {groups === null
-          ? visible.map((c, index) => renderRow(c, index))
-          : groups.map(g => (
-              <Fragment key={g.key}>
-                <div className="rail-owner">
-                  <span className="rail-owner-name">{g.label}</span>
-                  <span className="ml-auto tabular-nums">{g.chats.length}</span>
-                </div>
-                {g.chats.map((c, index) => renderRow(c, index))}
-              </Fragment>
-            ))}
+        {foldered !== null ? (
+          <>
+            {foldered.loose.map((c, index) => renderRow(c, index))}
+            {foldered.folders.map(f => {
+              const isOpen = isFolderOpen(f);
+              return (
+                <Fragment key={`folder:${f.name}`}>
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    className="chat-folder"
+                    onClick={e => {
+                      e.stopPropagation();
+                      toggleFolder(f.name);
+                    }}
+                  >
+                    <ChevronRight
+                      aria-hidden
+                      className={`chat-folder-chevron${isOpen ? ' is-open' : ''}`}
+                    />
+                    <Folder aria-hidden className="chat-folder-icon" />
+                    <span className="chat-folder-name">{f.name}</span>
+                    <span className="chat-folder-count">{f.chats.length}</span>
+                  </button>
+                  {isOpen ? f.chats.map((c, index) => renderRow(c, index, true)) : null}
+                </Fragment>
+              );
+            })}
+          </>
+        ) : groups === null ? (
+          visible.map((c, index) => renderRow(c, index))
+        ) : (
+          groups.map(g => (
+            <Fragment key={g.key}>
+              <div className="rail-owner">
+                <span className="rail-owner-name">{g.label}</span>
+                <span className="ml-auto tabular-nums">{g.chats.length}</span>
+              </div>
+              {g.chats.map((c, index) => renderRow(c, index))}
+            </Fragment>
+          ))
+        )}
 
         {/* The listing is capped server-side, so a long-running project's
             finished chats eventually outrun it. Say so under the last row:

@@ -18,6 +18,7 @@ const chat = (id: string, completed = false): ConversationSummary => ({
   lastReadAt: null,
   ready: false,
   projectId: null,
+  folder: null,
 });
 
 const ASK = '```ask\n{"questions":[{"id":"q1","question":"Pick one","options":["a","b"]}]}\n```';
@@ -36,6 +37,7 @@ const draw = (overrides: Partial<Parameters<typeof ConversationRail>[0]> = {}): 
       activeConvId={null}
       onSelect={() => undefined}
       onRename={() => undefined}
+      onFolder={() => undefined}
       onComplete={() => undefined}
       onMarkUnread={() => undefined}
       onReorder={() => undefined}
@@ -145,5 +147,50 @@ describe('ConversationRail — row menu (#255)', () => {
     const html = draw({ conversations: [chat('one'), chat('two'), chat('three')] });
     expect(html.match(/aria-label="More actions"/g)?.length).toBe(3);
     expect(html).toContain('aria-haspopup="menu"');
+  });
+});
+
+describe('ConversationRail — folders (#396)', () => {
+  const filed = (id: string, folder: string): ConversationSummary => ({ ...chat(id), folder });
+
+  test('a folder is one closed row with its count, and its chats are not drawn', () => {
+    const rows = [chat('loose'), filed('a', 'Van'), filed('b', 'Van')];
+    const html = draw({ conversations: rows, statusSets: chatStatusSets(rows, NO_LIVE) });
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('<span class="chat-folder-name">Van</span>');
+    expect(html).toContain('<span class="chat-folder-count">2</span>');
+    expect(html).toContain('aria-label="loose"');
+    expect(html).not.toContain('aria-label="a"');
+    expect(html).not.toContain('aria-label="b"');
+  });
+
+  test('the folder holding the open chat is drawn open, so filing it does not hide it', () => {
+    const rows = [chat('loose'), filed('a', 'Van'), filed('b', 'Van')];
+    const html = draw({
+      conversations: rows,
+      activeConvId: 'a',
+      statusSets: chatStatusSets(rows, NO_LIVE),
+    });
+    expect(html).toContain('aria-expanded="true"');
+    expect(html).toContain('aria-label="a"');
+    expect(html).toContain('aria-label="b"');
+    expect(html).toContain('rail-row group is-foldered');
+  });
+
+  test('chats in no folder are listed above the folders', () => {
+    const rows = [filed('a', 'Van'), chat('loose')];
+    const html = draw({ conversations: rows, statusSets: chatStatusSets(rows, NO_LIVE) });
+    expect(html.indexOf('aria-label="loose"')).toBeLessThan(html.indexOf('chat-folder-name'));
+  });
+
+  test('the every-project list draws no folders', () => {
+    const rows = [filed('a', 'Van')];
+    const html = draw({
+      conversations: rows,
+      projectId: null,
+      statusSets: chatStatusSets(rows, NO_LIVE),
+    });
+    expect(html).not.toContain('chat-folder');
+    expect(html).toContain('aria-label="a"');
   });
 });

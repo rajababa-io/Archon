@@ -306,6 +306,17 @@ export function ChatPage(): ReactElement {
     })();
   };
 
+  const fileConversation = (id: string, folder: string | null): void => {
+    void (async (): Promise<void> => {
+      try {
+        await skill.setConversationFolder(id, folder);
+        invalidateConversations();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Could not move the chat.');
+      }
+    })();
+  };
+
   // Derived rather than tracked as second state, so the platform id and the DB
   // uuid can't drift apart.
   const activeConvDbId = useMemo<string | null>(
@@ -807,6 +818,7 @@ export function ChatPage(): ReactElement {
         activeConvId={activeConvId}
         onSelect={selectConversation}
         onRename={renameConversation}
+        onFolder={fileConversation}
         onComplete={completeConversation}
         onMarkUnread={markConversationUnread}
         onReorder={reorderConversations}

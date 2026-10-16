@@ -121,6 +121,13 @@ export const conversationRowSchema = z.object({
   pinned_provider: z.string().nullable(),
   pinned_model: z.string().nullable(),
   pinned_effort: z.string().nullable(),
+  /**
+   * The console folder this chat is filed under (#396). A folder is only its
+   * name and exists while a chat carries it. Presentation only: filing a chat
+   * changes nothing about whether it is open, closed or archived. NULL means not
+   * in a folder.
+   */
+  folder: z.string().nullable(),
   deleted_at: z.date().nullable(),
   last_activity_at: z.date().nullable(),
   user_id: z.string().nullable(),

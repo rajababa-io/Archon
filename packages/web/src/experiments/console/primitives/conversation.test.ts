@@ -28,6 +28,7 @@ const conv = (over: Partial<ConversationSummary> = {}): ConversationSummary => (
   lastReadAt: null,
   ready: false,
   projectId: null,
+  folder: null,
   ...over,
 });
 

@@ -463,6 +463,12 @@ ALTER TABLE remote_agent_conversations
 ALTER TABLE remote_agent_conversations
   ADD COLUMN IF NOT EXISTS pinned_effort VARCHAR(16);
 
+-- From migration 046: the console folder a chat is filed under. A folder is only
+-- its name and exists while a chat carries it. NULL means not in a folder, true
+-- of every older row, so there is nothing to backfill.
+ALTER TABLE remote_agent_conversations
+  ADD COLUMN IF NOT EXISTS folder VARCHAR(100);
+
 -- From migrations 031 and 032: the chat's unit of work is finished, and every
 -- chat archived before the column existed becomes a finished one.
 --
@@ -1075,6 +1081,8 @@ COMMENT ON COLUMN remote_agent_conversations.pinned_model IS
   'Model this chat runs on, overriding every default for this conversation only. NULL means the default model.';
 COMMENT ON COLUMN remote_agent_conversations.pinned_effort IS
   'Reasoning effort rung this chat runs on, overriding the default. NULL means the default effort.';
+COMMENT ON COLUMN remote_agent_conversations.folder IS
+  'Name of the console folder this chat is filed under. NULL means not in a folder. Presentation only; independent of completed_at and deleted_at.';
 
 -- Parked work
 CREATE INDEX IF NOT EXISTS idx_parked_work_unresumed

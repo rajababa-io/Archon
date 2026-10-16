@@ -36,6 +36,7 @@ const chat = (
     lastReadAt: null,
     ready: false,
     projectId: null,
+    folder: null,
   };
   return { chat: summary, projectId };
 };

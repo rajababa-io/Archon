@@ -249,6 +249,10 @@ export const updateConversationBodySchema = z
   .object({
     title: z.string().min(1).optional(),
     color: conversationColorSchema.nullable().optional(),
+    // The console folder to file the chat under; null takes it out of any
+    // folder, omitted leaves it alone. Presentation only — it never changes
+    // whether the chat is open, closed or archived.
+    folder: z.string().trim().min(1).max(100).nullable().optional(),
     // true archives, false restores. Omitted leaves the state alone, so a
     // rename cannot accidentally resurrect an archived chat.
     archived: z.boolean().optional(),

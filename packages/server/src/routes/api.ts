@@ -1042,7 +1042,7 @@ const updateConversationRoute = createRoute({
   method: 'patch',
   path: '/api/conversations/{id}',
   tags: ['Conversations'],
-  summary: 'Update a conversation (title, color, archived, completed, ready)',
+  summary: 'Update a conversation (title, color, folder, archived, completed, ready)',
   request: {
     params: conversationIdParamsSchema,
     body: {
@@ -3936,10 +3936,10 @@ export function registerApiRoutes(
     }
   });
 
-  // PATCH /api/conversations/:id - Update conversation (title, color, archived, completed, ready)
+  // PATCH /api/conversations/:id - Update conversation (title, color, folder, archived, completed, ready)
   registerOpenApiRoute(updateConversationRoute, async c => {
     const platformId = c.req.param('id') ?? '';
-    const { title, color, archived, completed, ready } = getValidatedBody(
+    const { title, color, folder, archived, completed, ready } = getValidatedBody(
       c,
       updateConversationBodySchema
     );
@@ -3958,6 +3958,11 @@ export function registerApiRoutes(
       // schema already constrained any non-null value to CONVERSATION_COLORS.
       if (color !== undefined) {
         await conversationDb.updateConversationColor(conv.id, color);
+      }
+      // Same rule as color: `undefined` leaves the folder alone, `null` takes the
+      // chat out of it.
+      if (folder !== undefined) {
+        await conversationDb.updateConversationFolder(conv.id, folder);
       }
       // Symmetric on purpose: the same field archives and restores, so an
       // archive is never a one-way door the user cannot walk back through.

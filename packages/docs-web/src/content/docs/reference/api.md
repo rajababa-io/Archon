@@ -151,7 +151,7 @@ drains should deploy nothing and say so -- the box is still running what it was.
 | GET | `/api/conversations` | List conversations |
 | GET | `/api/conversations/{id}` | Get a single conversation |
 | POST | `/api/conversations` | Create a new conversation |
-| PATCH | `/api/conversations/{id}` | Update a conversation (rename) |
+| PATCH | `/api/conversations/{id}` | Update a conversation (rename, color, folder, close, ready) |
 | DELETE | `/api/conversations/{id}` | Soft-delete a conversation |
 | GET | `/api/conversations/{id}/lock` | Whether the conversation is executing a turn right now |
 | GET | `/api/conversations/{id}/model` | The provider, model and effort the conversation's next turn runs on, and its own pin |
