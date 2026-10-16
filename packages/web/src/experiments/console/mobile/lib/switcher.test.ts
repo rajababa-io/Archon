@@ -25,6 +25,7 @@ function found(
       lastReadAt: null,
       ready: false,
       projectId: null,
+      folder: null,
     },
   };
 }

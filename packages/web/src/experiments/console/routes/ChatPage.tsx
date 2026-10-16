@@ -159,7 +159,7 @@ export function ChatPage(): ReactElement {
     if (activeConvId !== null || startingNew) return;
     const web = (conversations ?? []).filter(c => c.platformType === 'web');
     if (web.length === 0) return;
-    // byMostRecent already ordered the list, so [0] is the newest.
+    // byMostRecent already ordered the list, so the first match is the newest.
     const open = chooseOpenChat(readLastChat(listScope), web);
     if (open !== null) setActiveConvId(open);
   }, [conversations, activeConvId, startingNew, listScope]);
@@ -302,6 +302,17 @@ export function ChatPage(): ReactElement {
         invalidateConversations();
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Rename failed.');
+      }
+    })();
+  };
+
+  const fileConversation = (id: string, folder: string | null): void => {
+    void (async (): Promise<void> => {
+      try {
+        await skill.setConversationFolder(id, folder);
+        invalidateConversations();
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Could not move the chat.');
       }
     })();
   };
@@ -807,6 +818,7 @@ export function ChatPage(): ReactElement {
         activeConvId={activeConvId}
         onSelect={selectConversation}
         onRename={renameConversation}
+        onFolder={fileConversation}
         onComplete={completeConversation}
         onMarkUnread={markConversationUnread}
         onReorder={reorderConversations}

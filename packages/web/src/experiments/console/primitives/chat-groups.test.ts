@@ -17,6 +17,7 @@ const chat = (id: string, lastActivityAt: string | null = null): ConversationSum
   lastReadAt: null,
   ready: false,
   projectId: 'p1',
+  folder: null,
 });
 
 const statuses =

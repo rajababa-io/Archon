@@ -1086,3 +1086,58 @@
 .rail-panel.is-collapsed .rail-sep {
   visibility: hidden;
 }
+
+/* ── CHAT FOLDERS (#396) ────────────────────────────────────────────────
+   A folder is one row until opened — that is the whole point of it: parked
+   chats take one line, not one card each. The row is quieter than a chat card
+   (no dot, no stamp) so the eye reads it as a container, and its count says
+   how much is inside without a click. Chats inside are indented under it. */
+.chat-folder {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px 7px 8px;
+  margin-bottom: var(--row-gap);
+  border-radius: var(--radius-card);
+  font-size: var(--text-body);
+  color: var(--text-secondary);
+  text-align: left;
+  transition: background-color 110ms;
+}
+.chat-folder:hover {
+  background: var(--surface-hover);
+  color: var(--text-primary);
+}
+.chat-folder-chevron {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: transform 150ms;
+}
+.chat-folder-chevron.is-open {
+  transform: rotate(90deg);
+}
+.chat-folder-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+}
+.chat-folder-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-folder-count {
+  font-size: var(--text-mini);
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.chatlist .rail-row.is-foldered {
+  margin-left: 14px;
+  width: calc(100% - 14px);
+}

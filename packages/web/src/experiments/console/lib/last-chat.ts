@@ -33,15 +33,19 @@ export function writeLastChat(projectId: string, conversationId: string | null):
 
 /**
  * Which chat to open: the remembered one when it still exists, otherwise the
- * most recent. A remembered id that has been archived or deleted must not win,
- * or the project opens on nothing.
+ * most recent chat in no folder. A remembered id that has been archived or
+ * deleted must not win, or the project opens on nothing.
+ *
+ * The fallback passes over filed chats (#396): a folder holding the open chat
+ * is drawn open, so landing on a parked chat would unfold what you put away.
+ * Only when every chat is filed does it open one anyway.
  */
 export function chooseOpenChat(
   remembered: string | null,
-  available: readonly { id: string }[]
+  available: readonly { id: string; folder?: string | null }[]
 ): string | null {
   if (remembered !== null && available.some(c => c.id === remembered)) return remembered;
-  return available[0]?.id ?? null;
+  return (available.find(c => c.folder == null) ?? available[0])?.id ?? null;
 }
 
 /**

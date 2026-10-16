@@ -635,6 +635,24 @@ export async function updateConversationColor(id: string, color: string | null):
 }
 
 /**
+ * File a conversation under a console folder, or take it out of one.
+ *
+ * `null` takes it out. A folder is only this name, so filing the last chat out
+ * of a folder is what removes the folder. The name is trimmed and bounded at the
+ * API boundary; this layer stores whatever it is handed.
+ */
+export async function updateConversationFolder(id: string, folder: string | null): Promise<void> {
+  const dialect = getDialect();
+  const result = await pool.query(
+    `UPDATE remote_agent_conversations SET folder = $1, updated_at = ${dialect.now()} WHERE id = $2`,
+    [folder, id]
+  );
+  if (result.rowCount === 0) {
+    throw new ConversationNotFoundError(id);
+  }
+}
+
+/**
  * Resolve platform conversation ids to database ids, in one query.
  *
  * The conversation API addresses chats by platform id throughout, and a rail

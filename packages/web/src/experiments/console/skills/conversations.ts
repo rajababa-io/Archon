@@ -22,6 +22,8 @@ import {
  *     replacing the server's auto-generated one.
  *   - setConversationColor: PATCH /api/conversations/:id — sets or clears the
  *     color label. An explicit null clears it; omitting it leaves it alone.
+ *   - setConversationFolder: PATCH /api/conversations/:id — files the chat
+ *     under a folder, or takes it out with an explicit null.
  *   - listConversations:  GET /api/conversations?codebaseId=<id>&mine=true
  *     (JSON array). `mine=true` is non-enforcing: it narrows to the signed-in
  *     user's conversations when an identity resolves (Better Auth cookie or
@@ -394,6 +396,20 @@ export async function renameConversation(
   await requestJson<{ success: boolean }>(
     `/api/conversations/${encodeURIComponent(conversationPlatformId)}`,
     { method: 'PATCH', body: JSON.stringify({ title }) }
+  );
+}
+
+/**
+ * File a conversation under a folder, or take it out with `null`. Filing never
+ * changes whether the chat is open or closed.
+ */
+export async function setConversationFolder(
+  conversationPlatformId: string,
+  folder: string | null
+): Promise<void> {
+  await requestJson<{ success: boolean }>(
+    `/api/conversations/${encodeURIComponent(conversationPlatformId)}`,
+    { method: 'PATCH', body: JSON.stringify({ folder }) }
   );
 }
 

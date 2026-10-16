@@ -97,6 +97,12 @@ export interface ConversationSummary {
    * to say whose chat a row is and where its runs and drafts live.
    */
   projectId: string | null;
+  /**
+   * The folder this chat is filed under in its project's list, or null for
+   * none (#396). A folder is only this name, so it exists while a chat carries
+   * it. Says nothing about whether the chat is open or closed.
+   */
+  folder: string | null;
   /** Short summary of the chat, or null when nothing has written one yet. */
   /** When the summary was last written — what makes staleness visible. */
   /** True when a human wrote it, so the agent leaves it alone. */
@@ -116,6 +122,7 @@ interface RawConversation {
   last_read_at?: string | null;
   ready_at?: string | null;
   codebase_id?: string | null;
+  folder?: string | null;
 }
 
 /**
@@ -149,6 +156,9 @@ export function toConversationSummary(raw: RawConversation): ConversationSummary
     // work had landed when it had not.
     ready: raw.ready_at != null,
     projectId: raw.codebase_id ?? null,
+    // Absent — a server that predates the column — reads as in no folder, so
+    // the chat lists exactly where it always did.
+    folder: raw.folder ?? null,
   };
 }
 

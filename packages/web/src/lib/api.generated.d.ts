@@ -965,7 +965,7 @@ export interface paths {
     };
     options?: never;
     head?: never;
-    /** Update a conversation (title, color, archived, completed, ready) */
+    /** Update a conversation (title, color, folder, archived, completed, ready) */
     patch: {
       parameters: {
         query?: never;
@@ -5761,6 +5761,7 @@ export interface components {
       pinned_provider: string | null;
       pinned_model: string | null;
       pinned_effort: string | null;
+      folder: string | null;
       /** Format: date-time */
       deleted_at: string | null;
       /** Format: date-time */
@@ -5796,6 +5797,7 @@ export interface components {
       title?: string;
       /** @enum {string|null} */
       color?: 'magenta' | 'violet' | 'blue' | 'green' | 'amber' | 'red' | null;
+      folder?: string | null;
       archived?: boolean;
       completed?: boolean;
       ready?: boolean;

@@ -32,6 +32,7 @@ const mockFindConversationIdsByPlatformIds = mock(
 );
 const mockSetConversationOrder = mock(async (_ids: readonly string[]) => {});
 const mockUpdateConversationTitle = mock(async (_id: string, _title: string) => {});
+const mockUpdateConversationFolder = mock(async (_id: string, _folder: string | null) => {});
 const mockSetConversationCompleted = mock(async (_id: string, _completed: boolean) => {});
 const mockSetConversationReady = mock(async (_id: string, _ready: boolean) => {});
 const mockMarkConversationRead = mock(async (_id: string) => {});
@@ -113,6 +114,7 @@ mock.module('@archon/core/db/conversations', () => ({
   findConversationByPlatformId: mockFindConversationByPlatformId,
   softDeleteConversation: mockSoftDeleteConversation,
   updateConversationTitle: mockUpdateConversationTitle,
+  updateConversationFolder: mockUpdateConversationFolder,
   findConversationIdsByPlatformIds: mockFindConversationIdsByPlatformIds,
   setConversationOrder: mockSetConversationOrder,
   setConversationCompleted: mockSetConversationCompleted,
@@ -495,6 +497,41 @@ describe('DELETE /api/conversations/:id/read', () => {
 });
 
 describe('PATCH /api/conversations/:id', () => {
+  const patch = async (body: unknown): Promise<Response> => {
+    const app = new OpenAPIHono({ defaultHook: validationErrorHook });
+    registerApiRoutes(app, {} as WebAdapter, {} as ConversationLockManager);
+    return app.request('/api/conversations/web-test-abc', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  };
+
+  test('files a chat under a trimmed folder name, and null takes it out', async () => {
+    mockUpdateConversationFolder.mockClear();
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => MOCK_CONV);
+    expect((await patch({ folder: '  Van  ' })).status).toBe(200);
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => MOCK_CONV);
+    expect((await patch({ folder: null })).status).toBe(200);
+    expect(mockUpdateConversationFolder.mock.calls).toEqual([
+      ['internal-uuid-123', 'Van'],
+      ['internal-uuid-123', null],
+    ]);
+  });
+
+  test('leaves the folder alone when the body does not name one', async () => {
+    mockUpdateConversationFolder.mockClear();
+    mockFindConversationByPlatformId.mockImplementationOnce(async () => MOCK_CONV);
+    expect((await patch({ title: 'x' })).status).toBe(200);
+    expect(mockUpdateConversationFolder).not.toHaveBeenCalled();
+  });
+
+  test('refuses a blank folder name rather than filing under nothing', async () => {
+    mockUpdateConversationFolder.mockClear();
+    expect((await patch({ folder: '   ' })).status).toBe(400);
+    expect(mockUpdateConversationFolder).not.toHaveBeenCalled();
+  });
+
   test('resolves platform ID and updates title using internal ID', async () => {
     mockFindConversationByPlatformId.mockImplementationOnce(async () => MOCK_CONV);
     mockUpdateConversationTitle.mockImplementationOnce(async () => {});

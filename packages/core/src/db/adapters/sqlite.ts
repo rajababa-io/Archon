@@ -437,6 +437,11 @@ export class SqliteAdapter implements IDatabase {
           this.db.run(`ALTER TABLE remote_agent_conversations ADD COLUMN ${col} TEXT`);
         }
       }
+      // The console folder a chat is filed under (migration 046). NULL is "not in
+      // a folder" and true of every older row, so there is nothing to backfill.
+      if (!colNames.has('folder')) {
+        this.db.run('ALTER TABLE remote_agent_conversations ADD COLUMN folder TEXT');
+      }
       // Indexes must be created here, not in createSchema(): these columns don't
       // exist on older databases until the ALTER TABLE statements above run, and
       // CREATE INDEX on a missing column aborts the entire createSchema()
@@ -873,6 +878,7 @@ export class SqliteAdapter implements IDatabase {
         pinned_provider TEXT,
         pinned_model TEXT,
         pinned_effort TEXT,
+        folder TEXT,
         deleted_at TEXT,
         hidden INTEGER DEFAULT 0,
         user_id TEXT REFERENCES remote_agent_users(id) ON DELETE SET NULL,
